@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Trade Analyzer — ScoreEdge{% endblock %}
+{% block canonical %}/trades{% endblock %}
+{% block og_url %}/trades{% endblock %}
+{% block breadcrumb %}
+<div class="mb-6">
+  <h1 class="text-2xl font-display font-bold text-white">Trade Analyzer</h1>
+  <p class="text-sm text-slate-500 mt-1">Compare players side by side for fantasy trades</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="glass-card rounded-xl p-6 max-w-2xl mx-auto">
+  <div class="text-center mb-8">
+    <svg class="w-12 h-12 text-brand-light mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+    <p class="text-sm text-slate-400">Search for two players to compare their fantasy value.</p>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div x-data="{ query: '', results: [], open: false, selected: null }">
+      <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Side A</label>
+      <div class="relative">
+        <input type="text" x-model="query" placeholder="Search player..."
+          class="w-full bg-surface-2 border border-white/5 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand/50"
+          @input.debounce.300ms="if(query.length >= 2) { fetch('/api/player-search?q=' + encodeURIComponent(query)).then(r => r.text()).then(t => { results = t; open = true; }) } else { open = false }"
+          @focus="if(query.length >= 2) open = true" @click.away="open = false">
+        <div x-show="open && results.length > 0" x-cloak
+             class="absolute top-full left-0 right-0 mt-1 rounded-lg search-results shadow-xl overflow-hidden z-50" x-html="results"></div>
+      </div>
+    </div>
+    <div>
+      <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Side B</label>
+      <div class="relative">
+        <input type="text" placeholder="Search player..."
+          class="w-full bg-surface-2 border border-white/5 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand/50">
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-8 text-center">
+    <div class="inline-flex items-center gap-2 text-xs text-slate-500 bg-surface-2 rounded-lg px-4 py-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Select two players to see a side-by-side comparison with fantasy point analysis.
+    </div>
+  </div>
+</div>
+{% endblock %}

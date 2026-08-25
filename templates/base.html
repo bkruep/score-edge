@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}ScoreEdge — NFL Analytics &amp; Sports Betting Intelligence{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}Deep NFL analytics, fantasy football rankings, sports betting odds comparison, DFS lineup optimization, and weather impact analysis. Data-driven insights for every game.{% endblock %}">
+  <meta name="keywords" content="{% block keywords %}NFL, fantasy football, sports betting, DFS, odds, projections, rankings, analytics, DraftKings, FanDuel{% endblock %}">
+  <meta name="author" content="ScoreEdge">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://scoreedge.onrender.com{% block canonical %}{% endblock %}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ScoreEdge">
+  <meta property="og:title" content="{% block og_title %}ScoreEdge — NFL Analytics &amp; Betting Intelligence{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Deep NFL analytics, fantasy rankings, sports betting odds, DFS tools, and weather impact. Data-driven for every game.{% endblock %}">
+  <meta property="og:url" content="https://scoreedge.onrender.com{% block og_url %}{% endblock %}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{% block tw_title %}ScoreEdge{% endblock %}">
+  <meta name="twitter:description" content="{% block tw_description %}Deep NFL analytics, fantasy rankings, betting odds, and DFS tools.{% endblock %}">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: '#6366f1', dark: '#4f46e5', light: '#818cf8', glow: '#6366f180' },
+            accent: { DEFAULT: '#06b6d4', dark: '#0891b2', light: '#22d3ee' },
+            surface: { 0: '#060a14', 1: '#0c1222', 2: '#131b2e', 3: '#1a2540', 4: '#223052' },
+          },
+          fontFamily: { display: ['Space Grotesk', 'system-ui', 'sans-serif'], sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; background: #060a14; color: #e2e8f0; }
+    h1, h2, h3, .font-display { font-family: 'Space Grotesk', system-ui, sans-serif; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0c1222; }
+    ::-webkit-scrollbar-thumb { background: #223052; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #334568; }
+    .glass { background: rgba(12, 18, 34, 0.7); backdrop-filter: blur(16px); border: 1px solid rgba(99, 102, 241, 0.1); }
+    .glass-card { background: rgba(19, 27, 46, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(99, 102, 241, 0.08); }
+    .glow-brand { box-shadow: 0 0 30px rgba(99, 102, 241, 0.15); }
+    .glow-accent { box-shadow: 0 0 30px rgba(6, 182, 212, 0.15); }
+    .gradient-text { background: linear-gradient(135deg, #818cf8, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .gradient-border { border-image: linear-gradient(135deg, #6366f1, #06b6d4) 1; }
+    .hero-glow { background: radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 70%); }
+    [x-cloak] { display: none !important; }
+    .nav-link { transition: all 0.15s ease; }
+    .nav-link:hover { background: rgba(99, 102, 241, 0.1); }
+    .nav-link.active { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
+    .stat-table th { position: sticky; top: 0; z-index: 10; background: #131b2e; }
+    .stat-table tr:hover td { background: rgba(99, 102, 241, 0.05); }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .search-results { backdrop-filter: blur(16px); background: rgba(12, 18, 34, 0.95); }
+    .pill { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 0.7rem; font-weight: 500; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- Top Nav -->
+  <nav class="glass sticky top-0 z-50 border-b border-white/5">
+    <div class="max-w-7xl mx-auto px-4">
+      <div class="flex items-center justify-between h-14">
+        <div class="flex items-center gap-8">
+          <a href="/" class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand to-accent flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+            <span class="font-display font-bold text-white text-lg tracking-tight">GridIron <span class="text-brand-light">Edge</span></span>
+          </a>
+          <div class="hidden md:flex items-center gap-1">
+            <a href="/" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'home' %}active{% else %}text-slate-400{% endif %}">Dashboard</a>
+            <a href="/players" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'players' %}active{% else %}text-slate-400{% endif %}">Players</a>
+            <a href="/rankings" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'rankings' %}active{% else %}text-slate-400{% endif %}">Rankings</a>
+            <a href="/odds" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'odds' %}active{% else %}text-slate-400{% endif %}">Odds</a>
+            <a href="/weather" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'weather' %}active{% else %}text-slate-400{% endif %}">Weather</a>
+            <a href="/trades" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'trades' %}active{% else %}text-slate-400{% endif %}">Trades</a>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="relative" x-data="{ open: false, query: '', results: [] }" @click.away="open = false">
+            <div class="flex items-center gap-2 bg-surface-2 border border-white/5 rounded-lg px-3 py-1.5">
+              <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <input type="text" placeholder="Search players..."
+                class="bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none w-48"
+                x-model="query" @input.debounce.300ms="if(query.length >= 2) { fetch('/api/player-search?q=' + encodeURIComponent(query)).then(r => r.text()).then(t => { results = t; open = true; }) } else { open = false }"
+                @focus="if(query.length >= 2 && results) open = true">
+            </div>
+            <div x-show="open && results.length > 0" x-cloak
+                 class="absolute right-0 top-full mt-2 w-96 rounded-xl search-results shadow-2xl overflow-hidden z-50" x-html="results"></div>
+          </div>
+          <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-600 hover:text-brand-light transition-colors">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="flex-1">
+    <div class="hero-glow">
+      <div class="max-w-7xl mx-auto px-4 py-6">
+        {% block breadcrumb %}{% endblock %}
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-white/5 bg-surface-1 mt-auto">
+    <div class="max-w-7xl mx-auto px-4 py-8">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-6 h-6 rounded bg-gradient-to-br from-brand to-accent flex items-center justify-center">
+              <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+            <span class="font-display font-bold text-white text-sm">ScoreEdge</span>
+          </div>
+          <p class="text-xs text-slate-500 leading-relaxed">Multi-sport analytics, fantasy rankings, live betting odds, and weather intelligence. Data-driven insights for every game.</p>
+        </div>
+        <div>
+          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Analytics</h4>
+          <ul class="space-y-1.5">
+            <li><a href="/players" class="text-xs text-slate-500 hover:text-white transition-colors">Players</a></li>
+            <li><a href="/rankings" class="text-xs text-slate-500 hover:text-white transition-colors">Fantasy Rankings</a></li>
+            <li><a href="/weather" class="text-xs text-slate-500 hover:text-white transition-colors">Weather Impact</a></li>
+            <li><a href="/trades" class="text-xs text-slate-500 hover:text-white transition-colors">Trade Analyzer</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Betting</h4>
+          <ul class="space-y-1.5">
+            <li><a href="/odds" class="text-xs text-slate-500 hover:text-white transition-colors">Live Odds</a></li>
+            <li><a href="/weather" class="text-xs text-slate-500 hover:text-white transition-colors">Weather Lines</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Data</h4>
+          <ul class="space-y-1.5">
+            <li><a href="https://github.com/nflverse/nflverse-data" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">nflverse (CC0)</a></li>
+            <li><a href="https://the-odds-api.com" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">The Odds API</a></li>
+            <li><a href="https://open-meteo.com" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">Open-Meteo</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="border-t border-white/5 pt-4 flex items-center justify-between">
+        <p class="text-xs text-slate-600">&copy; {{ current_year }} ScoreEdge. Not affiliated with the NFL or its teams.</p>
+        <p class="text-xs text-slate-600">Built by <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-500 hover:text-brand-light transition-colors">@BryanKruep</a></p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        document.querySelector('nav input[type="text"]').focus();
+      }
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

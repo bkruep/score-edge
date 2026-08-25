@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Weather Impact — ScoreEdge{% endblock %}
+{% block canonical %}/weather{% endblock %}
+{% block og_url %}/weather{% endblock %}
+{% block breadcrumb %}
+<div class="mb-6">
+  <h1 class="text-2xl font-display font-bold text-white">Weather Impact</h1>
+  <p class="text-sm text-slate-500 mt-1">Outdoor game weather conditions for the next 7 days</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  {% for game in weather_data %}
+  <div class="glass-card rounded-xl p-5 {% if game.wind and game.wind > 15 %}glow-brand{% endif %}">
+    <div class="flex items-center justify-between mb-3">
+      <div class="text-sm font-medium text-white">{{ game.away }} @ {{ game.home }}</div>
+      {% if game.stadium == 'Indoor' %}
+      <span class="pill bg-surface-3 text-slate-400">Indoor</span>
+      {% elif game.wind and game.wind > 15 %}
+      <span class="pill bg-red-500/20 text-red-400">High Wind</span>
+      {% elif game.precip and game.precip > 0.3 %}
+      <span class="pill bg-amber-500/20 text-amber-400">Rain</span>
+      {% else %}
+      <span class="pill bg-emerald-500/20 text-emerald-400">Clear</span>
+      {% endif %}
+    </div>
+    <div class="text-xs text-slate-500 mb-3">{{ game.stadium }}</div>
+    {% if game.temp_max is not none %}
+    <div class="grid grid-cols-3 gap-3">
+      <div>
+        <div class="text-xs text-slate-500">Temp</div>
+        <div class="text-sm font-mono text-white">{{ game.temp_max|int }}° / {{ game.temp_min|int }}°F</div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-500">Wind</div>
+        <div class="text-sm font-mono {% if game.wind and game.wind > 15 %}text-red-400{% else %}text-white{% endif %}">{{ game.wind|int if game.wind else 0 }} mph</div>
+      </div>
+      <div>
+        <div class="text-xs text-slate-500">Precip</div>
+        <div class="text-sm font-mono {% if game.precip and game.precip > 0.3 %}text-amber-400{% else %}text-white{% endif %}">{{ game.precip|round(2) if game.precip is not none else '0' }} in</div>
+      </div>
+    </div>
+    {% if game.wind and game.wind > 15 %}
+    <div class="mt-3 text-xs text-red-400/80 bg-red-500/10 rounded-lg px-3 py-2">
+      ⚠️ High winds favor running games and reduce deep passing efficiency. Consider fading pass-heavy players.
+    </div>
+    {% elif game.precip and game.precip > 0.3 %}
+    <div class="mt-3 text-xs text-amber-400/80 bg-amber-500/10 rounded-lg px-3 py-2">
+      ⚠️ Rain increases fumble risk and reduces passing accuracy. Short passing and run-heavy game plans likely.
+    </div>
+    {% else %}
+    <div class="mt-3 text-xs text-emerald-400/80 bg-emerald-500/10 rounded-lg px-3 py-2">
+      ✓ Favorable conditions. No weather-based adjustments needed.
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="text-xs text-slate-500">Indoor stadium — no weather impact</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if not weather_data %}
+  <div class="col-span-full glass-card rounded-xl p-12 text-center">
+    <svg class="w-12 h-12 text-slate-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+    <p class="text-sm text-slate-500">No upcoming outdoor games in the next 7 days. Weather updates appear during the season.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

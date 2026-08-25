@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — ScoreEdge{% endblock %}
+{% block meta_description %}NFL dashboard: live odds, fantasy leaders, upcoming games, and weather impact for every matchup.{% endblock %}
+{% block og_title %}ScoreEdge — NFL Dashboard{% endblock %}
+{% block canonical %}/{% endblock %}
+{% block og_url %}/{% endblock %}
+{% block breadcrumb %}
+<div class="mb-6">
+  <h1 class="text-2xl font-display font-bold text-white">Dashboard</h1>
+  <p class="text-sm text-slate-500 mt-1">NFL {{ current_year }} Season</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div class="glass-card rounded-xl p-4 glow-brand">
+    <div class="text-xs text-slate-500 mb-1">Players</div>
+    <div class="text-2xl font-display font-bold text-white">{{ player_count }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Season</div>
+    <div class="text-2xl font-display font-bold gradient-text">{{ current_year }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Odds Available</div>
+    <div class="text-2xl font-display font-bold text-accent">{{ odds|length }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Upcoming</div>
+    <div class="text-2xl font-display font-bold text-white">{{ upcoming|length }}</div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+  <div class="lg:col-span-2 glass-card rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+      <svg class="w-4 h-4 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <h2 class="font-display font-semibold text-white text-sm">Upcoming Games</h2>
+    </div>
+    <div class="divide-y divide-white/5">
+      {% for game in upcoming %}
+      <div class="px-5 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+        <div class="flex items-center gap-3">
+          <span class="pill bg-surface-3 text-slate-400">Wk {{ game.week }}</span>
+          <span class="text-sm text-slate-400">{{ game.date }}</span>
+        </div>
+        <div class="text-sm font-medium text-white">
+          <span class="text-slate-400">{{ game.away_team }}</span>
+          <span class="text-slate-600 mx-2">@</span>
+          <span class="text-white">{{ game.home_team }}</span>
+        </div>
+      </div>
+      {% endfor %}
+      {% if not upcoming %}
+      <div class="px-5 py-8 text-center text-sm text-slate-500">No upcoming games found. Check back during the season.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="glass-card rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+      <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+      <h2 class="font-display font-semibold text-white text-sm">Quick Links</h2>
+    </div>
+    <div class="p-4 space-y-2">
+      <a href="/rankings" class="block px-4 py-3 rounded-lg bg-surface-3/50 hover:bg-brand/10 border border-white/5 hover:border-brand/20 transition-all">
+        <div class="text-sm font-medium text-white">Fantasy Rankings</div>
+        <div class="text-xs text-slate-500">PPR, Standard, Half-PPR</div>
+      </a>
+      <a href="/odds" class="block px-4 py-3 rounded-lg bg-surface-3/50 hover:bg-accent/10 border border-white/5 hover:border-accent/20 transition-all">
+        <div class="text-sm font-medium text-white">Live Odds</div>
+        <div class="text-xs text-slate-500">Moneylines, Spreads, Totals</div>
+      </a>
+      <a href="/weather" class="block px-4 py-3 rounded-lg bg-surface-3/50 hover:bg-emerald-500/10 border border-white/5 hover:border-emerald-500/20 transition-all">
+        <div class="text-sm font-medium text-white">Weather Impact</div>
+        <div class="text-xs text-slate-500">Wind, Rain, Temperature</div>
+      </a>
+      <a href="/trades" class="block px-4 py-3 rounded-lg bg-surface-3/50 hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/20 transition-all">
+        <div class="text-sm font-medium text-white">Trade Analyzer</div>
+        <div class="text-xs text-slate-500">Compare Players Side by Side</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="glass-card rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-white/5">
+      <h2 class="font-display font-semibold text-white text-sm">Top Passers</h2>
+    </div>
+    <div class="divide-y divide-white/5">
+      {% for p in top_passers %}
+      <div class="px-5 py-2.5 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-600 w-5">{{ loop.index }}</span>
+          <span class="text-sm text-white">{{ p.player_name }}</span>
+        </div>
+        <div class="text-right">
+          <div class="text-xs font-mono text-brand-light">{{ "{:,.0f}".format(p.passing_yards|int) }} yds</div>
+          <div class="text-xs text-slate-500">{{ p.passing_tds|int }} TD</div>
+        </div>
+      </div>
+      {% endfor %}
+      {% if not top_passers %}
+      <div class="px-5 py-6 text-center text-xs text-slate-500">No passing data available</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="glass-card rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-white/5">
+      <h2 class="font-display font-semibold text-white text-sm">Top Rushers</h2>
+    </div>
+    <div class="divide-y divide-white/5">
+      {% for p in top_rushers %}
+      <div class="px-5 py-2.5 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-600 w-5">{{ loop.index }}</span>
+          <span class="text-sm text-white">{{ p.player_name }}</span>
+        </div>
+        <div class="text-right">
+          <div class="text-xs font-mono text-accent">{{ "{:,.0f}".format(p.rushing_yards|int) }} yds</div>
+          <div class="text-xs text-slate-500">{{ p.rushing_tds|int }} TD</div>
+        </div>
+      </div>
+      {% endfor %}
+      {% if not top_rushers %}
+      <div class="px-5 py-6 text-center text-xs text-slate-500">No rushing data available</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="glass-card rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-white/5">
+      <h2 class="font-display font-semibold text-white text-sm">Top Receivers</h2>
+    </div>
+    <div class="divide-y divide-white/5">
+      {% for p in top_receivers %}
+      <div class="px-5 py-2.5 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-600 w-5">{{ loop.index }}</span>
+          <span class="text-sm text-white">{{ p.player_name }}</span>
+        </div>
+        <div class="text-right">
+          <div class="text-xs font-mono text-emerald-400">{{ "{:,.0f}".format(p.receiving_yards|int) }} yds</div>
+          <div class="text-xs text-slate-500">{{ p.receiving_tds|int }} TD</div>
+        </div>
+      </div>
+      {% endfor %}
+      {% if not top_receivers %}
+      <div class="px-5 py-6 text-center text-xs text-slate-500">No receiving data available</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
