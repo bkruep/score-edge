@@ -1,15 +1,16 @@
 {% extends "base.html" %}
-{% block title %}{{ player.player_name|default('Player') }} — ScoreEdge{% endblock %}
+{% block title %}{{ player.player_name|default(player.name|default('Player')) }} — ScoreEdge{% endblock %}
 {% block canonical %}/players/{{ player_id }}{% endblock %}
 {% block breadcrumb %}
 <div class="mb-6">
   <a href="/players" class="text-xs text-brand-light hover:underline">&larr; Back to Players</a>
-  <h1 class="text-2xl font-display font-bold text-white mt-2">{{ player.player_name|default('Player Not Found') }}</h1>
-  <p class="text-sm text-slate-500 mt-1">{{ player.position|default('') }} · {{ player.recent_team|default(player.team|default('')) }}</p>
+  <h1 class="text-2xl font-display font-bold text-white mt-2">{{ player.player_name|default(player.name|default('Player Not Found')) }}</h1>
+  <p class="text-sm text-slate-500 mt-1">{{ player.position|default('') }} · {{ player.recent_team|default(player.team|default('')) }}{% if not in_season %} · Preseason ADP{% endif %}</p>
 </div>
 {% endblock %}
 {% block content %}
-{% if player and player.player_name %}
+{% set pname = player.player_name|default(player.name|default('')) %}
+{% if in_season and pname %}
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
   <div class="glass-card rounded-xl p-4 glow-brand">
     <div class="text-xs text-slate-500 mb-1">Fantasy Pts (PPR)</div>
@@ -31,9 +32,7 @@
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
   <div class="glass-card rounded-xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-white/5">
-      <h2 class="font-display font-semibold text-white text-sm">Passing</h2>
-    </div>
+    <div class="px-5 py-4 border-b border-white/5"><h2 class="font-display font-semibold text-white text-sm">Passing</h2></div>
     <div class="p-5 grid grid-cols-3 gap-4">
       <div><div class="text-xs text-slate-500">Yards</div><div class="text-lg font-mono font-bold text-brand-light">{{ "{:,.0f}".format(player.passing_yards|default(0)|float) }}</div></div>
       <div><div class="text-xs text-slate-500">TD</div><div class="text-lg font-mono font-bold text-white">{{ player.passing_tds|default(0)|int }}</div></div>
@@ -45,9 +44,7 @@
   </div>
 
   <div class="glass-card rounded-xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-white/5">
-      <h2 class="font-display font-semibold text-white text-sm">Rushing</h2>
-    </div>
+    <div class="px-5 py-4 border-b border-white/5"><h2 class="font-display font-semibold text-white text-sm">Rushing</h2></div>
     <div class="p-5 grid grid-cols-3 gap-4">
       <div><div class="text-xs text-slate-500">Yards</div><div class="text-lg font-mono font-bold text-accent">{{ "{:,.0f}".format(player.rushing_yards|default(0)|float) }}</div></div>
       <div><div class="text-xs text-slate-500">TD</div><div class="text-lg font-mono font-bold text-white">{{ player.rushing_tds|default(0)|int }}</div></div>
@@ -58,9 +55,7 @@
   </div>
 
   <div class="glass-card rounded-xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-white/5">
-      <h2 class="font-display font-semibold text-white text-sm">Receiving</h2>
-    </div>
+    <div class="px-5 py-4 border-b border-white/5"><h2 class="font-display font-semibold text-white text-sm">Receiving</h2></div>
     <div class="p-5 grid grid-cols-3 gap-4">
       <div><div class="text-xs text-slate-500">Yards</div><div class="text-lg font-mono font-bold text-emerald-400">{{ "{:,.0f}".format(player.receiving_yards|default(0)|float) }}</div></div>
       <div><div class="text-xs text-slate-500">TD</div><div class="text-lg font-mono font-bold text-white">{{ player.receiving_tds|default(0)|int }}</div></div>
@@ -72,14 +67,50 @@
   </div>
 
   <div class="glass-card rounded-xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-white/5">
-      <h2 class="font-display font-semibold text-white text-sm">Fantasy Scoring</h2>
-    </div>
+    <div class="px-5 py-4 border-b border-white/5"><h2 class="font-display font-semibold text-white text-sm">Fantasy Scoring</h2></div>
     <div class="p-5 grid grid-cols-3 gap-4">
       <div><div class="text-xs text-slate-500">PPR</div><div class="text-lg font-mono font-bold text-white">{{ "{:,.1f}".format(player.pts_ppr|default(0)|float) }}</div></div>
       <div><div class="text-xs text-slate-500">Half-PPR</div><div class="text-lg font-mono font-bold text-slate-300">{{ "{:,.1f}".format(player.pts_half_ppr|default(0)|float) }}</div></div>
       <div><div class="text-xs text-slate-500">Standard</div><div class="text-lg font-mono font-bold text-slate-300">{{ "{:,.1f}".format(player.pts_std|default(0)|float) }}</div></div>
     </div>
+  </div>
+</div>
+
+{% elif not in_season and pname %}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div class="glass-card rounded-xl p-4 glow-brand">
+    <div class="text-xs text-slate-500 mb-1">Avg Draft Position</div>
+    <div class="text-xl font-display font-bold text-white">#{{ player.adp_formatted|default('?') }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Position</div>
+    <div class="text-xl font-display font-bold gradient-text">{{ player.position|default('?') }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Team</div>
+    <div class="text-xl font-display font-bold text-white">{{ player.team|default('?') }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Bye Week</div>
+    <div class="text-xl font-display font-bold text-accent">{{ player.bye|default('?') }}</div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+  <div class="glass-card rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-white/5"><h2 class="font-display font-semibold text-white text-sm">Draft Profile</h2></div>
+    <div class="p-5 space-y-3">
+      <div class="flex justify-between"><span class="text-sm text-slate-400">ADP (12-team PPR)</span><span class="text-sm font-mono text-white">#{{ player.adp_formatted|default('?') }}</span></div>
+      <div class="flex justify-between"><span class="text-sm text-slate-400">Pick Range</span><span class="text-sm font-mono text-white">{{ player.high|default('?') }}–{{ player.low|default('?') }}</span></div>
+      <div class="flex justify-between"><span class="text-sm text-slate-400">Times Drafted</span><span class="text-sm font-mono text-white">{{ player.times_drafted|default('?') }}</span></div>
+      <div class="flex justify-between"><span class="text-sm text-slate-400">Std Deviation</span><span class="text-sm font-mono text-white">{{ player.stdev|default('?') }}</span></div>
+    </div>
+  </div>
+
+  <div class="glass-card rounded-xl p-8 text-center">
+    <svg class="w-10 h-10 text-slate-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+    <h3 class="text-sm font-semibold text-white mb-1">Season Stats Coming Soon</h3>
+    <p class="text-xs text-slate-500">Full stat lines available once the NFL season kicks off.</p>
   </div>
 </div>
 

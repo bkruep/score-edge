@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ sport_name }} — ScoreEdge{% endblock %}
+{% block canonical %}/{{ active_sport }}{% endblock %}
+{% block og_url %}/{{ active_sport }}{% endblock %}
+{% block breadcrumb %}
+<div class="mb-6">
+  <h1 class="text-2xl font-display font-bold text-white">{{ sport_icon }} {{ sport_name }}</h1>
+  <p class="text-sm text-slate-500 mt-1">Coming soon to ScoreEdge</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="glass-card rounded-xl p-12 text-center max-w-lg mx-auto">
+  <div class="text-6xl mb-4">{{ sport_icon }}</div>
+  <h2 class="text-xl font-display font-bold text-white mb-2">{{ sport_name }} is on the way</h2>
+  <p class="text-sm text-slate-400 mb-6">We're building analytics, fantasy rankings, and betting tools for {{ sport_name }}. Stay tuned.</p>
+  <div class="flex items-center justify-center gap-3">
+    <a href="/" class="bg-brand hover:bg-brand-dark text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors">NFL Dashboard</a>
+    <a href="https://twitter.com/BryanKruep" target="_blank" class="bg-surface-3 hover:bg-surface-4 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors border border-white/5">Follow for Updates</a>
+  </div>
+</div>
+{% endblock %}

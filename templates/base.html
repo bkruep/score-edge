@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}ScoreEdge — NFL Analytics &amp; Sports Betting Intelligence{% endblock %}</title>
-  <meta name="description" content="{% block meta_description %}Multi-sport analytics: NFL fantasy rankings, betting odds, player stats, and game-day weather. NBA coming soon. Data-driven insights for every game.{% endblock %}">
-  <meta name="keywords" content="{% block keywords %}NFL, fantasy football, NBA, sports betting, odds, projections, rankings, analytics, DraftKings, FanDuel{% endblock %}">
+  <title>{% block title %}ScoreEdge — Multi-Sport Analytics &amp; Sports Betting{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}Multi-sport analytics: fantasy rankings, sports betting odds, player stats, and projections. NFL, NBA, MLB, NHL, MLS, College Football & Basketball. Data-driven insights.{% endblock %}">
+  <meta name="keywords" content="{% block keywords %}NFL, NBA, MLB, NHL, MLS, college football, college basketball, fantasy football, sports betting, odds, projections, rankings, analytics{% endblock %}">
   <meta name="author" content="ScoreEdge">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://scoreedge.onrender.com{% block canonical %}{% endblock %}">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="ScoreEdge">
-  <meta property="og:title" content="{% block og_title %}ScoreEdge — NFL Analytics &amp; Betting Intelligence{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}Deep NFL analytics, fantasy rankings, sports betting odds, and game-day weather. Data-driven for every game.{% endblock %}">
+  <meta property="og:title" content="{% block og_title %}ScoreEdge — Multi-Sport Analytics &amp; Betting{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Fantasy rankings, sports betting odds, player projections, and analytics for NFL, NBA, MLB, NHL, MLS, and college sports.{% endblock %}">
   <meta property="og:url" content="https://scoreedge.onrender.com{% block og_url %}{% endblock %}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{% block tw_title %}ScoreEdge{% endblock %}">
-  <meta name="twitter:description" content="{% block tw_description %}Deep NFL analytics, fantasy rankings, betting odds, and DFS tools.{% endblock %}">
+  <meta name="twitter:description" content="{% block tw_description %}Multi-sport analytics, fantasy rankings, sports betting odds, and projections.{% endblock %}">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
   <script src="https://cdn.tailwindcss.com"></script>
@@ -73,22 +73,29 @@
   <nav class="glass sticky top-0 z-50 border-b border-white/5">
     <div class="max-w-7xl mx-auto px-4">
       <div class="flex items-center justify-between h-14">
-        <div class="flex items-center gap-8">
+        <div class="flex items-center gap-6">
           <a href="/" class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand to-accent flex items-center justify-center">
               <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             </div>
             <span class="font-display font-bold text-white text-lg tracking-tight">Score<span class="text-brand-light">Edge</span></span>
           </a>
-          <div class="hidden md:flex items-center bg-surface-2 rounded-lg p-0.5 border border-white/5">
-            <a href="/" class="sport-tab px-3 py-1 rounded-md text-sm font-medium bg-brand/20 text-brand-light">NFL</a>
-            <span class="px-3 py-1 rounded-md text-sm font-medium text-slate-600 cursor-not-allowed">NBA</span>
+          <!-- Sport Selector -->
+          <div class="hidden lg:flex items-center bg-surface-2 rounded-lg p-0.5 border border-white/5">
+            <a href="/" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'nfl' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">NFL</a>
+            <a href="/nba" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'nba' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">NBA</a>
+            <a href="/cfb" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'cfb' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">CFB</a>
+            <a href="/cbb" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'cbb' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">CBB</a>
+            <a href="/mlb" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'mlb' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">MLB</a>
+            <a href="/nhl" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'nhl' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">NHL</a>
+            <a href="/mls" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'mls' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">MLS</a>
           </div>
+          <!-- Page Nav -->
           <div class="hidden md:flex items-center gap-1">
             <a href="/" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'home' %}active{% else %}text-slate-400{% endif %}">Dashboard</a>
             <a href="/players" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'players' %}active{% else %}text-slate-400{% endif %}">Players</a>
             <a href="/rankings" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'rankings' %}active{% else %}text-slate-400{% endif %}">Rankings</a>
-            <a href="/odds" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'odds' %}active{% else %}text-slate-400{% endif %}">Odds</a>
+            <a href="/bets" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'bets' %}active{% else %}text-slate-400{% endif %}">Sports Betting</a>
           </div>
         </div>
         <div class="flex items-center gap-3">
@@ -131,32 +138,40 @@
             </div>
             <span class="font-display font-bold text-white text-sm">ScoreEdge</span>
           </div>
-          <p class="text-xs text-slate-500 leading-relaxed">Multi-sport analytics, fantasy rankings, live betting odds, and game-day weather. Data-driven insights for every game.</p>
+          <p class="text-xs text-slate-500 leading-relaxed">Multi-sport analytics, fantasy rankings, sports betting odds, and projections. Data-driven for every game.</p>
+        </div>
+        <div>
+          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Sports</h4>
+          <ul class="space-y-1.5">
+            <li><a href="/" class="text-xs text-slate-500 hover:text-white transition-colors">NFL</a></li>
+            <li><a href="/nba" class="text-xs text-slate-500 hover:text-white transition-colors">NBA</a></li>
+            <li><a href="/cfb" class="text-xs text-slate-500 hover:text-white transition-colors">College Football</a></li>
+            <li><a href="/cbb" class="text-xs text-slate-500 hover:text-white transition-colors">College Basketball</a></li>
+            <li><a href="/mlb" class="text-xs text-slate-500 hover:text-white transition-colors">MLB</a></li>
+            <li><a href="/nhl" class="text-xs text-slate-500 hover:text-white transition-colors">NHL</a></li>
+            <li><a href="/mls" class="text-xs text-slate-500 hover:text-white transition-colors">MLS</a></li>
+          </ul>
         </div>
         <div>
           <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Analytics</h4>
           <ul class="space-y-1.5">
             <li><a href="/players" class="text-xs text-slate-500 hover:text-white transition-colors">Players</a></li>
             <li><a href="/rankings" class="text-xs text-slate-500 hover:text-white transition-colors">Fantasy Rankings</a></li>
-          </ul>
-        </div>
-        <div>
-          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Betting</h4>
-          <ul class="space-y-1.5">
-            <li><a href="/odds" class="text-xs text-slate-500 hover:text-white transition-colors">Live Odds</a></li>
+            <li><a href="/bets" class="text-xs text-slate-500 hover:text-white transition-colors">Sports Betting</a></li>
           </ul>
         </div>
         <div>
           <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Data</h4>
           <ul class="space-y-1.5">
-            <li><a href="https://github.com/nflverse/nflverse-data" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">nflverse (CC0)</a></li>
+            <li><a href="https://nfldata.org" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">nfldata.org</a></li>
+            <li><a href="https://fantasyfootballcalculator.com" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">FFC ADP</a></li>
             <li><a href="https://the-odds-api.com" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">The Odds API</a></li>
             <li><a href="https://open-meteo.com" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">Open-Meteo</a></li>
           </ul>
         </div>
       </div>
       <div class="border-t border-white/5 pt-4 flex items-center justify-between">
-        <p class="text-xs text-slate-600">&copy; {{ current_year }} ScoreEdge. Not affiliated with the NFL or its teams.</p>
+        <p class="text-xs text-slate-600">&copy; {{ current_year }} ScoreEdge. Not affiliated with the NFL, NBA, MLB, NHL, or MLS.</p>
         <p class="text-xs text-slate-600">Built by <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-500 hover:text-brand-light transition-colors">@BryanKruep</a></p>
       </div>
     </div>
