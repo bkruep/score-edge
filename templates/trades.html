@@ -5,42 +5,90 @@
 {% block breadcrumb %}
 <div class="mb-6">
   <h1 class="text-2xl font-display font-bold text-white">Trade Analyzer</h1>
-  <p class="text-sm text-slate-500 mt-1">Compare players side by side for fantasy trades</p>
+  <p class="text-sm text-slate-500 mt-1">Compare two players side by side for fantasy trades</p>
 </div>
 {% endblock %}
 {% block content %}
-<div class="glass-card rounded-xl p-6 max-w-2xl mx-auto">
-  <div class="text-center mb-8">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6"
+     x-data="{ sideA: { query: '', results: '', open: false, name: '', id: '' },
+              sideB: { query: '', results: '', open: false, name: '', id: '' },
+              loading: false, result: '' }"
+     @trade-compare.window="if(sideA.id && sideB.id) {
+       loading = true; result = '';
+       fetch('/api/trade-compare?a=' + sideA.id + '&b=' + sideB.id)
+         .then(r => r.text())
+         .then(t => { result = t; loading = false; });
+     }">
+
+  <div>
+    <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Side A</label>
+    <div class="relative">
+      <input type="text" x-model="sideA.query" placeholder="Search player..."
+        class="w-full bg-surface-2 border border-white/5 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand/50"
+        @input.debounce.300ms="if(sideA.query.length >= 2) { fetch('/api/player-search?q=' + encodeURIComponent(sideA.query)).then(r => r.text()).then(t => { sideA.results = t; sideA.open = true; }) } else { sideA.open = false }"
+        @focus="if(sideA.query.length >= 2) sideA.open = true" @click.away="setTimeout(() => { sideA.open = false }, 200)">
+      <div x-show="sideA.open && sideA.results.length > 0" x-cloak
+           class="absolute top-full left-0 right-0 mt-1 rounded-lg search-results shadow-xl overflow-hidden z-50"
+           @click="
+             let link = $event.target.closest('a');
+             if (link && link.href.includes('/players/')) {
+               $event.preventDefault();
+               let pid = link.href.split('/players/')[1];
+               let nameEl = link.querySelector('.text-sm');
+               sideA.name = nameEl ? nameEl.textContent : '';
+               sideA.id = pid;
+               sideA.query = sideA.name;
+               sideA.open = false;
+               $dispatch('trade-compare');
+             }
+           "
+           x-html="sideA.results"></div>
+    </div>
+    <div x-show="sideA.name" class="mt-2 px-3 py-2 rounded-lg bg-brand/10 border border-brand/20 text-sm text-brand-light">
+      <span class="font-medium" x-text="sideA.name"></span>
+      <button @click="sideA.name = ''; sideA.id = ''; sideA.query = ''; $dispatch('trade-compare')" class="ml-2 text-slate-500 hover:text-white text-xs">clear</button>
+    </div>
+  </div>
+
+  <div>
+    <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Side B</label>
+    <div class="relative">
+      <input type="text" x-model="sideB.query" placeholder="Search player..."
+        class="w-full bg-surface-2 border border-white/5 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand/50"
+        @input.debounce.300ms="if(sideB.query.length >= 2) { fetch('/api/player-search?q=' + encodeURIComponent(sideB.query)).then(r => r.text()).then(t => { sideB.results = t; sideB.open = true; }) } else { sideB.open = false }"
+        @focus="if(sideB.query.length >= 2) sideB.open = true" @click.away="setTimeout(() => { sideB.open = false }, 200)">
+      <div x-show="sideB.open && sideB.results.length > 0" x-cloak
+           class="absolute top-full left-0 right-0 mt-1 rounded-lg search-results shadow-xl overflow-hidden z-50"
+           @click="
+             let link = $event.target.closest('a');
+             if (link && link.href.includes('/players/')) {
+               $event.preventDefault();
+               let pid = link.href.split('/players/')[1];
+               let nameEl = link.querySelector('.text-sm');
+               sideB.name = nameEl ? nameEl.textContent : '';
+               sideB.id = pid;
+               sideB.query = sideB.name;
+               sideB.open = false;
+               $dispatch('trade-compare');
+             }
+           "
+           x-html="sideB.results"></div>
+    </div>
+    <div x-show="sideB.name" class="mt-2 px-3 py-2 rounded-lg bg-accent/10 border border-accent/20 text-sm text-accent">
+      <span class="font-medium" x-text="sideB.name"></span>
+      <button @click="sideB.name = ''; sideB.id = ''; sideB.query = ''; $dispatch('trade-compare')" class="ml-2 text-slate-500 hover:text-white text-xs">clear</button>
+    </div>
+  </div>
+
+  <div x-show="loading" class="col-span-full glass-card rounded-xl p-8 text-center">
+    <div class="text-sm text-slate-400">Comparing players...</div>
+  </div>
+
+  <div x-show="result && !loading" class="col-span-full" x-html="result"></div>
+
+  <div x-show="!sideA.id || !sideB.id" class="col-span-full glass-card rounded-xl p-8 text-center">
     <svg class="w-12 h-12 text-brand-light mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
     <p class="text-sm text-slate-400">Search for two players to compare their fantasy value.</p>
-  </div>
-
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <div x-data="{ query: '', results: [], open: false, selected: null }">
-      <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Side A</label>
-      <div class="relative">
-        <input type="text" x-model="query" placeholder="Search player..."
-          class="w-full bg-surface-2 border border-white/5 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand/50"
-          @input.debounce.300ms="if(query.length >= 2) { fetch('/api/player-search?q=' + encodeURIComponent(query)).then(r => r.text()).then(t => { results = t; open = true; }) } else { open = false }"
-          @focus="if(query.length >= 2) open = true" @click.away="open = false">
-        <div x-show="open && results.length > 0" x-cloak
-             class="absolute top-full left-0 right-0 mt-1 rounded-lg search-results shadow-xl overflow-hidden z-50" x-html="results"></div>
-      </div>
-    </div>
-    <div>
-      <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Side B</label>
-      <div class="relative">
-        <input type="text" placeholder="Search player..."
-          class="w-full bg-surface-2 border border-white/5 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand/50">
-      </div>
-    </div>
-  </div>
-
-  <div class="mt-8 text-center">
-    <div class="inline-flex items-center gap-2 text-xs text-slate-500 bg-surface-2 rounded-lg px-4 py-2">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      Select two players to see a side-by-side comparison with fantasy point analysis.
-    </div>
   </div>
 </div>
 {% endblock %}

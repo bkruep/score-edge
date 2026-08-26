@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}ScoreEdge — NFL Analytics &amp; Sports Betting Intelligence{% endblock %}</title>
-  <meta name="description" content="{% block meta_description %}Deep NFL analytics, fantasy football rankings, sports betting odds comparison, DFS lineup optimization, and weather impact analysis. Data-driven insights for every game.{% endblock %}">
+  <meta name="description" content="{% block meta_description %}Deep NFL analytics, fantasy football rankings, sports betting odds comparison, and weather impact for every game. Data-driven insights for every matchup.{% endblock %}">
   <meta name="keywords" content="{% block keywords %}NFL, fantasy football, sports betting, DFS, odds, projections, rankings, analytics, DraftKings, FanDuel{% endblock %}">
   <meta name="author" content="ScoreEdge">
   <meta name="robots" content="index, follow">
@@ -12,7 +12,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="ScoreEdge">
   <meta property="og:title" content="{% block og_title %}ScoreEdge — NFL Analytics &amp; Betting Intelligence{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}Deep NFL analytics, fantasy rankings, sports betting odds, DFS tools, and weather impact. Data-driven for every game.{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Deep NFL analytics, fantasy rankings, sports betting odds, and game-day weather. Data-driven for every game.{% endblock %}">
   <meta property="og:url" content="https://scoreedge.onrender.com{% block og_url %}{% endblock %}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{% block tw_title %}ScoreEdge{% endblock %}">
@@ -78,15 +78,13 @@
             <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand to-accent flex items-center justify-center">
               <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             </div>
-            <span class="font-display font-bold text-white text-lg tracking-tight">GridIron <span class="text-brand-light">Edge</span></span>
+            <span class="font-display font-bold text-white text-lg tracking-tight">Score<span class="text-brand-light">Edge</span></span>
           </a>
           <div class="hidden md:flex items-center gap-1">
             <a href="/" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'home' %}active{% else %}text-slate-400{% endif %}">Dashboard</a>
             <a href="/players" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'players' %}active{% else %}text-slate-400{% endif %}">Players</a>
             <a href="/rankings" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'rankings' %}active{% else %}text-slate-400{% endif %}">Rankings</a>
             <a href="/odds" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'odds' %}active{% else %}text-slate-400{% endif %}">Odds</a>
-            <a href="/weather" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'weather' %}active{% else %}text-slate-400{% endif %}">Weather</a>
-            <a href="/trades" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'trades' %}active{% else %}text-slate-400{% endif %}">Trades</a>
           </div>
         </div>
         <div class="flex items-center gap-3">
@@ -129,22 +127,19 @@
             </div>
             <span class="font-display font-bold text-white text-sm">ScoreEdge</span>
           </div>
-          <p class="text-xs text-slate-500 leading-relaxed">Multi-sport analytics, fantasy rankings, live betting odds, and weather intelligence. Data-driven insights for every game.</p>
+          <p class="text-xs text-slate-500 leading-relaxed">Multi-sport analytics, fantasy rankings, live betting odds, and game-day weather. Data-driven insights for every game.</p>
         </div>
         <div>
           <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Analytics</h4>
           <ul class="space-y-1.5">
             <li><a href="/players" class="text-xs text-slate-500 hover:text-white transition-colors">Players</a></li>
             <li><a href="/rankings" class="text-xs text-slate-500 hover:text-white transition-colors">Fantasy Rankings</a></li>
-            <li><a href="/weather" class="text-xs text-slate-500 hover:text-white transition-colors">Weather Impact</a></li>
-            <li><a href="/trades" class="text-xs text-slate-500 hover:text-white transition-colors">Trade Analyzer</a></li>
           </ul>
         </div>
         <div>
           <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Betting</h4>
           <ul class="space-y-1.5">
             <li><a href="/odds" class="text-xs text-slate-500 hover:text-white transition-colors">Live Odds</a></li>
-            <li><a href="/weather" class="text-xs text-slate-500 hover:text-white transition-colors">Weather Lines</a></li>
           </ul>
         </div>
         <div>
