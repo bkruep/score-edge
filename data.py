@@ -147,6 +147,28 @@ def load_rosters() -> dict:
     except Exception:
         return {}
 
+FFC_BASE = "https://fantasyfootballcalculator.com/api/v1"
+
+def load_adp(scoring: str = "ppr") -> pd.DataFrame:
+    key = f"ffc_adp_{scoring}"
+    cached = _get_cached(key)
+    if cached is not None:
+        return cached
+    try:
+        url = f"{FFC_BASE}/adp/{scoring}"
+        params = {"teams": 12}
+        r = requests.get(url, params=params, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        players = data.get("players", [])
+        if not players:
+            return pd.DataFrame()
+        df = pd.DataFrame(players)
+        _set_cached(key, df)
+        return df
+    except Exception:
+        return pd.DataFrame()
+
 NFL_STADIUMS = {
     "ARI": {"name": "State Farm Stadium", "lat": 33.5276, "lon": -112.2626, "roof": "dome"},
     "ATL": {"name": "Mercedes-Benz Stadium", "lat": 33.7554, "lon": -84.401, "roof": "dome"},

@@ -49,6 +49,9 @@ def ensure_data():
     try:
         data.load_player_stats(season)
         data.load_schedule(season)
+        data.load_adp("ppr")
+        data.load_adp("half-ppr")
+        data.load_adp("standard")
         _data_loaded = True
         log.warning(f"ScoreEdge data loaded in {time.time()-t0:.1f}s (season {season})")
     except Exception as e:
@@ -109,6 +112,7 @@ def home(request: Request):
     schedule = data.load_schedule(season)
     stats = _filter_fantasy(_normalize_stats(data.load_player_stats(season)))
     odds = data.fetch_odds()
+    adp = data.load_adp("ppr")
 
     upcoming = []
     if not schedule.empty:
@@ -122,22 +126,19 @@ def home(request: Request):
                         game[col] = row[col]
                 upcoming.append(game)
 
-    top_passers, top_rushers, top_receivers = [], [], []
-    if not stats.empty:
-        _team = "recent_team" if "recent_team" in stats.columns else "team"
-        if "passing_yards" in stats.columns:
-            top_passers = stats.nlargest(5, "passing_yards")[["player_name", _team, "passing_yards", "passing_tds"]].rename(columns={_team: "team"}).to_dict("records")
-        if "rushing_yards" in stats.columns:
-            top_rushers = stats.nlargest(5, "rushing_yards")[["player_name", _team, "rushing_yards", "rushing_tds"]].rename(columns={_team: "team"}).to_dict("records")
-        if "receiving_yards" in stats.columns:
-            top_receivers = stats.nlargest(5, "receiving_yards")[["player_name", _team, "receiving_yards", "receiving_tds"]].rename(columns={_team: "team"}).to_dict("records")
+    draft_board = []
+    if not adp.empty:
+        cols = ["name", "position", "team", "adp", "adp_formatted", "bye"]
+        available = [c for c in cols if c in adp.columns]
+        draft_board = adp[available].head(20).to_dict("records")
 
     return templates.TemplateResponse(request, "home.html", {
         "request": request, "active_page": "home",
         "cache_bust": CACHE_BUST, "current_year": _season_display(season),
         "upcoming": upcoming, "odds": odds[:10],
-        "top_passers": top_passers, "top_rushers": top_rushers, "top_receivers": top_receivers,
+        "draft_board": draft_board,
         "player_count": len(stats) if not stats.empty else 0,
+        "draft_count": len(adp) if not adp.empty else 0,
     })
 
 @app.get("/players", response_class=HTMLResponse)
@@ -232,12 +233,29 @@ def odds_page(request: Request):
 def rankings_page(request: Request, scoring: str = "ppr", position: str = "ALL"):
     ensure_data()
     season = _get_season()
+    adp = data.load_adp(scoring)
+
+    if not adp.empty:
+        df = adp.copy()
+        if position and position != "ALL" and "position" in df.columns:
+            df = df[df["position"] == position]
+        df = df.sort_values("adp").head(200).reset_index(drop=True)
+        df["rank"] = range(1, len(df) + 1)
+        positions = sorted(adp["position"].dropna().unique().tolist()) if "position" in adp.columns else []
+        return templates.TemplateResponse(request, "rankings.html", {
+            "request": request, "active_page": "rankings",
+            "cache_bust": CACHE_BUST, "current_year": _season_display(season),
+            "rankings": df.to_dict("records"), "scoring": scoring, "position": position, "positions": positions,
+            "source": "adp",
+        })
+
     stats = _filter_fantasy(_normalize_stats(data.load_player_stats(season)))
     if stats.empty:
         return templates.TemplateResponse(request, "rankings.html", {
             "request": request, "active_page": "rankings",
             "cache_bust": CACHE_BUST, "current_year": _season_display(season),
             "rankings": [], "scoring": scoring, "position": position, "positions": [],
+            "source": "stats",
         })
 
     pts_col = {"ppr": "pts_ppr", "standard": "pts_std", "half_ppr": "pts_half_ppr"}.get(scoring, "pts_ppr")
@@ -254,6 +272,7 @@ def rankings_page(request: Request, scoring: str = "ppr", position: str = "ALL")
         "request": request, "active_page": "rankings",
         "cache_bust": CACHE_BUST, "current_year": _season_display(season),
         "rankings": stats.to_dict("records"), "scoring": scoring, "position": position, "positions": positions,
+        "source": "stats",
     })
 
 @app.get("/trades", response_class=HTMLResponse)

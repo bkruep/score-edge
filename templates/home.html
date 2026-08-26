@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — ScoreEdge{% endblock %}
-{% block meta_description %}NFL dashboard: live odds, fantasy leaders, upcoming games, and weather impact for every matchup.{% endblock %}
+{% block meta_description %}NFL dashboard: 2026 fantasy draft board, upcoming games, and live betting odds.{% endblock %}
 {% block og_title %}ScoreEdge — NFL Dashboard{% endblock %}
 {% block canonical %}/{% endblock %}
 {% block og_url %}/{% endblock %}
@@ -17,8 +17,8 @@
     <div class="text-2xl font-display font-bold text-white">{{ player_count }}</div>
   </div>
   <div class="glass-card rounded-xl p-4">
-    <div class="text-xs text-slate-500 mb-1">Season</div>
-    <div class="text-2xl font-display font-bold gradient-text">{{ current_year }}</div>
+    <div class="text-xs text-slate-500 mb-1">Drafted in Mocks</div>
+    <div class="text-2xl font-display font-bold gradient-text">{{ draft_count }}</div>
   </div>
   <div class="glass-card rounded-xl p-4">
     <div class="text-xs text-slate-500 mb-1">Odds Available</div>
@@ -33,26 +33,50 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
   <div class="lg:col-span-2 glass-card rounded-xl overflow-hidden">
     <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
-      <svg class="w-4 h-4 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      <h2 class="font-display font-semibold text-white text-sm">Upcoming Games</h2>
+      <svg class="w-4 h-4 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+      <h2 class="font-display font-semibold text-white text-sm">2026 Draft Board — Top 20</h2>
+      <span class="text-xs text-slate-500 ml-1">PPR Average Draft Position</span>
     </div>
-    <div class="divide-y divide-white/5">
-      {% for game in upcoming %}
-      <div class="px-5 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
-        <div class="flex items-center gap-3">
-          <span class="pill bg-surface-3 text-slate-400">Wk {{ game.week }}</span>
-          <span class="text-sm text-slate-400">{{ game.date }}</span>
-        </div>
-        <div class="text-sm font-medium text-white">
-          <span class="text-slate-400">{{ game.away_team }}</span>
-          <span class="text-slate-600 mx-2">@</span>
-          <span class="text-white">{{ game.home_team }}</span>
-        </div>
-      </div>
-      {% endfor %}
-      {% if not upcoming %}
-      <div class="px-5 py-8 text-center text-sm text-slate-500">No upcoming games found. Check back during the season.</div>
-      {% endif %}
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="border-b border-white/5">
+            <th class="px-5 py-2.5 text-left text-xs font-semibold text-slate-500">Pick</th>
+            <th class="px-5 py-2.5 text-left text-xs font-semibold text-slate-500">Player</th>
+            <th class="px-5 py-2.5 text-left text-xs font-semibold text-slate-500">Pos</th>
+            <th class="px-5 py-2.5 text-left text-xs font-semibold text-slate-500">Team</th>
+            <th class="px-5 py-2.5 text-right text-xs font-semibold text-slate-500">ADP</th>
+            <th class="px-5 py-2.5 text-right text-xs font-semibold text-slate-500">Bye</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for p in draft_board %}
+          <tr class="hover:bg-brand/5 transition-colors">
+            <td class="px-5 py-2.5 text-sm font-mono text-slate-400">{{ loop.index }}</td>
+            <td class="px-5 py-2.5 text-sm font-medium text-white">{{ p.name }}</td>
+            <td class="px-5 py-2.5 text-xs">
+              {% if p.position == 'QB' %}
+                <span class="pill bg-purple-500/20 text-purple-400">{{ p.position }}</span>
+              {% elif p.position == 'RB' %}
+                <span class="pill bg-blue-500/20 text-blue-400">{{ p.position }}</span>
+              {% elif p.position == 'WR' %}
+                <span class="pill bg-emerald-500/20 text-emerald-400">{{ p.position }}</span>
+              {% elif p.position == 'TE' %}
+                <span class="pill bg-amber-500/20 text-amber-400">{{ p.position }}</span>
+              {% else %}
+                <span class="pill bg-surface-3 text-slate-400">{{ p.position }}</span>
+              {% endif %}
+            </td>
+            <td class="px-5 py-2.5 text-xs text-slate-400">{{ p.team }}</td>
+            <td class="px-5 py-2.5 text-right text-sm font-mono text-white">{{ p.adp_formatted }}</td>
+            <td class="px-5 py-2.5 text-right text-xs text-slate-500">{{ p.bye }}</td>
+          </tr>
+          {% endfor %}
+          {% if not draft_board %}
+          <tr><td colspan="6" class="px-5 py-8 text-center text-sm text-slate-500">No draft data available</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -78,72 +102,28 @@
   </div>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+<div class="grid grid-cols-1 gap-6">
   <div class="glass-card rounded-xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-white/5">
-      <h2 class="font-display font-semibold text-white text-sm">Top Passers</h2>
+    <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+      <svg class="w-4 h-4 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <h2 class="font-display font-semibold text-white text-sm">Upcoming Games</h2>
     </div>
     <div class="divide-y divide-white/5">
-      {% for p in top_passers %}
-      <div class="px-5 py-2.5 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-xs text-slate-600 w-5">{{ loop.index }}</span>
-          <span class="text-sm text-white">{{ p.player_name }}</span>
+      {% for game in upcoming %}
+      <div class="px-5 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+        <div class="flex items-center gap-3">
+          <span class="pill bg-surface-3 text-slate-400">Wk {{ game.week }}</span>
+          <span class="text-sm text-slate-400">{{ game.date }}</span>
         </div>
-        <div class="text-right">
-          <div class="text-xs font-mono text-brand-light">{{ "{:,.0f}".format(p.passing_yards|int) }} yds</div>
-          <div class="text-xs text-slate-500">{{ p.passing_tds|int }} TD</div>
+        <div class="text-sm font-medium text-white">
+          <span class="text-slate-400">{{ game.away_team }}</span>
+          <span class="text-slate-600 mx-2">@</span>
+          <span class="text-white">{{ game.home_team }}</span>
         </div>
       </div>
       {% endfor %}
-      {% if not top_passers %}
-      <div class="px-5 py-6 text-center text-xs text-slate-500">No passing data available</div>
-      {% endif %}
-    </div>
-  </div>
-
-  <div class="glass-card rounded-xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-white/5">
-      <h2 class="font-display font-semibold text-white text-sm">Top Rushers</h2>
-    </div>
-    <div class="divide-y divide-white/5">
-      {% for p in top_rushers %}
-      <div class="px-5 py-2.5 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-xs text-slate-600 w-5">{{ loop.index }}</span>
-          <span class="text-sm text-white">{{ p.player_name }}</span>
-        </div>
-        <div class="text-right">
-          <div class="text-xs font-mono text-accent">{{ "{:,.0f}".format(p.rushing_yards|int) }} yds</div>
-          <div class="text-xs text-slate-500">{{ p.rushing_tds|int }} TD</div>
-        </div>
-      </div>
-      {% endfor %}
-      {% if not top_rushers %}
-      <div class="px-5 py-6 text-center text-xs text-slate-500">No rushing data available</div>
-      {% endif %}
-    </div>
-  </div>
-
-  <div class="glass-card rounded-xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-white/5">
-      <h2 class="font-display font-semibold text-white text-sm">Top Receivers</h2>
-    </div>
-    <div class="divide-y divide-white/5">
-      {% for p in top_receivers %}
-      <div class="px-5 py-2.5 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-xs text-slate-600 w-5">{{ loop.index }}</span>
-          <span class="text-sm text-white">{{ p.player_name }}</span>
-        </div>
-        <div class="text-right">
-          <div class="text-xs font-mono text-emerald-400">{{ "{:,.0f}".format(p.receiving_yards|int) }} yds</div>
-          <div class="text-xs text-slate-500">{{ p.receiving_tds|int }} TD</div>
-        </div>
-      </div>
-      {% endfor %}
-      {% if not top_receivers %}
-      <div class="px-5 py-6 text-center text-xs text-slate-500">No receiving data available</div>
+      {% if not upcoming %}
+      <div class="px-5 py-8 text-center text-sm text-slate-500">No upcoming games — season schedule posts soon.</div>
       {% endif %}
     </div>
   </div>

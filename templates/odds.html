@@ -4,20 +4,18 @@
 {% block og_url %}/odds{% endblock %}
 {% block breadcrumb %}
 <div class="mb-6">
-  <h1 class="text-2xl font-display font-bold text-white">Live Odds & Weather</h1>
-  <p class="text-sm text-slate-500 mt-1">Compare lines across sportsbooks with weather impact</p>
+  <h1 class="text-2xl font-display font-bold text-white">Odds & Weather</h1>
+  <p class="text-sm text-slate-500 mt-1">Game lines, spreads, and weather impact</p>
 </div>
 {% endblock %}
 {% block content %}
 {% if not api_key_set %}
-<div class="glass-card rounded-xl p-8 text-center glow-brand mb-6">
-  <svg class="w-12 h-12 text-brand-light mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-  <h2 class="text-lg font-display font-bold text-white mb-2">API Key Required</h2>
-  <p class="text-sm text-slate-400 mb-4 max-w-md mx-auto">Get a free API key from The Odds API (500 requests/month) to view live betting odds.</p>
-  <div class="flex items-center justify-center gap-3">
-    <a href="https://the-odds-api.com" target="_blank" class="bg-brand hover:bg-brand-dark text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors">Get Free API Key</a>
-    <span class="text-xs text-slate-500">Add to .env as ODDS_API_KEY</span>
+<div class="glass-card rounded-xl p-3 mb-6 flex items-center justify-between">
+  <div class="flex items-center gap-2">
+    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    <span class="text-xs text-slate-400">Live odds require a free API key</span>
   </div>
+  <a href="https://the-odds-api.com" target="_blank" class="text-xs text-brand-light hover:text-brand transition-colors">Get key →</a>
 </div>
 {% endif %}
 
@@ -148,9 +146,11 @@
 </div>
 {% endif %}
 
-{% if not h2h and not spreads and api_key_set %}
+{% if not h2h and not spreads and not weather_data %}
 <div class="glass-card rounded-xl p-8 text-center">
-  <p class="text-sm text-slate-500">No odds available right now. Lines are typically posted 1-2 days before games.</p>
+  <svg class="w-10 h-10 text-slate-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+  <h3 class="text-sm font-semibold text-white mb-1">No odds yet</h3>
+  <p class="text-xs text-slate-500">Lines are typically posted 1-2 days before games. Check back once the season starts.</p>
 </div>
 {% endif %}
 {% endblock %}
