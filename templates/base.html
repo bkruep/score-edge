@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}ScoreEdge — NFL Analytics &amp; Sports Betting Intelligence{% endblock %}</title>
-  <meta name="description" content="{% block meta_description %}Deep NFL analytics, fantasy football rankings, sports betting odds comparison, and weather impact for every game. Data-driven insights for every matchup.{% endblock %}">
-  <meta name="keywords" content="{% block keywords %}NFL, fantasy football, sports betting, DFS, odds, projections, rankings, analytics, DraftKings, FanDuel{% endblock %}">
+  <meta name="description" content="{% block meta_description %}Multi-sport analytics: NFL fantasy rankings, betting odds, player stats, and game-day weather. NBA coming soon. Data-driven insights for every game.{% endblock %}">
+  <meta name="keywords" content="{% block keywords %}NFL, fantasy football, NBA, sports betting, odds, projections, rankings, analytics, DraftKings, FanDuel{% endblock %}">
   <meta name="author" content="ScoreEdge">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://scoreedge.onrender.com{% block canonical %}{% endblock %}">
@@ -80,6 +80,10 @@
             </div>
             <span class="font-display font-bold text-white text-lg tracking-tight">Score<span class="text-brand-light">Edge</span></span>
           </a>
+          <div class="hidden md:flex items-center bg-surface-2 rounded-lg p-0.5 border border-white/5">
+            <a href="/" class="sport-tab px-3 py-1 rounded-md text-sm font-medium bg-brand/20 text-brand-light">NFL</a>
+            <span class="px-3 py-1 rounded-md text-sm font-medium text-slate-600 cursor-not-allowed">NBA</span>
+          </div>
           <div class="hidden md:flex items-center gap-1">
             <a href="/" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'home' %}active{% else %}text-slate-400{% endif %}">Dashboard</a>
             <a href="/players" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'players' %}active{% else %}text-slate-400{% endif %}">Players</a>

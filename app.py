@@ -75,6 +75,9 @@ def _filter_fantasy(df: pd.DataFrame) -> pd.DataFrame:
 def _get_season():
     return get_latest_season()
 
+def _season_display(season: int) -> str:
+    return f"{season + 1}"
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     ensure_data()
@@ -113,7 +116,7 @@ def home(request: Request):
 
     return templates.TemplateResponse(request, "home.html", {
         "request": request, "active_page": "home",
-        "cache_bust": CACHE_BUST, "current_year": season,
+        "cache_bust": CACHE_BUST, "current_year": _season_display(season),
         "upcoming": upcoming, "odds": odds[:10],
         "top_passers": top_passers, "top_rushers": top_rushers, "top_receivers": top_receivers,
         "player_count": len(stats) if not stats.empty else 0,
@@ -128,7 +131,7 @@ def players_page(request: Request, q: str = "", pos: str = "", sort: str = "fant
     if stats.empty:
         return templates.TemplateResponse(request, "players.html", {
             "request": request, "active_page": "players",
-            "cache_bust": CACHE_BUST, "current_year": season,
+            "cache_bust": CACHE_BUST, "current_year": _season_display(season),
             "players": [], "positions": [], "q": q, "pos": pos, "sort": sort, "season": season,
         })
 
@@ -165,7 +168,7 @@ def players_page(request: Request, q: str = "", pos: str = "", sort: str = "fant
 
     return templates.TemplateResponse(request, "players.html", {
         "request": request, "active_page": "players",
-        "cache_bust": CACHE_BUST, "current_year": season,
+        "cache_bust": CACHE_BUST, "current_year": _season_display(season),
         "players": players, "positions": positions, "q": q, "pos": pos, "sort": sort, "season": season,
     })
 
@@ -194,7 +197,7 @@ def player_profile(request: Request, player_id: str):
 
     return templates.TemplateResponse(request, "player.html", {
         "request": request, "active_page": "players",
-        "cache_bust": CACHE_BUST, "current_year": season,
+        "cache_bust": CACHE_BUST, "current_year": _season_display(season),
         "player": player, "seasons": seasons, "player_id": player_id,
     })
 
@@ -232,7 +235,7 @@ def odds_page(request: Request):
 
     return templates.TemplateResponse(request, "odds.html", {
         "request": request, "active_page": "odds",
-        "cache_bust": CACHE_BUST, "current_year": season,
+        "cache_bust": CACHE_BUST, "current_year": _season_display(season),
         "h2h": h2h, "spreads": spreads, "totals": totals,
         "weather_data": weather_data,
         "api_key_set": bool(data.ODDS_API_KEY),
@@ -246,7 +249,7 @@ def rankings_page(request: Request, scoring: str = "ppr", position: str = "ALL")
     if stats.empty:
         return templates.TemplateResponse(request, "rankings.html", {
             "request": request, "active_page": "rankings",
-            "cache_bust": CACHE_BUST, "current_year": season,
+            "cache_bust": CACHE_BUST, "current_year": _season_display(season),
             "rankings": [], "scoring": scoring, "position": position, "positions": [],
         })
     for col in ["passing_yards", "rushing_yards", "receiving_yards", "passing_tds", "rushing_tds",
@@ -272,7 +275,7 @@ def rankings_page(request: Request, scoring: str = "ppr", position: str = "ALL")
     positions = sorted(stats["position"].dropna().unique().tolist()) if "position" in stats.columns else []
     return templates.TemplateResponse(request, "rankings.html", {
         "request": request, "active_page": "rankings",
-        "cache_bust": CACHE_BUST, "current_year": season,
+        "cache_bust": CACHE_BUST, "current_year": _season_display(season),
         "rankings": grouped.to_dict("records"), "scoring": scoring, "position": position, "positions": positions,
     })
 
@@ -282,7 +285,7 @@ def trades_page(request: Request):
     season = _get_season()
     return templates.TemplateResponse(request, "trades.html", {
         "request": request, "active_page": "trades",
-        "cache_bust": CACHE_BUST, "current_year": season,
+        "cache_bust": CACHE_BUST, "current_year": _season_display(season),
     })
 
 @app.get("/api/player-search", response_class=HTMLResponse)
