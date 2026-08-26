@@ -510,6 +510,12 @@ def mls_page(request: Request):
         **_ctx(request, "mls"), "sport_name": "MLS", "sport_icon": "⚽",
     })
 
+@app.get("/golf", response_class=HTMLResponse)
+def golf_page(request: Request):
+    return templates.TemplateResponse(request, "sport_coming_soon.html", {
+        **_ctx(request, "golf"), "sport_name": "Golf", "sport_icon": "⛳",
+    })
+
 @app.get("/odds", response_class=HTMLResponse)
 def odds_redirect(request: Request):
     from fastapi.responses import RedirectResponse
@@ -522,7 +528,7 @@ def robots_txt():
 @app.get("/sitemap.xml")
 def sitemap_xml():
     base = "https://scoreedge.onrender.com"
-    pages = ["", "/players", "/bets", "/rankings", "/nba", "/cfb", "/cbb", "/mlb", "/nhl", "/mls"]
+    pages = ["", "/players", "/bets", "/rankings", "/nba", "/cfb", "/cbb", "/mlb", "/nhl", "/mls", "/golf"]
     urls = "\n".join(f'  <url><loc>{base}{p}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>' for p in pages)
     xml = f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{urls}\n</urlset>'
     return PlainTextResponse(xml, media_type="application/xml")
