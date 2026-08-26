@@ -1,7 +1,7 @@
 from __future__ import annotations
 import hashlib, os
 from datetime import datetime
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -9,7 +9,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import pandas as pd
 
 import data
-import analytics
 
 app = FastAPI(title="ScoreEdge")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -17,7 +16,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 CACHE_BUST = hashlib.md5(str(datetime.now().hour).encode()).hexdigest()[:8]
-FANTASY_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF"}
+FANTASY_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF", "DST"}
 
 app.state.cache_bust = CACHE_BUST
 
@@ -32,24 +31,12 @@ async def add_headers(request: Request, call_next):
     return response
 
 _data_loaded = False
-_latest_season = None
 
-def get_latest_season():
-    global _latest_season
-    if _latest_season is not None:
-        return _latest_season
-    import requests as _req
-    for yr in range(datetime.now().year, 2019, -1):
-        url = f"{data.NFLVERSE_BASE}/player_stats/player_stats_{yr}.csv"
-        try:
-            r = _req.head(url, timeout=10, allow_redirects=True)
-            if r.status_code == 200:
-                _latest_season = yr
-                return yr
-        except Exception:
-            continue
-    _latest_season = 2024
-    return 2024
+def _get_season() -> int:
+    return 2025
+
+def _season_display(season: int) -> str:
+    return f"{season + 1}"
 
 def ensure_data():
     global _data_loaded
@@ -58,7 +45,7 @@ def ensure_data():
     import logging, time
     log = logging.getLogger(__name__)
     t0 = time.time()
-    season = get_latest_season()
+    season = _get_season()
     try:
         data.load_player_stats(season)
         data.load_schedule(season)
@@ -72,29 +59,64 @@ def _filter_fantasy(df: pd.DataFrame) -> pd.DataFrame:
         return df[df["position"].isin(FANTASY_POSITIONS)]
     return df
 
-def _get_season():
-    return get_latest_season()
+def _normalize_stats(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    renames = {
+        "player_display_name": "player_name",
+        "passing_interceptions": "interceptions",
+        "fantasy_points_ppr": "pts_ppr",
+        "fantasy_points": "pts_std",
+    }
+    for old, new in renames.items():
+        if old in df.columns and new not in df.columns:
+            df[new] = df[old]
 
-def _season_display(season: int) -> str:
-    return f"{season + 1}"
+    if "player_name" not in df.columns and "player_name" in df.columns:
+        pass
+
+    num_cols = ["passing_yards", "rushing_yards", "receiving_yards",
+                "passing_tds", "rushing_tds", "receiving_tds", "receptions",
+                "interceptions", "carries", "targets",
+                "passing_2pt_conversions", "rushing_2pt_conversions", "receiving_2pt_conversions",
+                "rushing_fumbles_lost", "receiving_fumbles_lost",
+                "special_teams_tds", "games", "pass_att", "pass_cmp",
+                "pts_ppr", "pts_std",
+                "pos_rank_ppr", "pos_rank_half_ppr", "pos_rank_std"]
+    for col in num_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    if "player_name" not in df.columns:
+        if "player_id" in df.columns:
+            df["player_name"] = df["player_id"]
+        else:
+            df["player_name"] = "Unknown"
+
+    if "pts_half_ppr" not in df.columns:
+        if "pts_ppr" in df.columns and "pts_std" in df.columns:
+            df["pts_half_ppr"] = ((df["pts_ppr"] + df["pts_std"]) / 2).round(2)
+        elif "pts_ppr" in df.columns:
+            df["pts_half_ppr"] = df["pts_ppr"]
+        else:
+            df["pts_half_ppr"] = 0
+
+    return df
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     ensure_data()
     season = _get_season()
     schedule = data.load_schedule(season)
-    stats = _filter_fantasy(data.load_player_stats(season))
+    stats = _filter_fantasy(_normalize_stats(data.load_player_stats(season)))
     odds = data.fetch_odds()
 
     upcoming = []
     if not schedule.empty:
-        cols = schedule.columns.tolist()
-        date_col = next((c for c in cols if c.lower() in ("date", "gameday", "game_date")), None)
-        if date_col:
-            schedule[date_col] = pd.to_datetime(schedule[date_col], errors="coerce")
-            future = schedule[schedule[date_col] >= pd.Timestamp.now()].head(10)
+        if "gameday" in schedule.columns:
+            schedule["gameday"] = pd.to_datetime(schedule["gameday"], errors="coerce")
+            future = schedule[schedule["gameday"] >= pd.Timestamp.now()].head(10)
             for _, row in future.iterrows():
-                game = {"week": row.get("week", ""), "date": str(row.get(date_col, ""))[:10]}
+                game = {"week": row.get("week", ""), "date": str(row.get("gameday", ""))[:10]}
                 for col in ["home_team", "away_team", "home_score", "away_score"]:
                     if col in row.index:
                         game[col] = row[col]
@@ -102,17 +124,13 @@ def home(request: Request):
 
     top_passers, top_rushers, top_receivers = [], [], []
     if not stats.empty:
-        for col in ["passing_yards", "rushing_yards", "receiving_yards", "passing_tds", "rushing_tds", "receiving_tds", "receptions"]:
-            if col in stats.columns:
-                stats[col] = pd.to_numeric(stats[col], errors="coerce").fillna(0)
-        if "player_name" in stats.columns:
-            _team = "recent_team" if "recent_team" in stats.columns else "team"
-            if "passing_yards" in stats.columns:
-                top_passers = stats.nlargest(5, "passing_yards")[["player_name", _team, "passing_yards", "passing_tds"]].rename(columns={_team: "team"}).to_dict("records")
-            if "rushing_yards" in stats.columns:
-                top_rushers = stats.nlargest(5, "rushing_yards")[["player_name", _team, "rushing_yards", "rushing_tds"]].rename(columns={_team: "team"}).to_dict("records")
-            if "receiving_yards" in stats.columns:
-                top_receivers = stats.nlargest(5, "receiving_yards")[["player_name", _team, "receiving_yards", "receiving_tds"]].rename(columns={_team: "team"}).to_dict("records")
+        _team = "recent_team" if "recent_team" in stats.columns else "team"
+        if "passing_yards" in stats.columns:
+            top_passers = stats.nlargest(5, "passing_yards")[["player_name", _team, "passing_yards", "passing_tds"]].rename(columns={_team: "team"}).to_dict("records")
+        if "rushing_yards" in stats.columns:
+            top_rushers = stats.nlargest(5, "rushing_yards")[["player_name", _team, "rushing_yards", "rushing_tds"]].rename(columns={_team: "team"}).to_dict("records")
+        if "receiving_yards" in stats.columns:
+            top_receivers = stats.nlargest(5, "receiving_yards")[["player_name", _team, "receiving_yards", "receiving_tds"]].rename(columns={_team: "team"}).to_dict("records")
 
     return templates.TemplateResponse(request, "home.html", {
         "request": request, "active_page": "home",
@@ -123,82 +141,54 @@ def home(request: Request):
     })
 
 @app.get("/players", response_class=HTMLResponse)
-def players_page(request: Request, q: str = "", pos: str = "", sort: str = "fantasy_pts", season: int = 0):
+def players_page(request: Request, q: str = "", pos: str = "", sort: str = "fantasy_pts"):
     ensure_data()
-    season = season or _get_season()
-    stats = _filter_fantasy(data.load_player_stats(season))
+    season = _get_season()
+    stats = _filter_fantasy(_normalize_stats(data.load_player_stats(season)))
 
     if stats.empty:
         return templates.TemplateResponse(request, "players.html", {
             "request": request, "active_page": "players",
             "cache_bust": CACHE_BUST, "current_year": _season_display(season),
-            "players": [], "positions": [], "q": q, "pos": pos, "sort": sort, "season": season,
+            "players": [], "positions": [], "q": q, "pos": pos, "sort": sort,
         })
 
-    for col in ["passing_yards", "rushing_yards", "receiving_yards", "passing_tds", "rushing_tds",
-                 "receiving_tds", "receptions", "interceptions", "carries", "targets"]:
-        if col in stats.columns:
-            stats[col] = pd.to_numeric(stats[col], errors="coerce").fillna(0)
-
-    stats["fantasy_pts_ppr"] = analytics.compute_fantasy_points(stats, "ppr")
-
-    team_map = {}
-    if "player_name" in stats.columns:
-        if "recent_team" in stats.columns:
-            team_map = stats.groupby("player_id")["recent_team"].first().to_dict()
-        grouped = stats.groupby(["player_id", "player_name"], as_index=False).agg({
-            col: "sum" for col in stats.select_dtypes(include="number").columns
-        })
-        if team_map:
-            grouped["recent_team"] = grouped["player_id"].map(team_map)
-    else:
-        grouped = stats
+    sort_map = {"fantasy_pts": "pts_ppr", "passing_yards": "passing_yards",
+                "rushing_yards": "rushing_yards", "receiving_yards": "receiving_yards"}
+    sort_col = sort_map.get(sort, "pts_ppr")
 
     if q:
-        grouped = grouped[grouped["player_name"].str.contains(q, case=False, na=False)]
+        stats = stats[stats["player_name"].str.contains(q, case=False, na=False)]
     if pos and pos != "ALL":
-        if "position" in grouped.columns:
-            grouped = grouped[grouped["position"] == pos]
+        if "position" in stats.columns:
+            stats = stats[stats["position"] == pos]
 
     positions = sorted(stats["position"].dropna().unique().tolist()) if "position" in stats.columns else []
-    sort_col = sort if sort in grouped.columns else "fantasy_pts_ppr"
-    grouped = grouped.sort_values(sort_col, ascending=False).head(100)
+    stats = stats.sort_values(sort_col, ascending=False).head(100)
 
-    players = grouped.to_dict("records")
+    players = stats.to_dict("records")
 
     return templates.TemplateResponse(request, "players.html", {
         "request": request, "active_page": "players",
         "cache_bust": CACHE_BUST, "current_year": _season_display(season),
-        "players": players, "positions": positions, "q": q, "pos": pos, "sort": sort, "season": season,
+        "players": players, "positions": positions, "q": q, "pos": pos, "sort": sort,
     })
 
 @app.get("/players/{player_id}", response_class=HTMLResponse)
 def player_profile(request: Request, player_id: str):
     ensure_data()
     season = _get_season()
-    stats = data.load_player_stats(season)
+    stats = _normalize_stats(data.load_player_stats(season))
     player = {}
-    seasons = []
     if not stats.empty and "player_id" in stats.columns:
         p = stats[stats["player_id"] == player_id]
         if not p.empty:
-            for col in ["passing_yards", "rushing_yards", "receiving_yards", "passing_tds", "rushing_tds",
-                         "receiving_tds", "receptions", "interceptions"]:
-                if col in p.columns:
-                    p[col] = pd.to_numeric(p[col], errors="coerce").fillna(0)
-            numeric_cols = p.select_dtypes(include="number").columns.tolist()
-            season_group = p.groupby("season")[numeric_cols].sum().reset_index()
             player = p.iloc[0].to_dict()
-            for col in numeric_cols:
-                player[col] = season_group[col].sum()
-            if "recent_team" in player and "team" not in player:
-                player["team"] = player["recent_team"]
-            seasons = season_group.to_dict("records")
 
     return templates.TemplateResponse(request, "player.html", {
         "request": request, "active_page": "players",
         "cache_bust": CACHE_BUST, "current_year": _season_display(season),
-        "player": player, "seasons": seasons, "player_id": player_id,
+        "player": player, "player_id": player_id,
     })
 
 @app.get("/odds", response_class=HTMLResponse)
@@ -211,27 +201,24 @@ def odds_page(request: Request):
 
     weather_data = []
     schedule = data.load_schedule(season)
-    if not schedule.empty:
-        cols = schedule.columns.tolist()
-        date_col = next((c for c in cols if c.lower() in ("date", "gameday", "game_date")), None)
-        if date_col:
-            schedule[date_col] = pd.to_datetime(schedule[date_col], errors="coerce")
-            today = pd.Timestamp.now().normalize()
-            upcoming = schedule[(schedule[date_col] >= today) & (schedule[date_col] <= today + pd.Timedelta(days=7))]
-            for _, row in upcoming.head(10).iterrows():
-                home = str(row.get("home_team", ""))
-                stadium = data.NFL_STADIUMS.get(home, {})
-                if stadium and stadium.get("roof") == "open":
-                    w = data.fetch_weather(stadium["lat"], stadium["lon"])
-                    daily = w.get("daily", {})
-                    weather_data.append({
-                        "home": home, "away": row.get("away_team", ""),
-                        "stadium": stadium.get("name", ""),
-                        "temp_max": daily.get("temperature_2m_max", [None])[0],
-                        "temp_min": daily.get("temperature_2m_min", [None])[0],
-                        "precip": daily.get("precipitation_sum", [None])[0],
-                        "wind": daily.get("wind_speed_10m_max", [None])[0],
-                    })
+    if not schedule.empty and "gameday" in schedule.columns:
+        schedule["gameday"] = pd.to_datetime(schedule["gameday"], errors="coerce")
+        today = pd.Timestamp.now().normalize()
+        upcoming = schedule[(schedule["gameday"] >= today) & (schedule["gameday"] <= today + pd.Timedelta(days=7))]
+        for _, row in upcoming.head(10).iterrows():
+            home = str(row.get("home_team", ""))
+            stadium = data.NFL_STADIUMS.get(home, {})
+            if stadium and stadium.get("roof") == "open":
+                w = data.fetch_weather(stadium["lat"], stadium["lon"])
+                daily = w.get("daily", {})
+                weather_data.append({
+                    "home": home, "away": row.get("away_team", ""),
+                    "stadium": stadium.get("name", ""),
+                    "temp_max": daily.get("temperature_2m_max", [None])[0],
+                    "temp_min": daily.get("temperature_2m_min", [None])[0],
+                    "precip": daily.get("precipitation_sum", [None])[0],
+                    "wind": daily.get("wind_speed_10m_max", [None])[0],
+                })
 
     return templates.TemplateResponse(request, "odds.html", {
         "request": request, "active_page": "odds",
@@ -245,38 +232,28 @@ def odds_page(request: Request):
 def rankings_page(request: Request, scoring: str = "ppr", position: str = "ALL"):
     ensure_data()
     season = _get_season()
-    stats = _filter_fantasy(data.load_player_stats(season))
+    stats = _filter_fantasy(_normalize_stats(data.load_player_stats(season)))
     if stats.empty:
         return templates.TemplateResponse(request, "rankings.html", {
             "request": request, "active_page": "rankings",
             "cache_bust": CACHE_BUST, "current_year": _season_display(season),
             "rankings": [], "scoring": scoring, "position": position, "positions": [],
         })
-    for col in ["passing_yards", "rushing_yards", "receiving_yards", "passing_tds", "rushing_tds",
-                 "receiving_tds", "receptions", "interceptions"]:
-        if col in stats.columns:
-            stats[col] = pd.to_numeric(stats[col], errors="coerce").fillna(0)
-    stats["fantasy_pts"] = analytics.compute_fantasy_points(stats, scoring)
-    team_map = {}
-    if "player_name" in stats.columns:
-        if "recent_team" in stats.columns:
-            team_map = stats.groupby("player_id")["recent_team"].first().to_dict()
-        grouped = stats.groupby(["player_id", "player_name"], as_index=False).agg({
-            col: "sum" for col in stats.select_dtypes(include="number").columns
-        })
-        if team_map:
-            grouped["recent_team"] = grouped["player_id"].map(team_map)
-    else:
-        grouped = stats
-    if position and position != "ALL" and "position" in grouped.columns:
-        grouped = grouped[grouped["position"] == position]
-    grouped = grouped.sort_values("fantasy_pts", ascending=False).head(200).reset_index(drop=True)
-    grouped["rank"] = range(1, len(grouped) + 1)
+
+    pts_col = {"ppr": "pts_ppr", "standard": "pts_std", "half_ppr": "pts_half_ppr"}.get(scoring, "pts_ppr")
+    stats["fantasy_pts"] = stats[pts_col]
+
+    if position and position != "ALL" and "position" in stats.columns:
+        stats = stats[stats["position"] == position]
+
+    stats = stats.sort_values("fantasy_pts", ascending=False).head(200).reset_index(drop=True)
+    stats["rank"] = range(1, len(stats) + 1)
     positions = sorted(stats["position"].dropna().unique().tolist()) if "position" in stats.columns else []
+
     return templates.TemplateResponse(request, "rankings.html", {
         "request": request, "active_page": "rankings",
         "cache_bust": CACHE_BUST, "current_year": _season_display(season),
-        "rankings": grouped.to_dict("records"), "scoring": scoring, "position": position, "positions": positions,
+        "rankings": stats.to_dict("records"), "scoring": scoring, "position": position, "positions": positions,
     })
 
 @app.get("/trades", response_class=HTMLResponse)
@@ -293,7 +270,7 @@ def player_search_api(request: Request, q: str = ""):
     ensure_data()
     if len(q) < 2:
         return HTMLResponse("")
-    stats = _filter_fantasy(data.load_player_stats(_get_season()))
+    stats = _filter_fantasy(_normalize_stats(data.load_player_stats(_get_season())))
     if stats.empty or "player_name" not in stats.columns:
         return HTMLResponse("")
     matches = stats[stats["player_name"].str.contains(q, case=False, na=False)].head(10)
@@ -313,46 +290,36 @@ def trade_compare_api(request: Request, a: str = "", b: str = ""):
     ensure_data()
     if not a or not b:
         return HTMLResponse("")
-    stats = _filter_fantasy(data.load_player_stats(_get_season()))
+    stats = _filter_fantasy(_normalize_stats(data.load_player_stats(_get_season())))
     if stats.empty or "player_id" not in stats.columns:
         return HTMLResponse("")
-    for col in ["passing_yards", "rushing_yards", "receiving_yards", "passing_tds", "rushing_tds",
-                 "receiving_tds", "receptions", "interceptions", "carries", "targets"]:
-        if col in stats.columns:
-            stats[col] = pd.to_numeric(stats[col], errors="coerce").fillna(0)
-    stats["fantasy_pts"] = analytics.compute_fantasy_points(stats, "ppr")
-
     pa = stats[stats["player_id"] == a]
     pb = stats[stats["player_id"] == b]
     if pa.empty or pb.empty:
         return HTMLResponse('<div class="p-4 text-sm text-slate-500">Player not found</div>')
 
     def _summarize(p):
-        num_cols = p.select_dtypes(include="number").columns
-        s = p[num_cols].sum()
         name = p.iloc[0].get("player_name", "")
         pos = p.iloc[0].get("position", "")
-        team = p.iloc[0].get("recent_team", p.iloc[0].get("team", ""))
-        return {"name": name, "pos": pos, "team": team, "stats": s.to_dict()}
+        team = p.iloc[0].get("recent_team", "")
+        pts = float(p.iloc[0].get("pts_ppr", 0))
+        return {"name": name, "pos": pos, "team": team, "pts": pts, "row": p.iloc[0].to_dict()}
 
     sa = _summarize(pa)
     sb = _summarize(pb)
 
-    a_pts = sa["stats"].get("fantasy_pts", 0)
-    b_pts = sb["stats"].get("fantasy_pts", 0)
-
-    html = f'''<div class="p-5">
+    html = f'''<div class="glass-card rounded-xl p-5">
 <div class="grid grid-cols-2 gap-4 mb-4">
   <div class="text-center">
     <div class="text-lg font-bold text-white">{sa['name']}</div>
     <div class="text-xs text-slate-400">{sa['team']} · {sa['pos']}</div>
-    <div class="text-2xl font-display font-bold text-brand-light mt-2">{a_pts:.1f}</div>
+    <div class="text-2xl font-display font-bold text-brand-light mt-2">{sa['pts']:.1f}</div>
     <div class="text-xs text-slate-500">Fantasy Pts (PPR)</div>
   </div>
   <div class="text-center">
     <div class="text-lg font-bold text-white">{sb['name']}</div>
     <div class="text-xs text-slate-400">{sb['team']} · {sb['pos']}</div>
-    <div class="text-2xl font-display font-bold text-accent mt-2">{b_pts:.1f}</div>
+    <div class="text-2xl font-display font-bold text-accent mt-2">{sb['pts']:.1f}</div>
     <div class="text-xs text-slate-500">Fantasy Pts (PPR)</div>
   </div>
 </div>
@@ -364,17 +331,17 @@ def trade_compare_api(request: Request, a: str = "", b: str = ""):
         ("passing_yards", "Pass Yards"), ("passing_tds", "Pass TD"), ("interceptions", "INT"),
         ("rushing_yards", "Rush Yards"), ("rushing_tds", "Rush TD"),
         ("receiving_yards", "Rec Yards"), ("receiving_tds", "Rec TD"), ("receptions", "Receptions"),
-        ("fantasy_pts", "Fantasy Pts"),
+        ("pts_ppr", "Fantasy Pts"),
     ]
     for key, label in stat_labels:
-        va = sa["stats"].get(key, 0)
-        vb = sb["stats"].get(key, 0)
+        va = float(sa["row"].get(key, 0))
+        vb = float(sb["row"].get(key, 0))
         winner_a = "text-brand-light" if va > vb else ""
         winner_b = "text-accent" if vb > va else ""
         html += f'<tr><td class="px-3 py-2 text-slate-400">{label}</td><td class="px-3 py-2 text-right font-mono {winner_a}">{va:.0f}</td><td class="px-3 py-2 text-right font-mono {winner_b}">{vb:.0f}</td></tr>'
 
-    adv = "Side A" if a_pts > b_pts else "Side B" if b_pts > a_pts else "Even"
-    diff = abs(a_pts - b_pts)
+    adv = "Side A" if sa["pts"] > sb["pts"] else "Side B" if sb["pts"] > sa["pts"] else "Even"
+    diff = abs(sa["pts"] - sb["pts"])
     html += f'''</tbody></table>
 <div class="mt-4 text-center text-sm text-slate-400">Advantage: <span class="text-white font-medium">{adv}</span> (+{diff:.1f} pts)</div>
 </div>'''

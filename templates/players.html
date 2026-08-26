@@ -25,7 +25,7 @@
       {% endfor %}
     </select>
     <select name="sort" class="bg-surface-2 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand/50">
-      <option value="fantasy_pts_ppr" {% if sort == 'fantasy_pts_ppr' %}selected{% endif %}>Fantasy Pts (PPR)</option>
+      <option value="fantasy_pts" {% if sort == 'fantasy_pts' %}selected{% endif %}>Fantasy Pts (PPR)</option>
       <option value="passing_yards" {% if sort == 'passing_yards' %}selected{% endif %}>Passing Yards</option>
       <option value="rushing_yards" {% if sort == 'rushing_yards' %}selected{% endif %}>Rushing Yards</option>
       <option value="receiving_yards" {% if sort == 'receiving_yards' %}selected{% endif %}>Receiving Yards</option>
@@ -66,7 +66,7 @@
           <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">{{ p.passing_tds|int if p.passing_tds else '-' }}</td>
           <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">{{ p.rushing_tds|int if p.rushing_tds else '-' }}</td>
           <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">{{ p.receiving_tds|int if p.receiving_tds else '-' }}</td>
-          <td class="px-4 py-2.5 text-right text-sm font-mono font-medium text-accent">{{ "{:,.1f}".format(p.fantasy_pts_ppr|round(1)) if p.fantasy_pts_ppr else '-' }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono font-medium text-accent">{{ "{:,.1f}".format(p.pts_ppr|round(1)) if p.pts_ppr else '-' }}</td>
         </tr>
         {% endfor %}
         {% if not players %}

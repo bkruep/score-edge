@@ -5,7 +5,7 @@ import pandas as pd
 import requests
 
 # ---------------------------------------------------------------------------
-# Shared utilities
+# Shared cache
 # ---------------------------------------------------------------------------
 
 _CACHE: dict[str, tuple[float, object]] = {}
@@ -20,19 +20,6 @@ def _get_cached(key: str):
 
 def _set_cached(key: str, val):
     _CACHE[key] = (time.time(), val)
-
-def _download_csv(url: str, key: str) -> pd.DataFrame:
-    cached = _get_cached(key)
-    if cached is not None:
-        return cached
-    try:
-        r = requests.get(url, timeout=60)
-        r.raise_for_status()
-        df = pd.read_csv(io.StringIO(r.text))
-        _set_cached(key, df)
-        return df
-    except Exception:
-        return pd.DataFrame()
 
 # ---------------------------------------------------------------------------
 # Odds API (shared across sports)
@@ -86,41 +73,79 @@ def fetch_weather(lat: float, lon: float) -> dict:
         return {}
 
 # ---------------------------------------------------------------------------
-# NFL — nflverse (CC0) + The Odds API
+# NFL — nfldata.org (free, no key) + Sleeper (free, no key)
 # ---------------------------------------------------------------------------
 
-NFLVERSE_BASE = "https://github.com/nflverse/nflverse-data/releases/download"
+NFLDATA_BASE = "https://api.nfldata.org/v1"
+SLEEPER_BASE = "https://api.sleeper.app/v1"
 
-def load_player_stats(season: int = 2024) -> pd.DataFrame:
-    key = f"nfl_player_stats_{season}"
-    url = f"{NFLVERSE_BASE}/player_stats/player_stats_{season}.csv"
-    df = _download_csv(url, key)
-    if not df.empty:
+FANTASY_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF", "DST"}
+
+def load_player_stats(season: int = 2025) -> pd.DataFrame:
+    key = f"nfl_stats_{season}"
+    cached = _get_cached(key)
+    if cached is not None:
+        return cached
+    try:
+        all_rows = []
+        offset = 0
+        limit = 500
+        while True:
+            url = f"{NFLDATA_BASE}/stats/season"
+            params = {"season": season, "limit": limit, "offset": offset}
+            r = requests.get(url, params=params, timeout=60)
+            r.raise_for_status()
+            data = r.json()
+            rows = data.get("data", [])
+            all_rows.extend(rows)
+            if len(rows) < limit or offset + limit >= data.get("total", 0):
+                break
+            offset += limit
+        if not all_rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(all_rows)
+        _set_cached(key, df)
         return df
-    for fallback in range(season - 1, 2019, -1):
-        key2 = f"nfl_player_stats_{fallback}"
-        url2 = f"{NFLVERSE_BASE}/player_stats/player_stats_{fallback}.csv"
-        df2 = _download_csv(url2, key2)
-        if not df2.empty:
-            return df2
-    return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
 
-def load_schedule(season: int = 2024) -> pd.DataFrame:
-    key = "nfl_schedule_all"
-    url = f"{NFLVERSE_BASE}/schedules/games.csv"
-    df = _download_csv(url, key)
-    if not df.empty and "season" in df.columns:
-        filtered = df[df["season"] == season]
-        if not filtered.empty:
-            return filtered
-        latest = int(df["season"].max())
-        return df[df["season"] == latest]
-    return df
+def load_schedule(season: int = 2025) -> pd.DataFrame:
+    key = f"nfl_schedule_{season}"
+    cached = _get_cached(key)
+    if cached is not None:
+        return cached
+    try:
+        all_games = []
+        for week in range(1, 19):
+            url = f"{NFLDATA_BASE}/games"
+            params = {"season": season, "week": week}
+            r = requests.get(url, params=params, timeout=30)
+            if r.status_code == 200:
+                data = r.json()
+                games = data.get("data", [])
+                all_games.extend(games)
+        if not all_games:
+            return pd.DataFrame()
+        df = pd.DataFrame(all_games)
+        _set_cached(key, df)
+        return df
+    except Exception:
+        return pd.DataFrame()
 
-def load_teams() -> pd.DataFrame:
-    key = "nfl_teams"
-    url = f"{NFLVERSE_BASE}/teams/teams_colors_logos.csv"
-    return _download_csv(url, key)
+def load_rosters() -> dict:
+    key = "sleeper_rosters"
+    cached = _get_cached(key)
+    if cached is not None:
+        return cached
+    try:
+        url = f"{SLEEPER_BASE}/players/nfl"
+        r = requests.get(url, timeout=60)
+        r.raise_for_status()
+        players = r.json()
+        _set_cached(key, players)
+        return players
+    except Exception:
+        return {}
 
 NFL_STADIUMS = {
     "ARI": {"name": "State Farm Stadium", "lat": 33.5276, "lon": -112.2626, "roof": "dome"},
@@ -161,8 +186,8 @@ NFL_STADIUMS = {
 # NBA — planned (nba_api / basketball-reference)
 # ---------------------------------------------------------------------------
 
-# def load_nba_player_stats(season: str = "2024-25") -> pd.DataFrame: ...
-# def load_nba_schedule(season: str = "2024-25") -> pd.DataFrame: ...
+# def load_nba_player_stats(season: str = "2025-26") -> pd.DataFrame: ...
+# def load_nba_schedule(season: str = "2025-26") -> pd.DataFrame: ...
 # def load_nba_teams() -> pd.DataFrame: ...
 # NBA_ARENAS = { ... }
 
@@ -170,7 +195,7 @@ NFL_STADIUMS = {
 # MLB — planned (pybaseball / statsapi)
 # ---------------------------------------------------------------------------
 
-# def load_mlb_player_stats(season: int = 2025) -> pd.DataFrame: ...
-# def load_mlb_schedule(season: int = 2025) -> pd.DataFrame: ...
+# def load_mlb_player_stats(season: int = 2026) -> pd.DataFrame: ...
+# def load_mlb_schedule(season: int = 2026) -> pd.DataFrame: ...
 # def load_mlb_teams() -> pd.DataFrame: ...
 # MLB_STADIUMS = { ... }
