@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Touchdown Hunt — P(TD) Race &amp; Value Angles | ScoreEdge{% endblock %}
+{% block meta_description %}DraftKings weekly touchdown-hunt promo: most likely to score, longest-TD deep-ball angles, and P(TD) vs contested-payout value picks. Powered by ScoreEdge.{% endblock %}
+{% block canonical %}/touchdown{% endblock %}
+{% block og_url %}/touchdown{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-white/5 pb-3">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">TOUCHDOWN HUNT</h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">MOST LIKELY TO SCORE &middot; LONGEST-TD DEEP ANGLES &middot; P(TD) vs. CONTESTED PAYOUT</p>
+  </div>
+  <div class="text-right">
+    <div class="text-[10px] font-mono text-slate-600">DRAFTKINGS WEEKLY PROMO &middot; 10 PICKS PER BOARD</div>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+{% if not api_key_set %}
+<div class="glass-card rounded-xl p-4 mb-6 flex items-center gap-3 border-amber-500/20">
+  <svg class="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+  <div>
+    <div class="text-sm font-medium text-white">No odds feed connected</div>
+    <div class="text-xs text-slate-400">Add ODDS_API_KEY to the environment, then reload. The TD boards seed from the same full slate the Live Lines tab uses.</div>
+  </div>
+</div>
+{% endif %}
+
+{% if td_anytime or td_longest %}
+<div class="glass-card rounded-xl overflow-hidden mb-6 border-brand/20 glow-brand">
+  <div class="px-5 py-3 border-b border-white/5 flex items-center gap-2">
+    <svg class="w-4 h-4 text-brand" fill="currentColor" viewBox="0 0 24 24"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+    <h2 class="font-display font-semibold text-white text-sm">Touchdown Hunt — Top 10 Shortest Price</h2>
+    <span class="text-xs text-slate-500 ml-1">most-likely-to-score &amp; longest-TD angles &middot; 10 picks per board</span>
+  </div>
+
+  {% if td_race %}
+  <div class="p-4 bg-surface-1 border-b border-white/5">
+    <div class="flex items-center justify-between mb-3">
+      <span class="text-[11px] text-slate-500 font-mono">P(TD) RACE — top-10 anytime</span>
+      <span class="text-[11px] text-slate-600 font-mono">scaled to the leader</span>
+    </div>
+    <div class="grid gap-2.5">
+      {% for b in td_race %}
+      <div class="flex items-center gap-3">
+        <span class="w-5 text-right text-xs font-mono {% if b.leader %}text-brand font-bold{% else %}text-slate-500{% endif %}">{{ b.rank }}</span>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center justify-between gap-3 mb-1">
+            <span class="text-xs text-white font-medium truncate">{{ b.name }} <span class="text-slate-500 font-mono">&middot; {{ b.pos }} &middot; {{ b.team_name }}</span>{% if b.booked %}<span class="ml-1 pill bg-emerald-500/15 text-emerald-300 text-[9px]">BOOK</span>{% endif %}</span>
+            <span class="text-xs font-mono {% if b.leader %}text-brand font-bold{% else %}text-slate-400{% endif %}">{{ "%.1f"|format(b.p_pct) }}%</span>
+          </div>
+          <div class="h-3.5 rounded-full bg-white/5 overflow-hidden">
+            <div class="h-full rounded-full td-race-bar{% if b.leader %} td-race-bar-lead{% endif %}" data-w="{{ b.pct_w }}" data-rank="{{ b.rank }}" data-pos="{{ b.pos }}" style="width:0%; transition: width 950ms cubic-bezier(.22,1,.36,1);"></div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <section x-data="tdFilter()" x-init="init()">
+    {% if games|length > 1 %}
+    <div class="px-5 py-3 border-b border-white/5 flex flex-wrap items-center gap-1.5">
+      <button type="button" class="chip" :class="!active.length && 'chip-on'" @click="active = []; rebuild()">All</button>
+      {% for g in games %}
+      <button type="button" class="chip" :class='isOn({{ g|tojson }}) && "chip-on"' @click='toggle({{ g|tojson }})'>{{ g }}</button>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="grid md:grid-cols-2 gap-px bg-white/5">
+      <div class="p-4 bg-surface-1">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-[11px] text-slate-500 font-mono">MOST LIKELY TO SCORE A TD</span>
+          <span class="text-[11px] text-slate-600 font-mono">P(TD)</span>
+        </div>
+        <div class="grid gap-2">
+          {% for r in td_anytime %}
+          <div class="flex items-center gap-3 rounded-lg px-3 py-2.5 {% if loop.first %}bg-brand/[0.07] border border-brand/25{% else %}bg-white/[0.02] border border-white/5{% endif %}" data-game="{{ r.game }}" data-scope="{{ r.scope }}" data-grk="{{ r.grk }}" x-show="visible($el)">
+            <span class="w-6 text-center text-xs font-mono {% if loop.first %}text-brand font-bold{% else %}text-slate-500{% endif %}">{{ loop.index }}</span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-sm text-white font-medium truncate">{{ r.name }}</span>
+                {% if r.booked %}<span class="pill bg-emerald-500/15 text-emerald-300 text-[10px]">BOOK</span>{% endif %}
+              </div>
+              <div class="text-[11px] text-slate-500 font-mono">{{ r.pos }} &middot; {{ r.team_name }} &middot; {{ r.note }}</div>
+            </div>
+            <div class="w-24">
+              <div class="flex justify-end text-xs font-mono text-white">{{ "%.1f"|format(r.p_pct) }}%</div>
+              <div class="h-1.5 rounded-full bg-white/5 mt-1 overflow-hidden">
+                <div class="h-full rounded-full bg-brand" style="width: {{ [ (r.p_pct)|round, 100 ]|min }}%"></div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="p-4 bg-surface-1">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-[11px] text-slate-500 font-mono">MOST LIKELY TO SCORE THE LONGEST TD</span>
+          <span class="text-[11px] text-slate-600 font-mono">deep score</span>
+        </div>
+        <div class="grid gap-2">
+          {% for r in td_longest %}
+          <div class="flex items-center gap-3 rounded-lg px-3 py-2.5 {% if loop.first %}bg-brand/[0.07] border border-brand/25{% else %}bg-white/[0.02] border border-white/5{% endif %}" data-game="{{ r.game }}" data-scope="{{ r.scope }}" data-grk="{{ r.grk }}" x-show="visible($el)">
+            <span class="w-6 text-center text-xs font-mono {% if loop.first %}text-brand font-bold{% else %}text-slate-500{% endif %}">{{ loop.index }}</span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-sm text-white font-medium truncate">{{ r.name }}</span>
+                {% if r.booked %}<span class="pill bg-purple-500/15 text-purple-300 text-[10px]">{{ r.longest_mkt }}</span>{% endif %}
+              </div>
+              <div class="text-[11px] text-slate-500 font-mono">{{ r.pos }} &middot; {{ r.team_name }} &middot; {{ r.note }}</div>
+            </div>
+            <div class="w-24">
+              <div class="flex justify-end text-xs font-mono text-white">{{ "%.1f"|format(r.p_pct) }}%</div>
+              <div class="h-1.5 rounded-full bg-white/5 mt-1 overflow-hidden">
+                <div class="h-full rounded-full bg-purple-400" style="width: {{ [ (r.score * 100)|round, 100 ]|min }}%"></div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {% if td_value %}
+    <div class="p-4 bg-surface-1 border-t border-white/5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-[11px] text-slate-500 font-mono">VALUE PICKS — P(TD) VS. CONTESTED PAYOUT</span>
+        <span class="text-[11px] text-slate-600 font-mono">bonus splits among every winner &middot; favor fewer-picked players</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full stat-table">
+          <thead>
+            <tr class="border-b border-white/5 text-[11px] text-slate-500 font-mono">
+              <th class="text-left py-2 pr-3 font-medium">#</th>
+              <th class="text-left py-2 pr-3 font-medium">Player</th>
+              <th class="text-left py-2 pr-3 font-medium">Pos &middot; Team</th>
+              <th class="text-right py-2 pr-3 font-medium">P(TD)</th>
+              <th class="text-right py-2 pr-3 font-medium">Value</th>
+              <th class="text-left py-2 font-medium">Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in td_value %}
+            <tr class="hover:bg-brand/5 transition-colors" data-game="{{ r.game }}" data-scope="{{ r.scope }}" data-grk="{{ r.grk }}" x-show="visible($el)">
+              <td class="py-2 pr-3 font-mono {% if loop.first %}text-brand font-bold{% else %}text-slate-500{% endif %}">{{ loop.index }}</td>
+              <td class="py-2 pr-3">
+                <span class="text-sm text-white font-medium">{{ r.name }}</span>
+                {% if loop.first %}<span class="pill bg-brand/20 text-brand text-[10px] ml-1">VALUE PLAY</span>{% endif %}
+              </td>
+              <td class="py-2 pr-3 text-xs text-slate-500 font-mono">{{ r.pos }} &middot; {{ r.team_name }}</td>
+              <td class="py-2 pr-3 text-right text-xs font-mono text-slate-300">{{ "%.1f"|format(r.p_pct) }}%</td>
+              <td class="py-2 pr-3 text-right text-sm font-mono text-emerald-400">{{ "%.1f"|format(r.value_pct) }}%</td>
+              <td class="py-2 text-xs text-slate-400">{{ r.angle }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if td_warn %}
+    <div class="px-5 py-2 border-t border-white/5 text-[11px] text-amber-400/80 font-mono">&#9888; {{ td_warn }}</div>
+    {% endif %}
+  </section>
+</div>
+{% else %}
+<div class="glass-card rounded-xl p-10 text-center animate-fadeup">
+  <div class="text-sm text-slate-400">No touchdown promo board yet.</div>
+  <div class="text-[11px] text-slate-600 mt-2 font-mono">TD angles post once the player-prop board is live on the slate.</div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function tdFilter() {
+    return {
+      games: {{ games|tojson }},
+      active: [],
+      _plan: new Set(),
+      init() { this.rebuild(); },
+      isOn(g) { return this.active.includes(g); },
+      toggle(g) {
+        this.active = this.active.includes(g)
+          ? this.active.filter(x => x !== g)
+          : [...this.active, g];
+        this.rebuild();
+      },
+      rebuild() {
+        const seen = new Set();
+        const rows = this.$root.querySelectorAll('[data-scope]');
+        if (!this.active.length) {
+          rows.forEach(r => { if (r.dataset.scope === 'all') seen.add(r); });
+        } else if (this.active.length === 1) {
+          const g = this.active[0];
+          rows.forEach(r => { if (r.dataset.scope === 'game' && r.dataset.game === g) seen.add(r); });
+        } else {
+          const cands = [];
+          rows.forEach(r => {
+            if (r.dataset.scope === 'game' && this.active.includes(r.dataset.game)) cands.push(r);
+          });
+          cands.sort((a, b) => (+a.dataset.grk || 0) - (+b.dataset.grk || 0));
+          cands.slice(0, 10).forEach(r => seen.add(r));
+        }
+        this._plan = seen;
+      },
+      visible(el) { return this._plan.has(el); },
+    };
+  }
+</script>
+<script>
+  // P(TD) bar-chart race: bars grow 0 -> value, staggered by rank, color-coded
+  // by position. Runs fresh on each visit to the tab.
+  (function () {
+    var COLORS = { QB: '#a78bfa', RB: '#34d399', WR: '#60a5fa', TE: '#fbbf24' };
+    function race() {
+      var bars = Array.prototype.slice.call(document.querySelectorAll('.td-race-bar'));
+      bars.sort(function (a, b) { return (+a.dataset.rank) - (+b.dataset.rank); });
+      bars.forEach(function (el, i) {
+        el.style.backgroundColor = COLORS[el.dataset.pos] || '#94a3b8';
+        setTimeout(function () { el.style.width = el.dataset.w + '%'; }, 150 + i * 110);
+      });
+    }
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', race); }
+    else { race(); }
+  })();
+</script>
+{% endblock %}

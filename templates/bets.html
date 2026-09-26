@@ -1,30 +1,412 @@
-{% extends "base.html" %}
-{% block title %}Live Odds & Betting Lines — ScoreEdge{% endblock %}
-{% block canonical %}/odds{% endblock %}
-{% block og_url %}/odds{% endblock %}
+﻿{% extends "base.html" %}
+{% block title %}NFL Edge — Live Lines & Value Spots | ScoreEdge{% endblock %}
+{% block meta_description %}Best NFL betting odds across sportsbooks with real edge detection, value spots, and weather-aware totals. Powered by SharpAPI.{% endblock %}
+{% block canonical %}/bets{% endblock %}
+{% block og_url %}/bets{% endblock %}
 {% block breadcrumb %}
-<div class="mb-6">
-  <h1 class="text-2xl font-display font-bold text-white">Sports Betting</h1>
-  <p class="text-sm text-slate-500 mt-1">Moneylines, spreads, totals, and game-day weather</p>
+<div class="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-white/5 pb-3">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">NFL EDGE</h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">BEST LINE ACROSS BOOKS · VALUE SPOTS · WEATHER-AWARE · STEAM: <span class="text-cyan-300">▲/▼</span> = LINE MOVED</p>
+  </div>
+  <form method="get" action="/bets" class="flex items-center gap-2">
+    <label for="date" class="tick-label">SLATE DATE</label>
+    <input type="date" id="date" name="date" value="{{ active_date or '' }}"
+           class="bg-surface-2 border border-white/5 rounded-md px-3 py-2 text-sm text-slate-300 font-mono focus:outline-none focus:border-brand/50">
+    <button type="submit" class="bg-brand hover:bg-brand-dark text-black text-sm font-semibold px-4 py-2 rounded-md transition-colors font-mono">LOAD</button>
+  </form>
 </div>
 {% endblock %}
 {% block content %}
-{% if not api_key_set %}
-<div class="glass-card rounded-xl p-3 mb-6 flex items-center justify-between">
-  <div class="flex items-center gap-2">
-    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-    <span class="text-xs text-slate-400">Live odds require a free API key</span>
+{% if error %}
+<div class="glass-card rounded-xl p-4 mb-6 flex items-center gap-3 border-amber-500/20">
+  <svg class="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+  <div>
+    <div class="text-sm font-medium text-white">Odds unavailable</div>
+    <div class="text-xs text-slate-400">{{ error }}</div>
   </div>
-  <a href="https://the-odds-api.com" target="_blank" class="text-xs text-brand-light hover:text-brand transition-colors">Get key →</a>
 </div>
 {% endif %}
+
+{% if not dfs_enabled %}
+<div class="glass-card rounded-xl p-4 mb-6 flex items-start gap-3 border-white/5 bg-surface-2/40">
+  <svg class="w-5 h-5 text-slate-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  <div>
+    <div class="text-sm font-medium text-white">DFS cross-reference off</div>
+    <div class="text-xs text-slate-400">Betting <span class="pill bg-purple-500/20 text-purple-300">2X</span> double-value flags (players who are both a DFS value play and a betting prop edge) require live DFS data. For local personal use, set <code class="text-slate-300">DFS_DATA_SOURCE=dk</code>. On this public deployment live DFS data stays disabled by default.</div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Stat strip (clickable → jump to the matching board section) -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" style="scroll-margin-top: 88px;">
+  <a href="#games" class="glass-card rounded-xl p-4 glow-brand transition-all hover:border-brand/40 hover:bg-brand/[0.04]">
+    <div class="text-xs text-slate-500 mb-1">Games</div>
+    <div class="text-2xl font-display font-bold text-white">{{ slate.events|length }} <span class="text-xs text-slate-500 font-mono">all games</span></div>
+  </a>
+  <a href="#lines" class="glass-card rounded-xl p-4 transition-all hover:border-brand/40 hover:bg-brand/[0.04]">
+    <div class="text-xs text-slate-500 mb-1">Lines</div>
+    <div class="text-2xl font-display font-bold gradient-text">{{ (slate.moneylines|length + slate.spreads|length + slate.totals|length + slate.props|length) }}</div>
+  </a>
+  <a href="#value" class="glass-card rounded-xl p-4 transition-all hover:border-brand/40 hover:bg-brand/[0.04]">
+    <div class="text-xs text-slate-500 mb-1">Value Spots</div>
+    <div class="text-2xl font-display font-bold {% if slate.value_spots or slate.props %}text-emerald-400{% else %}text-white{% endif %}">{{ (slate.value_spots|length + slate.props|length) }}</div>
+  </a>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Updated</div>
+    <div class="text-sm font-mono font-bold text-slate-300 mt-1">{{ slate.fetched_at|truncate(12, True, '') }}</div>
+  </div>
+</div>
+
+<section x-data="gameFilter()" class="mb-2">
+  <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+    <span class="text-[11px] text-slate-600 font-mono">+EV play slip — every play below where the best price beats consensus</span>
+    <div class="flex items-center gap-2">
+      <button type="button" @click="openSlip('copy')"
+              class="pill bg-brand/10 text-brand border-brand/25 hover:bg-brand/20 transition-colors flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m6 9l2 2-2 2m-6-4H6m0 0l2 2m-2-2l2-2"/></svg>
+        Copy Bet Slip
+      </button>
+      <button type="button" @click="openSlip('png')"
+              class="pill bg-surface-3 text-slate-300 hover:bg-surface-2 transition-colors flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        Share PNG
+      </button>
+    </div>
+  </div>
+
+  {% if games %}
+  <!-- Game filter -->
+  <div class="glass-card rounded-xl overflow-hidden mb-6" id="games" style="scroll-margin-top: 88px;">
+    <div class="px-5 py-3 border-b border-white/5 flex items-center justify-between flex-wrap gap-2">
+      <h2 class="font-display font-semibold text-white text-sm">Filter by Game</h2>
+      <span class="tick-label" x-text="active.length ? active.length + ' selected' : 'all games'"></span>
+    </div>
+    <div class="px-5 py-3 flex flex-wrap gap-2">
+      <button type="button" class="chip" :class="!active.length && 'chip-on'" @click="active = []">All</button>
+      {% for g in games %}
+      <button type="button" class="chip" :class='isOn({{ g|tojson }}) && "chip-on"' @click='toggle({{ g|tojson }})'>{{ g }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+{% set flagged = weather_by_game.values() | selectattr('flag') | list %}
+{% if flagged %}
+<div class="glass-card rounded-xl overflow-hidden mb-6 border-sky-400/20">
+  <div class="px-5 py-3 border-b border-white/5 flex items-center gap-2">
+    <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+    <h2 class="font-display font-semibold text-white text-sm">Weather Angles</h2>
+    <span class="text-xs text-slate-500 ml-1">outdoor slates · betting implications</span>
+  </div>
+  <div class="p-4 grid gap-2 sm:grid-cols-2">
+    {% for w in flagged %}
+    <div class="flex items-center gap-3 rounded-lg bg-sky-500/5 border border-sky-400/10 px-3 py-2.5" data-game="{{ w.away }} @ {{ w.home }}" x-show="!active.length || inGame($el.dataset.game)">
+      <span class="pill {% if w.flag == 'WINDY' %}bg-sky-500/20 text-sky-300{% elif w.flag == 'RAIN' %}bg-amber-500/20 text-amber-300{% else %}bg-slate-500/20 text-slate-300{% endif %}">{{ w.flag }}</span>
+      <div class="min-w-0">
+        <div class="text-sm text-white font-medium">{{ w.away }} @ {{ w.home }}</div>
+        <div class="text-xs text-slate-500">
+          {% if w.wind %}{{ w.wind|int }} mph wind · {% endif %}{% if w.precip and w.precip > 0.3 %}{{ w.precip|round(2) }}in rain · {% endif %}{{ w.temp_max|default('?')|int }}°F
+          — {% if w.flag == 'WINDY' %}fade deep passing, lean Unders{% elif w.flag == 'BREEZY' %}monitor totals{% else %}weather-aware spot{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if slate.best_bets %}
+<!-- Best bets -->
+<div class="glass-card rounded-xl overflow-hidden mb-6 glow-emerald" id="best" style="scroll-margin-top: 88px;">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Best Bets — top +EV plays</h2>
+    <span class="text-xs text-slate-500 ml-1">spread · moneyline · total · props, best price beats consensus</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-market="best">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Type</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Bet</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Best</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Edge</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in slate.best_bets[:15] %}
+        <tr class="hover:bg-brand/5 transition-colors" data-game="{{ q.game }}" x-show="!active.length || inGame($el.dataset.game)">
+          <td class="px-4 py-2.5">
+            {% if q.market in ['moneyline','point_spread','total_points'] %}
+            <span class="pill bg-surface-3 text-slate-300">{{ {'moneyline':'ML','point_spread':'SPR','total_points':'O/U'}.get(q.market, q.market) }}</span>
+            {% else %}
+            <span class="pill bg-indigo-500/20 text-indigo-300">PROP</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.selection }}{% if q.player_name %}<span class="text-xs text-indigo-300"> {{ q.player_name }}</span>{% if q.player_name in double_value %}<span class="ml-1 pill bg-purple-500/20 text-purple-300" title="Also a DFS value play (top pts/$1k)">2X</span>{% endif %}{% endif %}{% if q.line is not none %} <span class="text-slate-500 text-xs">{{ q.line }}</span>{% endif %}</td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">{{ q.game }}{% set _wf = weather_by_game.get(q.game, {}).get('flag') %}{% if _wf %}<span class="ml-1 pill {% if _wf == 'WINDY' %}bg-sky-500/20 text-sky-300{% elif _wf == 'RAIN' %}bg-amber-500/20 text-amber-300{% else %}bg-slate-500/20 text-slate-300{% endif %}">{{ _wf }}</span>{% endif %}</td>
+          <td class="px-4 py-2.5 text-right">
+            <div class="text-sm font-mono text-emerald-400">{{ odds.odds_html(q.best_odds) }}</div>
+            {% if q.book_ladder(4) %}
+            <div class="mt-1 flex flex-wrap gap-1 justify-end max-w-[150px] ml-auto">
+              {% for bk in q.book_ladder(4) %}
+              <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1.5 py-0.5 text-[8px] font-mono leading-none {% if bk.book == q.best_book %}text-brand border-brand/30{% endif %}" title="{{ bk.book }}">{{ bk.book }} {{ bk.am }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-400">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-right"><span class="pill bg-emerald-500/20 text-emerald-400">+{{ "%.1f"|format(q.edge_pct) }}%</span></td>
+          <td class="px-4 py-2.5 text-center">
+            <button type="button" class="slip-btn" title="Track this play" data-slip='{{ q.slip_payload()|tojson }}'>+</button>
+          </td>
+        </tr>
+        {% endfor %}
+        <tr x-show="active.length && !rowsFor('best')">
+          <td colspan="7" class="px-4 py-6 text-center text-xs text-slate-500">No +EV bets for <span class="text-white" x-text="active[0]"></span>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if slate.value_spots %}
+<!-- Value spots -->
+<div class="glass-card rounded-xl overflow-hidden mb-6 glow-emerald" id="value" style="scroll-margin-top: 88px;">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Value Spots</h2>
+    <span class="text-xs text-slate-500 ml-1">best price beats consensus · sorted by edge</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-market="value">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Market</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Bet</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Best</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Edge</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in slate.value_spots[:10] %}
+        <tr class="hover:bg-brand/5 transition-colors" data-game="{{ q.game }}" x-show="!active.length || inGame($el.dataset.game)">
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.game }}</td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">{{ {'moneyline':'Moneyline','point_spread':'Spread','total_points':'Total'}.get(q.market, q.market) }}</td>
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.selection }}{% if q.line is not none %} <span class="text-slate-500 text-xs">{{ q.line }}</span>{% endif %}</td>
+          <td class="px-4 py-2.5 text-right">
+            <div class="text-sm font-mono text-emerald-400">{{ odds.odds_html(q.best_odds) }}</div>
+            {% if q.book_ladder(3) %}
+            <div class="mt-1 flex flex-wrap gap-1 justify-end max-w-[140px] ml-auto">
+              {% for bk in q.book_ladder(3) %}
+              <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1.5 py-0.5 text-[8px] font-mono leading-none {% if bk.book == q.best_book %}text-brand border-brand/30{% endif %}" title="{{ bk.book }}">{{ bk.book }} {{ bk.am }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-400">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-right"><span class="pill bg-emerald-500/20 text-emerald-400">+{{ "%.1f"|format(q.edge_pct) }}%</span></td>
+          <td class="px-4 py-2.5 text-center">
+            <button type="button" class="slip-btn" title="Track this play" data-slip='{{ q.slip_payload()|tojson }}'>+</button>
+          </td>
+        </tr>
+        {% endfor %}
+        <tr x-show="active.length && !rowsFor('value')">
+          <td colspan="7" class="px-4 py-6 text-center text-xs text-slate-500">No value spots for <span class="text-white" x-text="active[0]"></span>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Moneylines -->
+{% if slate.moneylines %}
+<div class="glass-card rounded-xl overflow-hidden mb-6" id="lines" style="scroll-margin-top: 88px;">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Moneylines</h2>
+    <span class="text-xs text-slate-500 ml-1">best price across books</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-market="moneyline">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Team</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Best</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Book</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in slate.moneylines %}
+        <tr class="hover:bg-brand/5 transition-colors" data-game="{{ q.game }}" x-show="!active.length || inGame($el.dataset.game)">
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.selection }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if q.is_value %}text-emerald-400{% elif q.best_odds < 0 %}text-red-400{% else %}text-emerald-400{% endif %}">{{ odds.odds_html(q.best_odds) }}</td>
+          <td class="px-4 py-2.5"><span class="pill bg-surface-3 text-slate-300">{{ q.best_book }}</span></td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-500">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-center">
+            <button type="button" class="slip-btn" title="Track this play" data-slip='{{ q.slip_payload()|tojson }}'>+</button>
+          </td>
+        </tr>
+        {% endfor %}
+        <tr x-show="active.length && !rowsFor('moneyline')">
+          <td colspan="5" class="px-4 py-6 text-center text-xs text-slate-500">No moneylines for <span class="text-white" x-text="active[0]"></span>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Spreads -->
+{% if slate.spreads %}
+<div class="glass-card rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">Spreads</h2>
+    <span class="text-xs text-slate-500 ml-1">best price across books</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-market="spread">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Team</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Line</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Best</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Book</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in slate.spreads %}
+        <tr class="hover:bg-brand/5 transition-colors" data-game="{{ q.game }}" x-show="!active.length || inGame($el.dataset.game)">
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.selection }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">{% if q.line is not none %}{{ q.line }}{% else %}—{% endif %}
+            {% set st = odds.steam(q, steam_map) %}
+            {% if st %}<span class="pill bg-cyan-500/20 text-cyan-300 ml-1" title="Line moved since first seen">{% if st.up %}▲{% else %}▼{% endif %} {{ st.delta }}</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if q.is_value %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</td>
+          <td class="px-4 py-2.5">
+            <span class="pill bg-surface-3 text-slate-300">{{ q.best_book }}</span>
+            {% if q.book_ladder(3) %}
+            <div class="mt-1 flex flex-wrap gap-1 max-w-[150px]">
+              {% for bk in q.book_ladder(3) %}
+              <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1.5 py-0.5 text-[8px] font-mono leading-none {% if bk.book == q.best_book %}text-brand border-brand/30{% endif %}" title="{{ bk.book }}">{{ bk.book }} {{ bk.am }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if st %}text-cyan-300 font-semibold{% else %}text-slate-500{% endif %}">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-center">
+            <button type="button" class="slip-btn" title="Track this play" data-slip='{{ q.slip_payload()|tojson }}'>+</button>
+          </td>
+        </tr>
+        {% endfor %}
+        <tr x-show="active.length && !rowsFor('spread')">
+          <td colspan="6" class="px-4 py-6 text-center text-xs text-slate-500">No spreads for <span class="text-white" x-text="active[0]"></span>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Totals -->
+{% if slate.totals %}
+<div class="glass-card rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">Totals (Over/Under)</h2>
+    <span class="text-xs text-slate-500 ml-1">best price across books</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-market="total">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Side</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Line</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Best</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in slate.totals %}
+        <tr class="hover:bg-brand/5 transition-colors" data-game="{{ q.game }}" x-show="!active.length || inGame($el.dataset.game)">
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.game }}</td>
+          <td class="px-4 py-2.5 text-xs {% if q.selection|lower == 'over' %}text-emerald-400{% else %}text-slate-300{% endif %}">{{ q.selection }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">{% if q.line is not none %}{{ q.line }}{% else %}—{% endif %}
+            {% set st = odds.steam(q, steam_map) %}
+            {% if st %}<span class="pill bg-cyan-500/20 text-cyan-300 ml-1" title="Line moved since first seen">{% if st.up %}▲{% else %}▼{% endif %} {{ st.delta }}</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right">
+            <div class="text-sm font-mono {% if q.is_value %}text-emerald-400{% else %}text-white{% endif %}">{{ q.best_odds }}</div>
+            {% if q.book_ladder(3) %}
+            <div class="mt-1 flex flex-wrap gap-1 justify-end max-w-[140px] ml-auto">
+              {% for bk in q.book_ladder(3) %}
+              <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1.5 py-0.5 text-[8px] font-mono leading-none {% if bk.book == q.best_book %}text-brand border-brand/30{% endif %}" title="{{ bk.book }}">{{ bk.book }} {{ bk.am }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if st %}text-cyan-300 font-semibold{% else %}text-slate-500{% endif %}">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-center">
+            <button type="button" class="slip-btn" title="Track this play" data-slip='{{ q.slip_payload()|tojson }}'>+</button>
+          </td>
+        </tr>
+        {% endfor %}
+        <tr x-show="active.length && !rowsFor('total')">
+          <td colspan="6" class="px-4 py-6 text-center text-xs text-slate-500">No totals for <span class="text-white" x-text="active[0]"></span>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Bet slip export panel (fixed overlay, keeps the game filter's active state) -->
+<div x-show="slipOpen" x-cloak class="fixed inset-0 z-[70]" @keydown.escape.window="slipOpen = false">
+  <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="slipOpen = false"></div>
+  <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] max-w-lg rounded-xl border border-white/10 bg-surface-2 shadow-2xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+      <div>
+        <div class="font-display font-semibold text-white text-sm">BET SLIP — {{ active_date }}</div>
+        <div class="text-[11px] text-slate-500 mt-0.5 font-mono" x-text="slipHeadline"></div>
+      </div>
+      <button @click="slipOpen = false" class="text-slate-500 hover:text-white transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-5">
+      <textarea id="slipText" readonly rows="12" x-ref="slipArea" :value="slipText()"
+        class="w-full bg-black/30 border border-white/10 rounded-lg p-3 text-xs font-mono text-slate-200 leading-relaxed focus:outline-none"></textarea>
+      <div class="flex items-center gap-2 mt-4">
+        <button @click="copySlip()" class="flex-1 bg-brand hover:bg-brand-dark text-black text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors font-mono"
+          x-text="slipCopied ? 'Copied to clipboard ✓' : 'Copy Text'"></button>
+        <button @click="exportPng()" class="flex-1 bg-surface-3 hover:bg-surface-2 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors font-mono">Download PNG</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</section>
 
 {% if weather_data %}
 <div class="glass-card rounded-xl overflow-hidden mb-6">
   <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
     <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
     <h2 class="font-display font-semibold text-white text-sm">Game Day Weather</h2>
-    <span class="text-xs text-slate-500 ml-1">Next 7 days — outdoor stadiums</span>
+    <span class="text-xs text-slate-500 ml-1">outdoor stadiums · totals angle</span>
   </div>
   <div class="overflow-x-auto">
     <table class="w-full stat-table">
@@ -35,7 +417,6 @@
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Temp</th>
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Wind</th>
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Rain</th>
-          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Impact</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-white/5">
@@ -43,26 +424,9 @@
         <tr class="hover:bg-brand/5 transition-colors">
           <td class="px-4 py-2.5 text-sm text-white">{{ g.away }} @ {{ g.home }}</td>
           <td class="px-4 py-2.5 text-xs text-slate-400">{{ g.stadium }}</td>
-          <td class="px-4 py-2.5 text-right text-sm font-mono text-white">
-            {% if g.temp_max is not none %}{{ g.temp_max|int }}° / {{ g.temp_min|int }}°F{% else %}—{% endif %}
-          </td>
-          <td class="px-4 py-2.5 text-right text-sm font-mono {% if g.wind and g.wind > 15 %}text-red-400{% else %}text-white{% endif %}">
-            {% if g.wind is not none %}{{ g.wind|int }} mph{% else %}—{% endif %}
-          </td>
-          <td class="px-4 py-2.5 text-right text-sm font-mono {% if g.precip and g.precip > 0.3 %}text-amber-400{% else %}text-white{% endif %}">
-            {% if g.precip is not none %}{{ g.precip|round(2) }} in{% else %}—{% endif %}
-          </td>
-          <td class="px-4 py-2.5 text-xs">
-            {% if g.wind and g.wind > 15 %}
-              <span class="pill bg-red-500/20 text-red-400">High Wind — favors run game</span>
-            {% elif g.precip and g.precip > 0.3 %}
-              <span class="pill bg-amber-500/20 text-amber-400">Rain — increased fumble risk</span>
-            {% elif g.temp_max and g.temp_max < 32 %}
-              <span class="pill bg-blue-500/20 text-blue-400">Cold — monitor QB production</span>
-            {% else %}
-              <span class="pill bg-emerald-500/20 text-emerald-400">Clear</span>
-            {% endif %}
-          </td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-white">{% if g.temp_max is not none %}{{ g.temp_max|int }}°{% else %}—{% endif %}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if g.wind and g.wind > 15 %}text-red-400{% else %}text-white{% endif %}">{% if g.wind is not none %}{{ g.wind|int }} mph{% else %}—{% endif %}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if g.precip and g.precip > 0.3 %}text-amber-400{% else %}text-white{% endif %}">{% if g.precip is not none %}{{ g.precip|round(2) }} in{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -71,86 +435,152 @@
 </div>
 {% endif %}
 
-{% if h2h %}
-<div class="glass-card rounded-xl overflow-hidden mb-6">
-  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
-    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-    <h2 class="font-display font-semibold text-white text-sm">Moneyline</h2>
-  </div>
-  <div class="overflow-x-auto">
-    <table class="w-full stat-table">
-      <thead>
-        <tr class="border-b border-white/5">
-          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
-          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Book</th>
-          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Away</th>
-          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Home</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-white/5">
-        {% for game in h2h %}
-        {% for book in game.bookmakers|default([]) %}
-        {% for market in book.markets|default([]) %}
-        <tr class="hover:bg-brand/5 transition-colors">
-          <td class="px-4 py-2.5 text-sm text-white">{{ game.away_team }} @ {{ game.home_team }}</td>
-          <td class="px-4 py-2.5"><span class="pill bg-surface-3 text-slate-300">{{ book.title }}</span></td>
-          {% for outcome in market.outcomes|default([]) %}
-          <td class="px-4 py-2.5 text-right text-sm font-mono {% if outcome.price|default(0) > 0 %}text-emerald-400{% else %}text-red-400{% endif %}">
-            {{ outcome.name }} {{ outcome.price|default('-') }}
-          </td>
-          {% endfor %}
-        </tr>
-        {% endfor %}
-        {% endfor %}
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
-
-{% if spreads %}
-<div class="glass-card rounded-xl overflow-hidden mb-6">
-  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
-    <h2 class="font-display font-semibold text-white text-sm">Spreads</h2>
-  </div>
-  <div class="overflow-x-auto">
-    <table class="w-full stat-table">
-      <thead>
-        <tr class="border-b border-white/5">
-          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
-          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Book</th>
-          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Away</th>
-          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Home</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-white/5">
-        {% for game in spreads %}
-        {% for book in game.bookmakers|default([]) %}
-        {% for market in book.markets|default([]) %}
-        <tr class="hover:bg-brand/5 transition-colors">
-          <td class="px-4 py-2.5 text-sm text-white">{{ game.away_team }} @ {{ game.home_team }}</td>
-          <td class="px-4 py-2.5"><span class="pill bg-surface-3 text-slate-300">{{ book.title }}</span></td>
-          {% for outcome in market.outcomes|default([]) %}
-          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">
-            {{ outcome.name }} {{ outcome.point|default('-') }} ({{ outcome.price|default('-') }})
-          </td>
-          {% endfor %}
-        </tr>
-        {% endfor %}
-        {% endfor %}
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
-
-{% if not h2h and not spreads and not weather_data %}
+{% if not slate.moneylines and not slate.spreads and not slate.totals and not error %}
 <div class="glass-card rounded-xl p-8 text-center">
   <svg class="w-10 h-10 text-slate-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-  <h3 class="text-sm font-semibold text-white mb-1">No odds yet</h3>
-  <p class="text-xs text-slate-500">Lines are typically posted 1-2 days before games. Check back once the season starts.</p>
+  <h3 class="text-sm font-semibold text-white mb-1">No lines yet for this date</h3>
+  <p class="text-xs text-slate-500">Lines are typically posted 1-2 days before games.</p>
 </div>
 {% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function gameFilter() {
+    return {
+      games: {{ games|tojson }},
+      active: [],
+      slipOpen: false,
+      slipHeadline: '',
+      slipCopied: false,
+      init() {
+        // Deep link from the dashboard KPI strip (e.g. /bets?focus=value):
+        // scroll straight to the matching board section.
+        const focus = {{ focus|tojson }};
+        if (focus && ['games', 'lines', 'value', 'best'].includes(focus)) {
+          const el = document.getElementById(focus);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      },
+      isOn(g) { return this.active.includes(g); },
+      toggle(g) {
+        this.active = this.active.includes(g)
+          ? this.active.filter(x => x !== g)
+          : [...this.active, g];
+      },
+      inGame(g) { return this.active.includes(g); },
+      rowsFor(market) {
+        const rows = this.$root.querySelectorAll(`[data-market="${market}"] tbody tr[data-game]`);
+        let count = 0;
+        rows.forEach(r => { if (this.active.includes(r.dataset.game)) count++; });
+        return count;
+      },
+      visible(tr) { return getComputedStyle(tr).display !== 'none'; },
+      slipDraft() {
+        const picks = [];
+        const activeF = this.active;
+        const root = this.$root;
+        const add = (p) => { if (p.bet) picks.push(p); };
+        const best = root.querySelector('[data-market="best"]');
+        if (best) best.querySelectorAll('tbody tr[data-game]').forEach(tr => {
+          if (!this.visible(tr)) return;
+          const game = tr.dataset.game;
+          if (activeF.length && !activeF.includes(game)) return;
+          const cells = tr.querySelectorAll('td');
+          const tag = ((cells[0].querySelector('.pill') || {}).textContent || 'BET').trim();
+          const bet = cells[1].textContent.replace(/\s+/g, ' ').trim();
+          const odds = cells[3].textContent.trim();
+          const edge = parseFloat((cells[5].textContent || '').replace(/[^\d.]/g, '')) || 0;
+          add({ tag, bet, odds, edge, game, book: '' });
+        });
+        picks.sort((a, b) => b.edge - a.edge);
+        return picks;
+      },
+      slipText() {
+        const picks = this.slipDraft();
+        if (!picks.length) return 'No +EV plays on this board yet. Check back when lines post.';
+        const header = ['SCOREEDGE BET SLIP · ' + {{ active_date|tojson }},
+                        this.active.length ? '(' + this.active[0] + ')' : '(all games)',
+                        'best price beats consensus', '----------------------------------'];
+        const lines = picks.map((p, i) =>
+          `${i + 1}. [${p.tag}] ${p.bet} @ ${p.odds}${p.book ? ' · ' + p.book : ''} — +${p.edge.toFixed(1)}% · ${p.game}`);
+        return header.join('\n') + '\n' + lines.join('\n');
+      },
+      openSlip(autoCopy) {
+        const n = this.slipDraft().length;
+        this.slipHeadline = (this.active.length ? this.active[0] + ' · ' : 'all games · ') + n + ' plays';
+        this.slipOpen = true;
+        if (autoCopy) this.copySlip();
+      },
+      copySlip() {
+        const t = this.slipText();
+        if (!t) return;
+        const done = () => {
+          this.slipCopied = true;
+          setTimeout(() => { this.slipCopied = false; }, 2200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(t).then(done).catch(() => this.fallbackCopy(done));
+        } else {
+          this.fallbackCopy(done);
+        }
+      },
+      fallbackCopy(done) {
+        const ta = this.$refs.slipArea;
+        const ro = ta.hasAttribute('readonly');
+        ta.removeAttribute('readonly');
+        ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+        try { document.execCommand('copy'); } catch (e) {}
+        if (ro) ta.setAttribute('readonly', 'true');
+        done();
+      },
+      exportPng() {
+        const text = this.slipText();
+        if (!text || text.indexOf('No +EV plays') === 0) return;
+        const W = 760, PAD = 46, LH = 30;
+        const lines = text.split('\n');
+        const H = 118 + PAD + lines.length * LH + PAD;
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const cv = document.createElement('canvas');
+        cv.width = W * dpr; cv.height = H * dpr;
+        const ctx = cv.getContext('2d');
+        ctx.scale(dpr, dpr);
+        const mono = (size) => `${size}px ui-monospace, 'Cascadia Code', Consolas, monospace`;
+        ctx.fillStyle = '#0b0e17'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#34d399'; ctx.fillRect(0, 0, W, 6);
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ffffff'; ctx.font = '700 24px ' + mono(24);
+        ctx.fillText('SCOREEDGE BET SLIP', PAD, 40);
+        ctx.fillStyle = '#7dd3fc'; ctx.font = '600 15px ' + mono(15);
+        ctx.fillText({{ active_date|tojson }}, PAD, 66);
+        ctx.fillStyle = '#94a3b8'; ctx.font = '12px ' + mono(12);
+        ctx.fillText('best price beats consensus · price shown is best across books', PAD, 90);
+        ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+        ctx.beginPath(); ctx.moveTo(PAD, 110); ctx.lineTo(W - PAD, 110); ctx.stroke();
+        let y = 148;
+        ctx.font = '14px ' + mono(14);
+        lines.forEach(ln => {
+          if (!ln) { y += LH * 0.5; return; }
+          let textLine = ln.length > 96 ? ln.slice(0, 95) + '…' : ln;
+          const em = textLine.match(/[+]?[0-9]+(?:\.[0-9]+)?%/);
+          if (em) {
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillText(textLine.slice(0, em.index), PAD, y);
+            ctx.fillStyle = '#34d399';
+            ctx.fillText(textLine.slice(em.index), PAD + ctx.measureText(textLine.slice(0, em.index)).width + 8, y);
+          } else {
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillText(textLine, PAD, y);
+          }
+          y += LH;
+        });
+        const a = document.createElement('a');
+        a.download = 'scoreedge-betslip-' + {{ active_date|tojson }} + '.png';
+        a.href = cv.toDataURL('image/png');
+        a.click();
+      },
+    };
+  }
+</script>
 {% endblock %}

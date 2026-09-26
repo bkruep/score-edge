@@ -1,131 +1,847 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — ScoreEdge{% endblock %}
-{% block meta_description %}NFL dashboard: 2026 fantasy draft board, upcoming games, and live betting odds.{% endblock %}
-{% block og_title %}ScoreEdge — NFL Dashboard{% endblock %}
+{% block title %}NFL Edge Dashboard — Steam Moves, Value Spots & +EV Bets | ScoreEdge{% endblock %}
+{% block meta_description %}ScoreEdge NFL live dashboard: interactive market map, edge dial, +EV playbook, steam line moves and touchdown hunt angles across every sportsbook.{% endblock %}
+{% block og_title %}ScoreEdge — NFL Live Edge Dashboard{% endblock %}
 {% block canonical %}/{% endblock %}
 {% block og_url %}/{% endblock %}
+
+{% set spark_edges = [] %}
+{% set spark_games = [] %}
+{% set spark_pieces = [] %}
+{% for h in history %}{% set _ = spark_edges.append(h.value) %}{% endfor %}
+{% for h in history %}{% set _ = spark_games.append(h.games) %}{% endfor %}
+{% for h in history %}{% set _ = spark_pieces.append(h.pieces) %}{% endfor %}
+
+{% macro sparkline(series, w=92, h=24, color='#00e676') -%}
+{% if series and series|length > 1 -%}
+{% set minv = series|min %}{% set maxv = series|max %}{% set span = (maxv - minv) or 0.0001 -%}
+<svg class="spark" width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}" preserveAspectRatio="none" role="img">
+  <polygon class="fill" points="0,{{ h }} {% for v in series %}{{ ((loop.index0 / (series|length - 1)) * w)|round(1) }},{{ (h - 3 - ((v - minv) / span * (h - 6)))|round(1) }} {% endfor %}{{ w }},{{ h }}"/>
+  <polyline points="{% for v in series %}{{ ((loop.index0 / (series|length - 1)) * w)|round(1) }},{{ (h - 3 - ((v - minv) / span * (h - 6)))|round(1) }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+</svg>
+{%- else -%}
+<div class="text-[10px] font-mono text-slate-600">sample 1 — trend builds</div>
+{%- endif %}
+{%- endmacro %}
+
 {% block breadcrumb %}
-<div class="mb-6">
-  <h1 class="text-2xl font-display font-bold text-white">Dashboard</h1>
-  <p class="text-sm text-slate-500 mt-1">NFL {{ current_year }} Season</p>
+<div class="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  <div class="animate-fadeup">
+    <div class="flex items-center gap-2 mb-1.5">
+      <span class="pill bg-brand/10 text-brand border-brand/25"><span class="live-dot mr-1.5 inline-block"></span>SCAN LIVE</span>
+      <span class="pill bg-surface-3 text-slate-400">NFL · {{ current_year }}</span>
+      <span class="pill bg-surface-3 text-slate-400 hidden sm:inline-flex">COMMAND DECK</span>
+    </div>
+    <h1 class="text-3xl sm:text-4xl font-display font-bold tracking-tight text-white">The Edge, <span class="gradient-text">live.</span></h1>
+    <p class="text-xs text-slate-500 mt-2 font-mono tracking-wide">MARKET MAP · EDGE DIAL · +EV PLAYBOOK — ACROSS EVERY BOOK</p>
+  </div>
+  <a href="/bets" class="pill bg-brand/10 text-brand border-brand/25 hover:bg-brand/20 transition-colors flex items-center gap-1.5 w-fit animate-fadeup">
+    <span>FULL BETTING BOARD</span>
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  </a>
 </div>
 {% endblock %}
+
 {% block content %}
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-  <div class="glass-card rounded-xl p-4 glow-brand">
-    <div class="text-xs text-slate-500 mb-1">Players</div>
-    <div class="text-2xl font-display font-bold text-white">{{ player_count }}</div>
-  </div>
-  <div class="glass-card rounded-xl p-4">
-    <div class="text-xs text-slate-500 mb-1">Drafted in Mocks</div>
-    <div class="text-2xl font-display font-bold gradient-text">{{ draft_count }}</div>
-  </div>
-  <div class="glass-card rounded-xl p-4">
-    <div class="text-xs text-slate-500 mb-1">Odds Available</div>
-    <div class="text-2xl font-display font-bold text-accent">{{ odds|length }}</div>
-  </div>
-  <div class="glass-card rounded-xl p-4">
-    <div class="text-xs text-slate-500 mb-1">Upcoming</div>
-    <div class="text-2xl font-display font-bold text-white">{{ upcoming|length }}</div>
-  </div>
-</div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-  <div class="lg:col-span-2 glass-card rounded-xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
-      <svg class="w-4 h-4 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-      <h2 class="font-display font-semibold text-white text-sm">2026 Draft Board — Top 20</h2>
-      <span class="text-xs text-slate-500 ml-1">PPR Average Draft Position</span>
+<!-- ===================== COMMAND DECK (global Alpine scope) ===================== -->
+<div x-data='deck({{ deck|tojson }})' x-init="startClock()">
+
+  <!-- LIVE COMMAND BAR -->
+  <div class="glass-card rounded-xl px-4 py-3 mb-6 flex flex-wrap items-center gap-x-5 gap-y-2 animate-fadeup deck-live">
+    <div class="flex items-center gap-2">
+      <span class="live-dot"></span>
+      <span class="text-xs font-mono text-brand tracking-wide">MARKET SCAN ACTIVE</span>
     </div>
-    <div class="overflow-x-auto">
-      <table class="w-full">
-        <thead>
-          <tr class="border-b border-white/5">
-            <th class="px-5 py-2.5 text-left text-xs font-semibold text-slate-500">Pick</th>
-            <th class="px-5 py-2.5 text-left text-xs font-semibold text-slate-500">Player</th>
-            <th class="px-5 py-2.5 text-left text-xs font-semibold text-slate-500">Pos</th>
-            <th class="px-5 py-2.5 text-left text-xs font-semibold text-slate-500">Team</th>
-            <th class="px-5 py-2.5 text-right text-xs font-semibold text-slate-500">ADP</th>
-            <th class="px-5 py-2.5 text-right text-xs font-semibold text-slate-500">Bye</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-white/5">
-          {% for p in draft_board %}
-          <tr class="hover:bg-brand/5 transition-colors">
-            <td class="px-5 py-2.5 text-sm font-mono text-slate-400">{{ loop.index }}</td>
-            <td class="px-5 py-2.5 text-sm font-medium text-white">{{ p.name }}</td>
-            <td class="px-5 py-2.5 text-xs">
-              {% if p.position == 'QB' %}
-                <span class="pill bg-purple-500/20 text-purple-400">{{ p.position }}</span>
-              {% elif p.position == 'RB' %}
-                <span class="pill bg-blue-500/20 text-blue-400">{{ p.position }}</span>
-              {% elif p.position == 'WR' %}
-                <span class="pill bg-emerald-500/20 text-emerald-400">{{ p.position }}</span>
-              {% elif p.position == 'TE' %}
-                <span class="pill bg-amber-500/20 text-amber-400">{{ p.position }}</span>
-              {% else %}
-                <span class="pill bg-surface-3 text-slate-400">{{ p.position }}</span>
-              {% endif %}
-            </td>
-            <td class="px-5 py-2.5 text-xs text-slate-400">{{ p.team }}</td>
-            <td class="px-5 py-2.5 text-right text-sm font-mono text-white">{{ p.adp_formatted }}</td>
-            <td class="px-5 py-2.5 text-right text-xs text-slate-500">{{ p.bye }}</td>
-          </tr>
-          {% endfor %}
-          {% if not draft_board %}
-          <tr><td colspan="6" class="px-5 py-8 text-center text-sm text-slate-500">No draft data available</td></tr>
-          {% endif %}
-        </tbody>
-      </table>
+    <div class="flex items-center gap-2 text-xs font-mono text-slate-500">
+      <span>LAST SCAN</span>
+      <span class="text-slate-300" x-text="ago()">—</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button @click="auto = !auto; armAuto()"
+              class="rev-chip" :class="auto && 'on'">
+        <span class="w-1.5 h-1.5 rounded-full" :class="auto ? 'bg-brand' : 'bg-slate-600'" :style="auto && 'box-shadow: 0 0 6px #00e676'"></span>
+        <span x-text="auto ? 'AUTO RE-SCAN ON' : 'AUTO RE-SCAN'"></span>
+      </button>
+      <button @click="refresh(true)" class="rev-chip" :class="refreshing && 'opacity-50'">
+        <template x-if="refreshing"><span class="spinner w-3 h-3 inline-block"></span></template>
+        <template x-if="!refreshing">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+        </template>
+        <span x-text="refreshing ? 'RE-SCANNING…' : 'RE-SCAN NOW'"></span>
+      </button>
+      <template x-if="justScanned"><span class="text-[10px] font-mono text-brand animate-pulse">✓ SYNCED</span></template>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span class="tick-label">POOL</span>
+      <span class="text-xs font-mono text-white" x-text="counts.value">0</span>
+      <span class="text-[10px] font-mono text-slate-600">+EV plays</span>
+    </div>
+  </div>
+  <!-- ===================== KPI ROW ===================== -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <a href="/bets?focus=games" class="glass-card rounded-xl px-4 py-3 card-hover animate-fadeup">
+      <div class="tick-label mb-2 flex items-center justify-between">GAMES<span class="text-brand text-[10px]">→</span></div>
+      <div class="flex items-end justify-between gap-2">
+        <div class="text-2xl font-display font-bold text-white" x-text="counts.games">0</div>
+        {{ sparkline(spark_games, 74, 26) }}
+      </div>
+      <div class="text-[10px] text-slate-600 font-mono mt-1">on the board</div>
+    </a>
+    <a href="/bets?focus=lines" class="glass-card rounded-xl px-4 py-3 card-hover animate-fadeup">
+      <div class="tick-label mb-2 flex items-center justify-between">LINES<span class="text-brand text-[10px]">→</span></div>
+      <div class="flex items-end justify-between gap-2">
+        <div class="text-2xl font-display font-bold text-white" x-text="counts.lines">0</div>
+        {{ sparkline(spark_pieces, 74, 26) }}
+      </div>
+      <div class="text-[10px] text-slate-600 font-mono mt-1">best price</div>
+    </a>
+    <a href="/bets?focus=value" class="glass-card rounded-xl px-4 py-3 card-hover animate-fadeup">
+      <div class="tick-label mb-2 flex items-center justify-between">VALUE SPOTS<span class="text-brand text-[10px]">→</span></div>
+      <div class="flex items-end justify-between gap-2">
+        <div class="text-2xl font-display font-bold text-emerald-400" x-text="counts.value">0</div>
+        {{ sparkline(spark_edges, 74, 26) }}
+      </div>
+      <div class="text-[10px] text-slate-600 font-mono mt-1">+EV plays</div>
+    </a>
+    <div class="glass-card rounded-xl px-4 py-3 animate-fadeup">
+      <div class="tick-label mb-2 flex items-center justify-between">TOP EDGE<span class="text-brand text-[10px]">==</span></div>
+      <div class="flex items-end justify-between gap-2">
+        <div class="text-2xl font-display font-bold text-emerald-400" x-text="'+' + counts.top.toFixed(1)">0</div>
+        <span class="text-xs font-mono text-brand" x-show="counts.top > 0">steepest</span>
+      </div>
+      <div class="text-[10px] text-slate-600 font-mono mt-1">on the board</div>
     </div>
   </div>
 
-  <div class="glass-card rounded-xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
-      <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-      <h2 class="font-display font-semibold text-white text-sm">Quick Links</h2>
+  <!-- ===================== EDGE GEMS ===================== -->
+  {% if gems %}
+  <div class="mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <div class="pulse-dot-wrap">
+        <h2 class="font-display font-semibold text-white text-sm inline-block">EDGE GEMS <span class="tick-label ml-2">TOP 5 HOLO</span></h2>
+      </div>
+      <span class="text-[10px] font-mono text-slate-600">sharpest plays on the board — click + to lock in your ledger</span>
     </div>
-    <div class="p-4 space-y-2">
-      <a href="/rankings" class="block px-4 py-3 rounded-lg bg-surface-3/50 hover:bg-brand/10 border border-white/5 hover:border-brand/20 transition-all">
-        <div class="text-sm font-medium text-white">Fantasy Rankings</div>
-        <div class="text-xs text-slate-500">PPR, Standard, Half-PPR</div>
-      </a>
-      <a href="/odds" class="block px-4 py-3 rounded-lg bg-surface-3/50 hover:bg-accent/10 border border-white/5 hover:border-accent/20 transition-all">
-        <div class="text-sm font-medium text-white">Odds & Weather</div>
-        <div class="text-xs text-slate-500">Lines, Spreads, Game Day Conditions</div>
-      </a>
-      <a href="/trades" class="block px-4 py-3 rounded-lg bg-surface-3/50 hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/20 transition-all">
-        <div class="text-sm font-medium text-white">Trade Analyzer</div>
-        <div class="text-xs text-slate-500">Compare Players Side by Side</div>
-      </a>
-    </div>
-  </div>
-</div>
-
-<div class="grid grid-cols-1 gap-6">
-  <div class="glass-card rounded-xl overflow-hidden">
-    <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
-      <svg class="w-4 h-4 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      <h2 class="font-display font-semibold text-white text-sm">Upcoming Games</h2>
-    </div>
-    <div class="divide-y divide-white/5">
-      {% for game in upcoming %}
-      <div class="px-5 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
-        <div class="flex items-center gap-3">
-          <span class="pill bg-surface-3 text-slate-400">Wk {{ game.week }}</span>
-          <span class="text-sm text-slate-400">{{ game.date }}</span>
+    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+      {% for gem in gems %}
+      <div class="glass-card rounded-xl p-3.5 relative overflow-hidden card-hover holo-gem animate-fadeup" style="animation-delay:{{ loop.index0 * 60 }}ms">
+        <div class="gem-sheen"></div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="gem-rank">G{{ '%02d' % loop.index }}</span>
+          <span class="gem-type">{{ gem.type }}</span>
+          <button type="button" class="slip-btn" title="Track this play"
+                  data-slip='{{ gem.slip|tojson }}'>+</button>
         </div>
-        <div class="text-sm font-medium text-white">
-          <span class="text-slate-400">{{ game.away_team }}</span>
-          <span class="text-slate-600 mx-2">@</span>
-          <span class="text-white">{{ game.home_team }}</span>
+        <div class="text-xl font-display font-extrabold leading-none gem-edge" style="color:{{ '#00e676' if gem.edge >= 3 else '#8fd694' }}">+{{ '%.2f' % gem.edge }}%</div>
+        <div class="mt-1.5 text-sm font-semibold text-white leading-tight">{{ gem.player or gem.sel }}</div>
+        <div class="text-[10px] font-mono text-slate-500 mt-1 leading-snug">{{ gem.game }}</div>
+        <div class="mt-1 text-[11px] font-mono text-brand">{{ gem.best|safe }}</div>
+        <div class="mt-2 flex flex-wrap gap-1">
+          {% for bk in gem.books[:3] %}
+          <span class="bg-white/5 text-slate-300 border border-white/10 rounded px-1.5 py-0.5 text-[9px] font-mono" title="{{ bk.label }}">
+            {{ bk.book }} {{ bk.american }}
+          </span>
+          {% endfor %}
+          {% if gem.books|length > 3 %}<span class="text-[9px] font-mono text-slate-600">+{{ gem.books|length - 3 }}</span>{% endif %}
         </div>
       </div>
       {% endfor %}
-      {% if not upcoming %}
-      <div class="px-5 py-8 text-center text-sm text-slate-500">No upcoming games — season schedule posts soon.</div>
-      {% endif %}
     </div>
   </div>
+  {% endif %}
+
+  <!-- ===================== PROOF THE EDGE WORKS ===================== -->
+  {% if proof %}
+  <div class="glass-card rounded-xl p-5 mb-6 overflow-hidden relative animate-fadeup">
+    <div class="proof-glow"></div>
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <div>
+        <h2 class="font-display font-semibold text-white text-sm">PROOF THE EDGE WORKS</h2>
+        <span class="text-[10px] text-slate-600 font-mono">every play we flag is logged at the price you'd have hit — graded against real final scores</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="rev-chip on">{{ proof.settled }} settled</span>
+        <span class="rev-chip" style="border-color:rgba(0,230,118,0.3);color:#00e676;">{{ proof.hit_pct }}% hit</span>
+        <span class="rev-chip" style="border-color:{{ '#f87171' if proof.roi_pct < 0 else '#00e676' }};color:{{ '#f87171' if proof.roi_pct < 0 else '#00e676' }};">
+          {{ ('+' if proof.roi_pct >= 0 else '') ~ '%.2f' % proof.roi_pct }}% ROI</span>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+      <div class="rounded-xl border border-white/5 bg-black/20 px-3 py-2.5">
+        <div class="text-2xl font-display font-bold text-white leading-none">{{ proof.logged }}</div>
+        <div class="text-[9px] font-mono text-slate-600 mt-1 tracking-wider">BETS LOGGED</div>
+      </div>
+      <div class="rounded-xl border border-white/5 bg-black/20 px-3 py-2.5">
+        <div class="text-2xl font-display font-bold text-white leading-none">{{ proof.wins }}<span class="text-slate-600 text-base"> / {{ proof.losses }}</span></div>
+        <div class="text-[9px] font-mono text-slate-600 mt-1 tracking-wider">W / L ({{ proof.pushes }} P)</div>
+      </div>
+      <div class="rounded-xl border border-white/5 bg-black/20 px-3 py-2.5">
+        <div class="text-2xl font-display font-bold text-emerald-400 leading-none">{{ ('+' if proof.roi_pct >= 0 else '') ~ '%.1f' % proof.roi_pct }}%</div>
+        <div class="text-[9px] font-mono text-slate-600 mt-1 tracking-wider">FLAT 1U ROI</div>
+      </div>
+      <div class="rounded-xl border border-white/5 bg-black/20 px-3 py-2.5">
+        <div class="text-2xl font-display font-bold text-emerald-400 leading-none">+{{ '%.2f' % proof.avg_edge }}%</div>
+        <div class="text-[9px] font-mono text-slate-600 mt-1 tracking-wider">AVG EDGE</div>
+      </div>
+      <div class="rounded-xl border border-white/5 bg-black/20 px-3 py-2.5">
+        <div class="text-2xl font-display font-bold {{ 'text-emerald-400' if proof.top_edge >= 8 else 'text-white' }} leading-none">+{{ '%.2f' % proof.top_edge }}%</div>
+        <div class="text-[9px] font-mono text-slate-600 mt-1 tracking-wider">DEEPEST EDGE</div>
+      </div>
+    </div>
+    {% if proof.by_bucket %}
+    <div>
+      <div class="tick-label mb-2">WINS BY EDGE BUCKET</div>
+      <div class="grid grid-cols-5 gap-2">
+        {% for b in proof.by_bucket %}
+        <div class="rounded-lg border border-white/5 px-2 py-2 text-center" title="{{ b.label }}">
+          <div class="text-base font-display font-bold text-white leading-none">{{ b.wins }}<span class="text-slate-600 text-xs"> / {{ b.n }}</span></div>
+          <div class="mt-1 h-1 rounded-full bg-slate-800 overflow-hidden">
+            <div class="h-full rounded-full {{ '#00e676' if b.n else 'bg-slate-700' }}" style="width:{{ (b.n / (proof.by_bucket|map(attribute='n')|sum or 1) * 100) | round(1) if b.n else 0 }}%"></div>
+          </div>
+          <div class="text-[8px] font-mono text-slate-600 mt-1 truncate">{{ b.label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    <div class="mt-3 flex flex-wrap items-center gap-3 text-[9px] font-mono text-slate-600">
+      <span class="pulse-dot"></span>
+      <span>{{ proof.today_n }} flagged on today's slate · {{ proof.pending }} awaiting final scores</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ===================== MARKET MAP + EDGE DIAL ===================== -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+    <!-- MARKET MAP -->
+    <div class="glass-card rounded-xl p-4 animate-fadeup glow-brand lg:col-span-2">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div>
+          <h2 class="font-display font-semibold text-white text-sm">MARKET MAP</h2>
+          <span class="text-[10px] text-slate-600 font-mono">every game × market — tap a cell to focus the playbook</span>
+        </div>
+        <div class="flex items-center gap-2 text-[9px] font-mono text-slate-600">
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm" style="background:rgba(0,230,118,0.10)"></span>0-1%</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm" style="background:rgba(0,230,118,0.22)"></span>1-2%</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm" style="background:rgba(0,230,118,0.4)"></span>2-3%</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm" style="background:rgba(0,230,118,0.85)"></span>3-4.5%</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm" style="background:#00e676"></span>4.5%+</span>
+        </div>
+      </div>
+
+      <template x-if="map.rows.length">
+        <div class="mmap" style="grid-template-columns: 118px repeat(4, minmax(64px, 1fr))" x-cloak>
+          <div></div>
+          <template x-for="mkt in ['ml','spr','tot','prop']" :key="mkt">
+            <div class="text-center text-[9px] font-mono tracking-widest text-slate-600 pb-1" x-text="mkt.toUpperCase()"></div>
+          </template>
+          <template x-for="slot in map.slots" :key="slot.game + slot.m">
+            <button @click="slot.m === 'game' ? setGame(slot.game) : setFocus(slot.game, slot.m)"
+                    :class="slot.m === 'game' ? ('text-left pr-3 flex items-baseline gap-1.5 ' + (focusGame === slot.game ? 'text-brand' : 'hover:text-white')) : cellBtn(focusGame, focusMarket, slot.game, slot.m)"
+                    :title="slot.m === 'game' ? slot.game : (slot.short + ' · ' + cellLabel(slot.m) + ' — ' + (slot.cell ? slot.cell.sel + ' ' + slot.cell.best : 'no live line'))">
+              <span class="mmap-label truncate" x-show="slot.m === 'game'" x-text="slot.short" :title="slot.game"></span>
+              <div class="mmap-cell-wrap" x-show="slot.m !== 'game'">
+                <div class="py-1.5 px-1 rounded-lg mmap-cell"
+                     :class="(slot.cell ? slot.cell.cls + (slot.m === 'prop' ? ' prop-cell' : '') + (slot.cell.isv ? ' tide' : '') : '')"
+                     :style="slot.cell && slot.cell.isv && slot.cell.edge ? tideStyle(slot.cell.edge) : (slot.cell ? 'box-shadow: inset 0 0 12px rgba(0,0,0,0.18)' : '')">
+                  <template x-if="slot.cell">
+                    <div>
+                      <div class="text-sm font-display font-bold leading-none"
+                           x-show="slot.cell.edge && slot.cell.isv"
+                           x-text="'+' + slot.cell.edge.toFixed(1)"></div>
+                      <div class="text-[10px] font-mono leading-tight"
+                           x-show="slot.m === 'prop' && !slot.cell.isv"
+                           x-text="'+' + slot.cell.edge.toFixed(1)"></div>
+                      <div class="text-[11px] font-semibold font-mono leading-tight"
+                           x-show="!slot.cell.isv && slot.cell.label"
+                           x-text="slot.cell.label"></div>
+                      <div class="text-[9px] opacity-70 font-mono mt-0.5" x-show="slot.cell.n" x-text="slot.cell.n + ' plays'"></div>
+                    </div>
+                  </template>
+                </div>
+                <div class="py-1.5 px-1 rounded-lg mmap-cell" x-show="!slot.cell"
+                     style="background:rgba(148,163,184,0.05); border:1px dashed rgba(148,163,184,0.14)">
+                  <span class="text-[11px] font-mono text-slate-600">&mdash;</span>
+                </div>
+              </div>
+            </button>
+          </template>
+        </div>
+      </template>
+      <template x-if="!map.rows.length">
+        <div class="py-10 text-center">
+          <div class="text-sm text-slate-500 font-mono">No games on the board yet — re-scan when the slate fills.</div>
+          <div class="text-[11px] text-slate-700 mt-2 font-mono">tap a game·market cell to build a laser focus</div>
+        </div>
+      </template>
+
+      <template x-if="focusGame || focusMarket">
+        <div class="mt-3 pt-3 border-t border-white/5 flex flex-wrap items-center gap-2">
+          <span class="tick-label">FOCUS</span>
+          <span class="rev-chip on" x-text="focusLabel()"></span>
+          <button @click="setGame('')" class="rev-chip" x-show="focusGame" x-text="'x ' + focusGameShort()"></button>
+          <button @click="setMarket('')" class="rev-chip" x-show="focusMarket" x-text="'x ' + marketLabel(focusMarket)"></button>
+          <button @click="clearFocus()" class="rev-chip hover:text-red-400">CLEAR ALL</button>
+          <span class="ml-auto text-[10px] font-mono text-slate-600" x-text="playRows().length + ' plays match focus'"></span>
+        </div>
+      </template>
+    </div>
+
+    <!-- EDGE DIAL + BOOK SHARE -->
+    <div class="glass-card rounded-xl p-4 animate-fadeup flex flex-col">
+      <div class="mb-2">
+        <h2 class="font-display font-semibold text-white text-sm">EDGE DIAL</h2>
+        <span class="text-[10px] text-slate-600 font-mono">set your bar — the pool adjusts live</span>
+      </div>
+
+      <div class="flex items-end justify-between mb-3">
+        <div>
+          <div class="text-3xl font-display font-bold text-emerald-400 leading-none" x-text="minEdge.toFixed(2) + '%'">1.50%</div>
+          <div class="text-[9px] font-mono text-slate-600 mt-1 tracking-wider">MINIMUM EDGE</div>
+        </div>
+        <div class="text-right">
+          <div class="text-xl font-display font-bold text-white leading-none" x-text="countsAt(minEdge)">0</div>
+          <div class="text-[9px] font-mono text-slate-600 mt-1 tracking-wider">PLAYS ≥ BAR</div>
+        </div>
+      </div>
+
+      <input type="range" class="dial" min="0" max="6" step="0.25" x-model.number="minEdge" aria-label="Minimum edge filter">
+      <div class="flex justify-between text-[9px] font-mono text-slate-600 mt-1"><span>0%</span><span>6%</span></div>
+
+      <div class="m-field mt-3" style="height:92px" :class="!countsAt(0) && 'opacity-40'">
+        <template x-for="b in dist()" :key="b.lo">
+          <div class="flex flex-col justify-end items-center gap-1 flex-1" :title="Math.round(b.lo * 10) / 10 + '–' + (Math.round(b.lo * 10) / 10 + 0.5) + '% · ' + b.count + ' plays'">
+            <span class="text-[9px] font-mono" :class="b.active ? 'text-emerald-400' : 'text-slate-600'" x-text="b.count"></span>
+            <div class="bar-vert w-full" :class="b.active ? 'bg-emerald-500/80' : 'bg-slate-700/50'" :style="'height:' + b.pct + '%'"></div>
+          </div>
+        </template>
+      </div>
+
+      <div class="mt-auto pt-3 border-t border-white/5">
+        <div class="tick-label mb-2 flex items-center justify-between">
+          <span>WHO'S OFFERING</span>
+          <span class="font-normal normal-case" x-text="book ? book + ' only' : 'all books'"></span>
+        </div>
+        <div class="grid gap-2">
+          <template x-for="b in books" :key="b.book">
+            <button @click="toggleBook(b.book)" class="text-left group">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[11px] text-slate-300 group-hover:text-white transition-colors" :class="book === b.book && 'text-brand'" x-text="b.book"></span>
+                <span class="text-[11px] font-mono text-amber-300" x-text="b.n + ' · ' + b.pct + '%'"></span>
+              </div>
+              <div class="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                <div class="h-full rounded-full hbar" :class="book === b.book && 'hbar-violet'" style="width:0%" :style="'width:' + Math.max(b.pct, 3) + '%'"></div>
+              </div>
+            </button>
+          </template>
+          <template x-if="!books.length">
+            <div class="text-[11px] text-slate-600 font-mono">books start pricing value spots here</div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ===================== COMMAND PLAYBOOK ===================== -->
+  <div class="glass-card rounded-xl overflow-hidden mb-6 animate-fadeup">
+    <div class="px-4 py-3 border-b border-white/5 flex flex-wrap items-center gap-2 scan-line">
+      <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-1"></div>
+      <h2 class="font-display font-semibold text-white text-sm">COMMAND PLAYBOOK</h2>
+      <span class="text-xs text-slate-500 ml-1 hidden sm:inline">every edge play on the board — sorted, filtered, live</span>
+      <div class="ml-auto flex items-center gap-2">
+        <input x-model="q" type="search" placeholder="search player / side…"
+               class="bg-surface-3 border border-white/10 rounded-md px-2.5 py-1.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-brand/50 w-44"
+               autocomplete="off">
+        <span class="text-[10px] font-mono text-slate-600" x-text="playRows().length + ' / ' + rows.length + ' plays'"></span>
+      </div>
+    </div>
+    <div class="px-4 py-2.5 border-b border-white/5 flex flex-wrap items-center gap-1.5">
+      <span class="tick-label mr-1">MARKETS</span>
+      <template x-for="mkt in ['ml','spr','tot','prop']" :key="mkt">
+        <button class="rev-chip" :class="focusMarket === mkt && (mkt === 'prop' ? 'on-props' : 'on')"
+                @click="setMarket(mkt)" x-text="marketLabel(mkt)"></button>
+      </template>
+      <span class="w-px h-4 bg-white/10 mx-1.5"></span>
+      <span class="tick-label mr-1">GAMES</span>
+      <template x-for="row in map.rows" :key="'g' + row.game">
+        <button class="rev-chip" :class="focusGame === row.game && 'on'"
+                @click="setGame(row.game)" x-text="row.short" :title="row.game"></button>
+      </template>
+      <template x-if="!map.rows.length"><span class="text-[11px] text-slate-600 font-mono">board seeding…</span></template>
+      <span class="w-px h-4 bg-white/10 mx-1.5"></span>
+      <span class="tick-label mr-1">STAT FAMILY</span>
+      <template x-for="a in radarAxes()" :key="'f' + a.cat">
+        <button class="rev-chip on-props" :class="radarFocus === a.cat && 'on-props'"
+                @click="setRadarFocus(a.cat)" x-text="a.cat"></button>
+      </template>
+      <button class="rev-chip ml-auto" :class="minEdge !== 1.5 && 'on'" @click="minEdge = 1.5">
+        <span x-text="'≥ ' + minEdge.toFixed(2) + '%'"></span>
+      </button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full stat-table">
+        <thead>
+          <tr class="border-b border-white/5">
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400 sort-th" @click="setSort('type')">Type<span x-text="arrow('type')"></span></th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400 sort-th" @click="setSort('bet')">Bet<span x-text="arrow('bet')"></span></th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400 sort-th" @click="setSort('game')">Game<span x-text="arrow('game')"></span></th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400 sort-th" @click="setSort('book')">Book<span x-text="arrow('book')"></span></th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 sort-th" @click="setSort('best')">Best<span x-text="arrow('best')"></span></th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 sort-th" @click="setSort('cons')">Consensus<span x-text="arrow('cons')"></span></th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 sort-th" @click="setSort('edge')">Edge<span x-text="arrow('edge')"></span></th>
+            <th class="px-3 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5" x-cloak>
+          <template x-for="p in playRows()" :key="p.game + p.type + p.sel + p.book">
+            <tr class="play-row">
+              <td class="px-4 py-2.5">
+                <span class="pill" :class="p.type === 'PROP' ? 'bg-prop/20 text-prop-light' : 'bg-surface-3 text-slate-300'" x-text="p.type"></span>
+              </td>
+              <td class="px-4 py-2.5 text-sm text-white">
+                <span x-text="p.sel"></span>
+                <template x-if="p.player"><span class="text-xs text-prop-light" x-text="' ' + p.player"></span></template>
+                <template x-if="p.type !== 'PROP' && p.line !== null && p.line !== undefined"><span class="text-slate-500 text-xs" x-text="' ' + p.line"></span></template>
+                <template x-if="p.cat"><span class="ml-1.5 pill bg-white/5 text-slate-500 text-[9px] font-mono" x-text="p.cat"></span></template>
+              </td>
+              <td class="px-4 py-2.5 text-xs text-slate-400 font-mono" x-text="p.short" :title="p.game"></td>
+              <td class="px-4 py-2.5">
+                <div class="text-xs text-slate-400 font-mono" x-text="p.book"></div>
+                <template x-if="p.books && p.books.length">
+                  <div class="mt-1 flex flex-wrap gap-1 max-w-[180px]">
+                    <template x-for="bk in p.books.slice(0, 3)" :key="p.book + bk.american">
+                      <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1.5 py-0.5 text-[8px] font-mono leading-none"
+                            :class="bk.book === p.book && 'text-brand border-brand/30'" :title="bk.label">
+                        <span x-text="bk.book + ' ' + bk.american"></span>
+                      </span>
+                    </template>
+                    <span x-show="p.books.length > 3" class="text-[8px] font-mono text-slate-600" x-text="'+' + (p.books.length - 3)"></span>
+                  </div>
+                </template>
+              </td>
+              <td class="px-4 py-2.5 text-right text-sm font-mono text-emerald-400" x-text="p.best"></td>
+              <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-400" x-text="p.cons"></td>
+              <td class="px-4 py-2.5 text-right">
+                <span class="inline-flex items-center gap-2">
+                  <span class="pill" :class="p.isv ? 'bg-emerald-500/20 text-emerald-400' : 'bg-surface-3 text-slate-500'" x-text="'+' + p.edge.toFixed(1) + '%'"></span>
+                  <span class="w-12 h-1 rounded-full bg-white/5 overflow-hidden hidden sm:block">
+                    <span class="block h-full rounded-full" style="width:4%"
+                          :style="'width:' + Math.max(4, Math.round(p.edge / pctMax() * 100)) + '%'"></span>
+                  </span>
+                </span>
+              </td>
+              <td class="px-3 py-2.5 text-center" x-show="p.slip">
+                <button type="button" class="slip-btn" title="Track this play" :data-slip="JSON.stringify(p.slip)">+</button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="!playRows().length" x-cloak>
+            <td colspan="8" class="px-4 py-10 text-center text-sm text-slate-500 font-mono">
+              <span x-text="rows.length ? 'No plays clear the current filters — widen the dial or clear focus.' : 'The board has no edge plays right now. Re-scan in a bit.'"></span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="px-4 py-2 border-t border-white/5 flex items-center justify-between">
+      <span class="text-[10px] text-slate-600 font-mono">best price beats consensus · sorts live · tap a market-map cell to focus</span>
+      <a href="/bets?focus=best" class="text-xs text-brand font-mono hover:underline">Built the slip →</a>
+    </div>
+  </div>
+
+  <!-- ===================== STEAM / LINE MOVES ===================== -->
+  <div class="glass-card rounded-xl overflow-hidden mb-6 animate-fadeup">
+    <div class="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-steam" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+        <h2 class="font-display font-semibold text-white text-sm">STEAM &amp; LINE MOVES</h2>
+      </div>
+      <span class="tick-label">vs first-seen baseline</span>
+    </div>
+    {% if analytics.n_series or analytics.n_moves %}
+    <div class="overflow-x-auto">
+      {% if analytics.n_series %}
+      <div class="divide-y divide-white/5">
+        {% for s in analytics.series %}
+        <div class="flex items-center gap-4 px-4 py-2 min-w-0">
+          <div class="min-w-0 flex-1">
+            <div class="text-xs text-white font-mono truncate">{{ s.game }}</div>
+            <div class="text-[10px] text-slate-500 font-mono mt-0.5">{{ s.side }} · {{ s.market }} <span class="text-slate-600">· {{ s.n }} samples</span></div>
+          </div>
+          <svg width="{{ s.width }}" height="{{ s.height }}" class="shrink-0" xmlns="http://www.w3.org/2000/svg">
+            <line x1="0" y1="{{ s.base_y }}" x2="{{ s.width }}" y2="{{ s.base_y }}" stroke="rgba(148,163,184,0.35)" stroke-width="1" stroke-dasharray="3 3"></line>
+            <polyline points="{{ s.poly }}" fill="none" {% if s.up %}stroke="#fde68a" stroke-width="1.5"{% elif s.down %}stroke="#a5f3fc" stroke-width="1.5"{% else %}stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="1 2"{% endif %}></polyline>
+            <circle cx="{{ s.cur_x }}" cy="{{ s.cur_y }}" r="2.5" {% if s.up %}fill="#fde68a"{% elif s.down %}fill="#a5f3fc"{% else %}fill="#94a3b8"{% endif %}></circle>
+          </svg>
+          <span class="w-16 text-right shrink-0">
+            {% if s.delta > 0 %}<span class="steam-chip steam-up">+{{ s.delta }}</span>
+            {% elif s.delta < 0 %}<span class="steam-chip steam-down">{{ s.delta }}</span>
+            {% else %}<span class="text-[10px] font-mono text-slate-500">steady</span>{% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if analytics.n_moves %}
+      <table class="w-full stat-table">
+        <thead>
+          <tr class="border-b border-white/5">
+            <th class="px-4 py-2.5 text-left text-xs font-semibold text-slate-400">Game</th>
+            <th class="px-4 py-2.5 text-left text-xs font-semibold text-slate-400">Market</th>
+            <th class="px-4 py-2.5 text-left text-xs font-semibold text-slate-400">Side</th>
+            <th class="px-4 py-2.5 text-right text-xs font-semibold text-slate-400">Move</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for m in analytics.moves %}
+          <tr class="hover:bg-white/[0.02] transition-colors">
+            <td class="px-4 py-2.5 text-xs text-slate-300">{{ m.game }}</td>
+            <td class="px-4 py-2.5"><span class="pill bg-surface-3 text-slate-300">{{ m.market }}</span></td>
+            <td class="px-4 py-2.5 text-xs text-slate-400 font-mono">{{ m.side }}</td>
+            <td class="px-4 py-2.5 text-right">
+              <span class="steam-chip {% if m.up %}steam-up{% else %}steam-down{% endif %}">
+                <span class="text-slate-500">{{ m.from }}</span>
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+                <span>{{ m.to }}</span>
+                <span class="opacity-70">+{{ m.delta|round(1) }}</span>
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="px-4 py-7 text-center text-xs text-slate-500">Watching for steam — baselines seed on the first line fetch, charts repaint as main lines move.</div>
+    {% endif %}
+  </div>
+
+  <!-- ===================== GAME INTELLIGENCE ===================== -->
+  {% if game_cards %}
+  <div class="glass-card rounded-xl overflow-hidden mb-6 animate-fadeup">
+    <div class="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3.0001V12.75m8.25-5.25L16.5 9m0 0l3.75 3.75M16.5 9V5.25m0 0h3.75"/></svg>
+        <h2 class="font-display font-semibold text-white text-sm">GAME INTELLIGENCE</h2>
+        <span class="text-xs text-slate-500 ml-1 hidden sm:inline">tap a game for its market reads</span>
+      </div>
+      <span class="tick-label">richest games first</span>
+    </div>
+    <div class="grid md:grid-cols-2 gap-px bg-white/5">
+      {% for c in game_cards %}
+      <div x-data="{ open: false }" class="bg-surface-1" :class="focusGame === '{{ c.game }}' && 'edge-ring'">
+        <button @click="open = !open" class="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/[0.02] transition-colors group">
+          <div class="flex flex-col items-center gap-1 shrink-0">
+            {% if c.heat >= 4 %}<span class="heat-chip heat-4p">🔥 {{ c.heat }}</span>
+            {% elif c.heat == 3 %}<span class="heat-chip heat-3">▲ {{ c.heat }}</span>
+            {% elif c.heat == 2 %}<span class="heat-chip heat-2">• {{ c.heat }}</span>
+            {% elif c.heat == 1 %}<span class="heat-chip heat-1">· {{ c.heat }}</span>
+            {% else %}<span class="heat-chip" style="color:#64748b;border-color:rgba(100,116,139,0.3);background:rgba(100,116,139,0.08)">· 0</span>
+            {% endif %}
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-semibold text-white font-mono truncate">{{ c.away }} <span class="text-slate-600">@</span> {{ c.home }}</div>
+            <div class="text-[10px] font-mono text-slate-500 mt-0.5">
+              {{ c.n_lines }} lines{% if c.n_props %} · {{ c.n_props }} props{% endif %}{% if c.n_steam %} · <span class="text-amber-300">{{ c.n_steam }} steam</span>{% endif %}
+            </div>
+          </div>
+          <div class="shrink-0">
+            {% if c.spr %}<div class="text-xs font-mono text-slate-300 text-right">{{ c.spr.line }} <span class="text-emerald-400">{{ odds.odds_html(c.spr.best_odds) }}</span></div>{% endif %}
+            {% if c.tot %}<div class="text-xs font-mono text-slate-500 text-right mt-0.5">O/U {{ c.tot.best_odds }}</div>{% endif %}
+          </div>
+          <svg class="w-4 h-4 text-slate-600 group-hover:text-brand transition-all shrink-0" :class="open && 'rotate-90'" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </button>
+        <div x-show="open" x-transition.opacity x-cloak class="px-4 pb-4">
+          <div class="divide-y divide-white/5 rounded-lg overflow-hidden border border-white/5 bg-white/[0.015]">
+            {% set mrows = [(c.ml, 'Moneyline'), (c.spr, 'Spread'), (c.tot, 'Total')] %}
+            {% for q, label in mrows %}
+            {% if q %}
+            <div class="flex items-center justify-between gap-3 px-3 py-2">
+              <span class="w-16 pill bg-surface-3 text-slate-400 shrink-0">{{ label }}</span>
+              <span class="text-xs text-slate-200 font-mono truncate flex-1">{{ q.selection }}{% if q.line is not none %} <span class="text-slate-500">{{ q.line }}</span>{% endif %}</span>
+              <span class="text-sm font-mono text-emerald-400 shrink-0">{{ odds.odds_html(q.best_odds) }}</span>
+              {% if q.is_value %}<span class="pill bg-emerald-500/20 text-emerald-400 shrink-0">+{{ "%.1f"|format(q.edge_pct) }}%</span>
+              {% else %}<span class="text-[10px] font-mono text-slate-600 shrink-0 w-12 text-right">{{ q.best_book }}</span>{% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+            {% if not c.ml and not c.spr and not c.tot %}
+            <div class="px-3 py-2 text-xs text-slate-500 font-mono">Only player props on the board — see below.</div>
+            {% endif %}
+          </div>
+          {% if c.n_props %}
+          <div class="mt-2 flex items-center justify-between">
+            <span class="text-[11px] font-mono text-slate-500">{{ c.n_props }} player props in the prop feed</span>
+            <a href="/props" class="text-[11px] text-prop-light font-mono hover:underline">Open props →</a>
+          </div>
+          {% endif %}
+          <div class="mt-3 text-right">
+            <a href="/bets" class="text-xs text-brand font-mono hover:underline">Full board reads →</a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ===================== TD HUNT + PROP INTEL ===================== -->
+  <div class="glass-card rounded-xl overflow-hidden animate-fadeup">
+      <div class="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+        <h2 class="font-display font-semibold text-white text-sm">PROP INTEL</h2>
+        <span class="tick-label font-mono">
+          {% if home_prop_rows %}<span class="text-emerald-400">MODEL OK {{ home_prop_counts.confirm }}</span>
+          <span class="text-slate-600">&middot;</span>
+          <span class="text-amber-400">FADE {{ home_prop_counts.fade }}</span>
+          {% else %}<span class="text-slate-600">MODEL vs MARKET</span>{% endif %}
+        </span>
+      </div>
+      {% if home_prop_rows %}
+      <div class="divide-y divide-white/5 max-h-[430px] overflow-y-auto">
+        {% for r in home_prop_rows %}
+        <div class="px-4 py-3 flex items-center justify-between gap-3 hover:bg-white/[0.02] transition-colors">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-medium text-white truncate">{{ r.player }}</span>
+            </div>
+            <div class="text-[11px] text-slate-500 font-mono truncate">{{ r.pos }} &middot; {{ r.team }} &middot; {{ r.game }}</div>
+            <div class="text-[11px] text-slate-400 font-mono truncate">{{ r.side|capitalize }} {{ r.line }} {{ r.label }}</div>
+          </div>
+          <div class="flex items-center gap-2.5 shrink-0">
+            <div class="text-right leading-tight">
+              <div class="text-sm font-mono text-white">{% if r.avg is not none %}{{ "%.1f"|format(r.avg) }} <span class="text-slate-500 text-[10px]">{{ r.unit }}</span>{% else %}<span class="text-slate-600 text-xs">&mdash;</span>{% endif %}</div>
+              <div class="text-[11px] font-mono {% if r.gap is not none and r.gap >= 0 %}text-emerald-400{% elif r.gap is not none %}text-red-400{% else %}text-slate-600{% endif %}">{% if r.gap is not none %}{{ '+' if r.gap >= 0 else '' }}{{ "%.1f"|format(r.gap) }} vs line{% else %}no model{% endif %}</div>
+            </div>
+            <span class="pill {% if r.confirm %}bg-brand/15 text-brand{% else %}bg-amber-500/15 text-amber-400{% endif %}">{{ 'MODEL OK' if r.confirm else 'FADE' }}</span>
+            <span class="pill bg-emerald-500/20 text-emerald-400">+{{ "%.1f"|format(r.edge_pct) }}%</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="px-4 py-2 border-t border-white/5 flex items-center justify-between">
+        <span class="text-[10px] text-slate-600 font-mono">{{ home_prop_counts.value }} value props &middot; {{ home_prop_counts.confirm }} model-confirmed</span>
+        <a href="/props" class="text-xs text-brand font-mono hover:underline">Full prop board + model &rarr;</a>
+      </div>
+      {% else %}
+      <div class="px-4 py-8 text-center text-sm text-slate-500">Prop value spots post once the weekly player-prop board is live.</div>
+      {% endif %}
+    </div>
+
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.deck = function (seed) {
+    seed = seed || {};
+    const MAPS = { ml: 'ML', spr: 'SPR', tot: 'O/U', prop: 'PROP' };
+    const MKT = { ML: 'ml', SPR: 'spr', 'O/U': 'tot', PROP: 'prop' };
+    return {
+      // --- data (from server seed) ---
+      rows: seed.rows || [],
+      edges: seed.edges || [],
+      map: seed.map ? Object.assign({ rows: seed.map.rows || [] }, seed.map) : { rows: [], slots: [] },
+      radar: seed.radar || { axes: [] },
+      books: seed.books || [],
+      counts: seed.counts || { games: 0, lines: 0, value: 0, top: 0 },
+      maxEdge: seed.max || 0,
+      ok: seed.ok,
+      updatedTs: seed.updated_ts || Math.floor(Date.now() / 1000),
+      justScanned: false,
+
+      // --- ui state ---
+      q: '',
+      focusGame: '',
+      focusMarket: '',
+      radarFocus: '',
+      minEdge: 1.5,
+      sortKey: 'edge',
+      sortDir: -1,
+      book: '',
+      auto: false,
+      refreshing: false,
+      _now: Math.floor(Date.now() / 1000),
+      _tick: null,
+      _autoTimer: null,
+
+      startClock() {
+        const t = this;
+        this._now = Math.floor(Date.now() / 1000);
+        this._tick = setInterval(() => { t._now = Math.floor(Date.now() / 1000); }, 1000);
+        this.armAuto();
+      },
+      ago() {
+        const s = Math.max(0, this._now - this.updatedTs);
+        if (s < 10) return s + 's ago';
+        if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's ago';
+        const d = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        return d + 'h ' + m + 'm ago';
+      },
+      armAuto() {
+        if (this._autoTimer) { clearInterval(this._autoTimer); this._autoTimer = null; }
+        if (this.auto) {
+          this._autoTimer = setInterval(() => this.refresh(false), 30000);
+        }
+      },
+      async refresh(force) {
+        if (this.refreshing) return;
+        this.refreshing = true;
+        try {
+          const r = await fetch('/api/slate?refresh=1' + (force ? '&force=1' : ''));
+          const d = await r.json();
+          if (d && d.rows) {
+            this.apply(d);
+            this.justScanned = true;
+            setTimeout(() => { this.justScanned = false; }, 1600);
+          }
+        } catch (e) {
+          // silent — keep last board
+        }
+        this.refreshing = false;
+      },
+      apply(d) {
+        this.rows = d.rows || [];
+        this.edges = d.edges || [];
+        this.books = d.books || [];
+        this.map = d.map ? Object.assign({ rows: d.map.rows || [] }, d.map) : { rows: [], slots: [] };
+        this.radar = d.radar || this.radar;
+        this.counts = d.counts || this.counts;
+        this.maxEdge = d.max || 0;
+        this.updatedTs = d.updated_ts || Math.floor(Date.now() / 1000);
+      },
+
+      // --- market map helpers ---
+      cellLabel(m) { return MAPS[m] || m; },
+      marketLabel(m) { return MAPS[m] || m; },
+      rowParts(row) {
+        const parts = [{ m: 'game' }];
+        ['ml', 'spr', 'tot', 'prop'].forEach((m) => {
+          parts.push({ m, cell: (row.cells || {})[m] });
+        });
+        return parts;
+      },
+      cellBtn(game, mkt, rowGame, m) {
+        return {
+          'text-center align-top': true,
+          'edge-ring': this.focusGame === rowGame && this.focusMarket === m,
+        };
+      },
+      focusLabel() {
+        const parts = [];
+        if (this.focusGame) parts.push(this.focusGameShort() || this.focusGame);
+        if (this.focusMarket) parts.push(MAPS[this.focusMarket] || this.focusMarket);
+        return parts.join(' · ');
+      },
+      focusGameShort() {
+        const row = this.map.rows.find(r => r.game === this.focusGame);
+        return row ? row.short : '';
+      },
+      setGame(g) { this.focusGame = (this.focusGame === g ? '' : g); },
+      setMarket(m) { this.focusMarket = (this.focusMarket === m ? '' : m); },
+      setFocus(g, m) { this.focusGame = g; this.focusMarket = m; },
+      clearFocus() { this.focusGame = ''; this.focusMarket = ''; },
+
+      // --- edge dial ---
+      countsAt(thr) { return this.edges.filter(e => e >= thr - 1e-9).length; },
+      dist() {
+        const step = 0.5;
+        const out = [];
+        const maxVal = Math.max(this.maxEdge || 0, this.minEdge, 2);
+        const bins = Math.max(4, Math.ceil(maxVal / step));
+        for (let i = 0; i < bins; i++) {
+          const lo = i * step;
+          const hi = lo + step;
+          out.push({ lo: lo, count: this.edges.filter(e => e >= lo && e < hi).length });
+        }
+        const peak = Math.max.apply(null, out.map(b => b.count).concat([1]));
+        return out.map(b => ({
+          lo: b.lo,
+          count: b.count,
+          pct: b.count ? Math.max(6, Math.round(b.count / peak * 100)) : 3,
+          active: (b.lo + step) >= this.minEdge - 1e-9,
+        }));
+      },
+      pctMax() {
+        let m = 1;
+        for (const r of this.rows) if (r.edge > m) m = r.edge;
+        return m;
+      },
+      toggleBook(b) { this.book = (this.book === b ? '' : b); },
+
+      // --- tide edge heat-cell ---
+      tideStyle(edge) {
+        const e = Math.max(1, Math.min(edge || 1, 7));
+        const dur = (3.4 - e * 0.28).toFixed(2);
+        const inten = (0.15 + e * 0.05).toFixed(2);
+        return '--tide-dur:' + dur + 's; --tide-e:' + e.toFixed(1) + '; --tide-a:' + inten + '; box-shadow: inset 0 0 12px rgba(0,0,0,0.18);';
+      },
+
+      // --- stat-family filter ---
+      radarAxes() { return this.radar && this.radar.axes ? this.radar.axes.slice(0, 5) : []; },
+      setRadarFocus(cat) { this.radarFocus = (this.radarFocus === cat ? '' : cat); },
+
+      // --- playbook ---
+      playRows() {
+        const q = this.q.trim().toLowerCase();
+        const focusGame = this.focusGame;
+        const focusMarket = this.focusMarket;
+        const thisRadar = this.radarFocus;
+        const mktType = focusMarket ? MAPS[focusMarket] : '';
+        const book = this.book;
+        const minE = this.minEdge;
+        let rows = this.rows.filter(function (r) {
+          if (r.edge < minE - 1e-9) return false;
+          if (focusGame && r.game !== focusGame) return false;
+          if (mktType && r.type !== mktType) return false;
+          if (book && r.book !== book) return false;
+          if (thisRadar && r.cat !== thisRadar) return false;
+          if (q) {
+            const hay = (r.sel + ' ' + (r.player || '') + ' ' + r.game).toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+        const key = this.sortKey;
+        const dir = this.sortDir;
+        rows.sort(function (a, b) {
+          let av, bv;
+          if (key === 'edge') { av = a.edge; bv = b.edge; }
+          else if (key === 'best') { av = oddsNum(a.best); bv = oddsNum(b.best); }
+          else if (key === 'cons') { av = oddsNum(a.cons); bv = oddsNum(b.cons); }
+          else if (key === 'type') { av = a.type; bv = b.type; }
+          else if (key === 'game') { av = a.short; bv = b.short; }
+          else if (key === 'book') { av = a.book; bv = b.book; }
+          else { av = (a.sel + (a.player || '')); bv = (b.sel + (b.player || '')); }
+          if (av < bv) return -1 * dir;
+          if (av > bv) return 1 * dir;
+          return b.edge - a.edge;
+        });
+        return rows.slice(0, 80);
+      },
+      setSort(k) {
+        if (this.sortKey === k) { this.sortDir *= -1; }
+        else { this.sortKey = k; this.sortDir = (k === 'bet' || k === 'game' || k === 'book' || k === 'type' ? 1 : -1); }
+      },
+      arrow(k) {
+        if (this.sortKey !== k) return '';
+        return this.sortDir > 0 ? ' ↓' : ' ↑';
+      },
+
+      init() {
+        // no-op to keep Alpine happy with the component lifecycle
+      },
+    };
+
+    function oddsNum(s) {
+      if (s === '—' || s === undefined || s === null) return -9999;
+      const v = '' + s;
+      if (v.indexOf('+') === 0) return parseInt(v.slice(1), 10);
+      return parseInt(v, 10);
+    }
+  };
+</script>
 {% endblock %}

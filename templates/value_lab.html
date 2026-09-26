@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+{% block title %}Value Scatter Lab — Edge × Price | ScoreEdge{% endblock %}
+{% block meta_description %}Every play with an edge on one chart: edge vs payout quadrant scatter, EV packed bubbles, and the top-value table. ScoreEdge.{% endblock %}
+{% block canonical %}/value-lab{% endblock %}
+{% block og_url %}/value-lab{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-white/5 pb-3">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">VALUE SCATTER LAB</h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">EDGE &times; PRICE QUADRANT &middot; EVERY PLAY WITH ANY EDGE</p>
+  </div>
+  <div class="text-right">
+    <div class="text-[10px] font-mono text-slate-600">{{ points|length }} POINTS</div>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+{% if not points %}
+<div class="glass-card rounded-xl p-10 text-center animate-fadeup">
+  <div class="text-sm text-slate-400">No edge plays on the board yet.</div>
+  <div class="text-[11px] text-slate-600 mt-2 font-mono">The lab fills from the Live Lines value pool.</div>
+</div>
+{% else %}
+<div x-data="{ tip: null }" class="grid gap-6">
+  <div class="grid gap-6">
+    <div class="glass-card rounded-xl p-4">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-[11px] text-slate-500 font-mono">QUADRANT — RIGHT OF THE 1.5% BAR, ABOVE EVENS</span>
+        <span class="text-[11px] font-mono text-slate-600">biggest bubbles = richest expected value</span>
+      </div>
+      <div class="relative">
+        <svg viewBox="0 0 {{ W }} {{ H }}" class="w-full h-auto">
+          {% for g in gl_y %}
+          <line x1="{{ mx }}" y1="{{ g.y }}" x2="{{ W - 64 }}" y2="{{ g.y }}" stroke="rgba(148,163,184,0.10)" stroke-width="0.75"></line>
+          <text x="{{ mx - 6 }}" y="{{ g.y + 3 }}" class="font-mono" font-size="9" fill="#475569" text-anchor="end">{{ '%.1f'|format(g.v) }}</text>
+          {% endfor %}
+          {% for g in gl_x %}
+          <line x1="{{ g.x }}" y1="{{ my }}" x2="{{ g.x }}" y2="{{ H - 34 }}" stroke="rgba(148,163,184,0.10)" stroke-width="0.75"></line>
+          {% endfor %}
+          <line x1="{{ vx }}" y1="{{ my }}" x2="{{ vx }}" y2="{{ H - 34 }}" stroke="rgba(52,211,153,0.45)" stroke-width="1.25" stroke-dasharray="4 3"></line>
+          <text x="{{ vx + 5 }}" y="{{ my + 4 }}" class="font-mono" font-size="9" fill="#34d399">1.5% VALUE BAR</text>
+          <line x1="{{ mx }}" y1="{{ ey }}" x2="{{ W - 64 }}" y2="{{ ey }}" stroke="rgba(251,191,36,0.45)" stroke-width="1.25" stroke-dasharray="4 3"></line>
+          <text x="{{ W - 70 }}" y="{{ ey - 4 }}" class="font-mono" font-size="9" fill="#fbbf24" text-anchor="end">EVENS</text>
+          {% for p in points %}
+          <circle cx="{{ p.px }}" cy="{{ p.py }}" r="6.5" fill="{{ p.color }}" fill-opacity="0.9" data-scatter class="cursor-pointer transition-transform hover:scale-125"
+            data-s="{{ p.sel }}" data-play="{{ p.play }}" data-g="{{ p.game }}" data-t="{{ p.type }}" data-e="{{ p.edge }}" data-b="{{ p.best }}" data-y="{{ p.y }}" data-book="{{ p.book }}"
+            {% if p.slip %}data-slip='{{ p.slip|tojson }}'{% endif %}
+            @mouseenter="tip = $event.currentTarget.dataset; var r=$el.getBoundingClientRect(); tip._px = $event.clientX - r.left; tip._py = $event.clientY - r.top;"
+            @mouseleave="tip = null"></circle>
+          {% endfor %}
+          <text x="{{ (mx + W - 64) / 2 }}" y="{{ H - 14 }}" class="font-mono" font-size="9" fill="#64748b" text-anchor="middle">EDGE %</text>
+          <text x="{{ mx - (34 - 8) }}" y="{{ (my + H - 34) / 2 }}" class="font-mono" font-size="9" fill="#64748b" text-anchor="middle" transform="rotate(-90 {{ mx - 26 }} {{ (my + H - 34) / 2 }})">PAYOUT &times;</text>
+        </svg>
+        <div class="pointer-events-none absolute z-20 glass-card rounded-lg px-3 py-2 text-[11px] font-mono w-52" x-show="tip" x-cloak x-transition.opacity
+          :style="'left:' + (tip ? Math.min(tip._px, 12) : 0) + 'px; top:' + (tip ? Math.max(tip._py - 40, 8) : 0) + 'px;'">
+          <template x-if="tip">
+            <div>
+              <div class="text-slate-300 font-semibold" x-text="tip.s"></div>
+              <div class="text-slate-500 mt-0.5" x-text="tip.g + ' · ' + tip.t"></div>
+              <div class="mt-1 flex justify-between"><span class="text-slate-500">edge</span><span class="text-white" x-text="tip.e + '%'"></span></div>
+              <div class="flex justify-between"><span class="text-slate-500">best</span><span class="text-emerald-300" x-text="tip.b"></span></div>
+              <div class="flex justify-between"><span class="text-slate-500">payout</span><span class="text-slate-300" x-text="'×' + tip.y"></span></div>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-mono text-slate-500">
+        <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full" style="background:#34d399"></span>ML</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full" style="background:#a78bfa"></span>SPR</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full" style="background:#60a5fa"></span>O/U</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full" style="background:#fbbf24"></span>PROP</span>
+      </div>
+    </div>
+
+    <aside class="grid gap-6">
+      <div class="glass-card rounded-xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-[11px] text-slate-500 font-mono">MOST VALUE — TOP 6 PLAYS</span>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          {% for p in top[:6] %}
+          <div class="flex items-center gap-2 rounded-lg px-2.5 py-2 border border-white/5">
+            <span class="w-4 text-xs font-mono text-slate-500">{{ loop.index }}</span>
+            <div class="min-w-0 flex-1">
+              <div class="text-xs text-white font-medium leading-snug">{{ p.play }}</div>
+              <div class="text-[10px] font-mono text-slate-500 truncate">{{ p.game }} · {{ p.type }}</div>
+              {% if p.ladder %}
+              <div class="mt-1 flex flex-wrap gap-1">
+                {% for bk in p.ladder[:3] %}
+                <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1 py-0.5 text-[7px] font-mono leading-none {% if bk.book == p.book %}text-brand border-brand/30{% endif %}" title="{{ bk.book }}">{{ bk.book }} {{ bk.am }}</span>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-xs font-mono {% if p.edge >= 1.5 %}text-brand font-bold{% else %}text-slate-400{% endif %}">{{ p.edge }}%</div>
+              <div class="text-[10px] font-mono text-slate-500">{{ p.best }}</div>
+            </div>
+            {% if p.slip %}
+            <button type="button" class="slip-btn shrink-0" title="Track this play" data-slip='{{ p.slip|tojson }}'>+</button>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="glass-card rounded-xl p-4">
+    <div class="flex items-center justify-between mb-3">
+      <span class="text-[11px] text-slate-500 font-mono">EV DENSITY MAP — EVERY VALUE PLAY, BIGGEST BUBBLE = RICHEST EXPECTED VALUE</span>
+      <span class="text-[11px] font-mono text-slate-600">click a bubble for the play</span>
+    </div>
+    <svg data-items='{{ bubbles|tojson }}' viewBox="0 0 1200 460" class="w-full h-auto"></svg>
+  </div>
+
+  <div id="lab-panel" class="fixed bottom-4 right-4 z-40 w-80 glass-card rounded-lg px-3.5 py-3 text-[11px] font-mono border-brand/20" style="display:none">
+    <div class="flex items-start justify-between gap-2">
+      <div class="min-w-0">
+        <div class="font-semibold text-slate-200 leading-snug" id="lp-play"></div>
+        <div class="text-slate-500 mt-0.5" id="lp-sub"></div>
+      </div>
+      <button onclick="document.getElementById('lab-panel').style.display='none'" class="text-slate-600 hover:text-white -mt-0.5 shrink-0">✕</button>
+    </div>
+    <div class="mt-2 grid gap-1">
+      <div class="flex justify-between"><span class="text-slate-500">edge</span><span class="text-emerald-300" id="lp-edge"></span></div>
+      <div class="flex justify-between"><span class="text-slate-500">best</span><span class="text-emerald-300" id="lp-best"></span></div>
+      <div class="flex justify-between"><span class="text-slate-500">payout</span><span class="text-slate-300" id="lp-y"></span></div>
+      <div class="flex justify-between"><span class="text-slate-500">book</span><span class="text-slate-300" id="lp-book"></span></div>
+    </div>
+    <div class="mt-2 flex items-center gap-2">
+      <button id="lp-slip-btn" type="button" class="slip-btn" style="display:none" title="Track this play">+</button>
+      <div id="lp-ladder" class="flex flex-wrap gap-1"></div>
+    </div>
+  </div>
+
+  <div class="glass-card rounded-xl overflow-hidden">
+    <div class="px-5 py-3 border-b border-white/5">
+      <h2 class="font-display font-semibold text-white text-sm">Every Edge Play — Sortable</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full stat-table">
+        <thead>
+          <tr class="border-b border-white/5 text-[11px] text-slate-500 font-mono">
+            <th class="text-left py-2 pr-3 font-medium">#</th>
+            <th class="text-left py-2 pr-3 font-medium">Play</th>
+            <th class="text-left py-2 pr-3 font-medium">Game</th>
+            <th class="text-left py-2 pr-3 font-medium">Type</th>
+            <th class="text-right py-2 pr-3 font-medium">Edge</th>
+            <th class="text-right py-2 pr-3 font-medium">Best</th>
+            <th class="text-right py-2 pr-3 font-medium">Payout</th>
+            <th class="text-center py-2 font-medium">Slip</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in points[:24] %}
+          <tr class="hover:bg-brand/5 transition-colors">
+            <td class="py-2 pr-3 font-mono text-slate-500">{{ loop.index }}</td>
+            <td class="py-2 pr-3 text-sm text-white font-medium truncate max-w-[240px]">{{ p.play }}</td>
+            <td class="py-2 pr-3 text-xs text-slate-500 font-mono">{{ p.game }}</td>
+            <td class="py-2 pr-3"><span class="pill text-[10px]" style="color:{{ p.color }}" x-text="'{{ p.type }}'"></span></td>
+            <td class="py-2 pr-3 text-right text-sm font-mono {% if p.edge >= 1.5 %}text-brand font-bold{% else %}text-slate-300{% endif %}">{{ p.edge }}%</td>
+            <td class="py-2 pr-3 text-right text-xs font-mono text-slate-300">{{ p.best }}</td>
+            <td class="py-2 pr-3 text-right text-xs font-mono text-slate-400">×{{ '%.2f'|format(p.y) }}</td>
+            <td class="py-2 text-center">
+              {% if p.slip %}
+              <button type="button" class="slip-btn" title="Track this play" data-slip='{{ p.slip|tojson }}'>+</button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Shared click-to-panel: any scatter dot or EV bubble dispatches lab-pick,
+  // a plain JS listener fills the fixed detail card (no Alpine needed).
+  (function () {
+    function fmtEdge(d) { return (d.e !== undefined && d.e !== null) ? '+' + d.e + '%' : ''; }
+    var curSlip = null;
+    window.addEventListener('lab-pick', function (e) {
+      var d = e.detail;
+      var p = document.getElementById('lab-panel');
+      if (!p) return;
+      document.getElementById('lp-play').textContent = d.play || d.sel || d.name || '';
+      document.getElementById('lp-sub').textContent = (d.g || '') + (d.g && d.t ? ' · ' : '') + (d.t || '');
+      document.getElementById('lp-edge').textContent = fmtEdge(d);
+      document.getElementById('lp-best').textContent = d.b || '—';
+      document.getElementById('lp-y').textContent = (d.y !== undefined && d.y !== null) ? '×' + d.y : '—';
+      document.getElementById('lp-book').textContent = d.book || '—';
+      curSlip = d.slip || null;
+      var sb = document.getElementById('lp-slip-btn');
+      if (sb) sb.style.display = curSlip ? 'flex' : 'none';
+      var lad = document.getElementById('lp-ladder');
+      if (lad) {
+        lad.innerHTML = '';
+        var ls = d.ladder || [];
+        for (var i = 0; i < ls.length; i++) {
+          var s = document.createElement('span');
+          s.className = 'bg-white/5 text-slate-400 border border-white/10 rounded px-1 py-0.5 text-[8px] font-mono leading-none';
+          if (ls[i].book === d.book) s.className += ' text-brand border-brand/30';
+          s.textContent = ls[i].book + ' ' + ls[i].am;
+          lad.appendChild(s);
+        }
+      }
+      p.style.display = 'block';
+    });
+    var slipBtn = document.getElementById('lp-slip-btn');
+    if (slipBtn) {
+      slipBtn.addEventListener('click', function () {
+        if (curSlip && window.SlipLedger) {
+          window.SlipLedger.add(curSlip);
+          window.SlipLedger.flash(slipBtn);
+        }
+      });
+    }
+    document.addEventListener('click', function (ev) {
+      var t = ev.target.closest ? ev.target.closest('[data-scatter]') : null;
+      if (t) {
+        var slip = null, ladder = [];
+        try { slip = t.dataset.slip ? JSON.parse(t.dataset.slip) : null; } catch (err) { slip = null; }
+        window.dispatchEvent(new CustomEvent('lab-pick', { detail: {
+          play: t.dataset.play || t.dataset.s, g: t.dataset.g || '', t: t.dataset.t || '',
+          e: t.dataset.e, b: t.dataset.b || '', y: t.dataset.y, book: t.dataset.book || '—',
+          slip: slip, ladder: ladder
+        } }));
+      }
+    });
+  })();
+
+  // Packed-bubble layout for the EV density chart (Fermat spiral, no deps).
+  (function () {
+    var svg = document.querySelector('svg[data-items]');
+    if (!svg) return;
+    var items;
+    try { items = JSON.parse(svg.getAttribute('data-items')); } catch (e) { return; }
+    var W = 1200, H = 460, cx = W / 2, cy = 230, NS = 'http://www.w3.org/2000/svg';
+    items.sort(function (a, b) { return b.r - a.r; });
+    var placed = [];
+    function collides(x, y, r) {
+      if (x - r < 14 || x + r > W - 14 || y - r < 16 || y + r > H - 16) return true;
+      for (var i = 0; i < placed.length; i++) {
+        var p = placed[i], dx = x - p.x, dy = y - p.y, rr = r + p.r + 14;
+        if (dx * dx + dy * dy < rr * rr) return true;
+      }
+      return false;
+    }
+    items.forEach(function (it) {
+      if (!placed.length) { it.x = cx; it.y = cy; }
+      else {
+        var put = false;
+        for (var k = 1; k < 2500 && !put; k++) {
+          var a = k * 2.399963, d = 8.5 * Math.sqrt(k);
+          var x = cx + d * Math.cos(a), y = cy + d * Math.sin(a);
+          if (!collides(x, y, it.r)) { it.x = x; it.y = y; put = true; }
+        }
+        if (!put) { it.x = cx + (Math.random() * 4 - 2); it.y = cy + (Math.random() * 4 - 2); }
+      }
+      placed.push({ x: it.x, y: it.y, r: it.r });
+    });
+    // Pass 1: every bubble.
+    items.forEach(function (it) {
+      var c = document.createElementNS(NS, 'circle');
+      c.setAttribute('cx', it.x); c.setAttribute('cy', it.y); c.setAttribute('r', it.r);
+      c.setAttribute('fill', it.color); c.setAttribute('fill-opacity', '0.45');
+      c.setAttribute('stroke', it.color); c.setAttribute('stroke-width', '2.4');
+      c.style.cursor = 'pointer';
+      var _it = it;
+      c.addEventListener('click', function () {
+        window.dispatchEvent(new CustomEvent('lab-pick', { detail: {
+          play: _it.play || _it.sel, g: _it.game || '', t: _it.type,
+          e: _it.edge, b: _it.best, y: _it.y, book: _it.book || '—',
+          slip: _it.slip || null, ladder: _it.ladder || []
+        } }));
+      });
+      svg.appendChild(c);
+    });
+    // Pass 2: labels on top of every bubble.
+    items.forEach(function (it) {
+      var parts = (it.sel || '').split(' ').slice(0, 2);
+      var lab = parts.join(' ');
+      var maxChars = Math.max(3, Math.floor(it.r * 2 / 9));
+      if (lab.length > maxChars) lab = '#' + Math.round(it.edge);
+      var t1 = document.createElementNS(NS, 'text');
+      t1.setAttribute('x', it.x); t1.setAttribute('y', it.y + 4); t1.setAttribute('text-anchor', 'middle');
+      t1.setAttribute('font-size', '14'); t1.setAttribute('font-weight', '700');
+      t1.setAttribute('font-family', 'monospace'); t1.setAttribute('fill', '#f8fafc');
+      t1.setAttribute('stroke', 'rgba(2,6,23,0.9)'); t1.setAttribute('stroke-width', '3');
+      t1.setAttribute('paint-order', 'stroke'); t1.setAttribute('style', 'paint-order:stroke');
+      t1.textContent = lab;
+      svg.appendChild(t1);
+      var t2 = document.createElementNS(NS, 'text');
+      t2.setAttribute('x', it.x); t2.setAttribute('y', it.y + 21); t2.setAttribute('text-anchor', 'middle');
+      t2.setAttribute('font-size', '12'); t2.setAttribute('font-family', 'monospace'); t2.setAttribute('font-weight', '700'); t2.setAttribute('fill', it.color);
+      t2.setAttribute('stroke', 'rgba(2,6,23,0.9)'); t2.setAttribute('stroke-width', '3');
+      t2.setAttribute('paint-order', 'stroke'); t2.setAttribute('style', 'paint-order:stroke');
+      t2.textContent = it.edge + '% edge';
+      svg.appendChild(t2);
+    });
+  })();
+</script>
+{% endblock %}

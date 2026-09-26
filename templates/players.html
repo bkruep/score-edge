@@ -18,14 +18,15 @@
       <input type="text" name="q" value="{{ q }}" placeholder="Search by name..."
         class="w-full bg-surface-2 border border-white/5 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand/50">
     </div>
-    <select name="pos" class="bg-surface-2 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand/50">
-      <option value="ALL" {% if pos == 'ALL' or not pos %}selected{% endif %}>All Positions</option>
+    <input type="hidden" name="pos" id="players_pos" value="{{ pos if pos and pos != 'ALL' else 'ALL' }}">
+    <div class="flex items-center gap-1.5 flex-wrap">
+      <button type="button" onclick="togglePos('players_pos','ALL')" class="chip {% if pos == 'ALL' or not pos %}chip-on{% endif %}">All</button>
       {% for p in positions %}
-      <option value="{{ p }}" {% if pos == p %}selected{% endif %}>{{ p }}</option>
+      <button type="button" onclick="togglePos('players_pos','{{ p }}')" class="chip {% if pos == p %}chip-on{% endif %}">{{ p }}</button>
       {% endfor %}
-    </select>
+    </div>
     {% if in_season %}
-    <select name="sort" class="bg-surface-2 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand/50">
+    <select name="sort" onchange="this.form.submit()" class="bg-surface-2 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand/50">
       <option value="fantasy_pts" {% if sort == 'fantasy_pts' %}selected{% endif %}>Fantasy Pts (PPR)</option>
       <option value="passing_yards" {% if sort == 'passing_yards' %}selected{% endif %}>Passing Yards</option>
       <option value="rushing_yards" {% if sort == 'rushing_yards' %}selected{% endif %}>Rushing Yards</option>
@@ -52,6 +53,7 @@
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Rush TD</th>
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Rec TD</th>
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Fant Pts</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Compare</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-white/5">
@@ -69,10 +71,13 @@
           <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">{{ p.rushing_tds|int if p.rushing_tds else '-' }}</td>
           <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">{{ p.receiving_tds|int if p.receiving_tds else '-' }}</td>
           <td class="px-4 py-2.5 text-right text-sm font-mono font-medium text-accent">{{ "{:,.1f}".format(p.pts_ppr|round(1)) if p.pts_ppr else '-' }}</td>
+          <td class="px-4 py-2.5 text-right">
+            <input type="checkbox" class="sel-p accent-brand w-4 h-4 rounded cursor-pointer" value="{{ p.player_id }}" aria-label="Compare {{ p.player_name }}">
+          </td>
         </tr>
         {% endfor %}
         {% if not players %}
-        <tr><td colspan="10" class="px-4 py-12 text-center text-sm text-slate-500">No players found.</td></tr>
+        <tr><td colspan="11" class="px-4 py-12 text-center text-sm text-slate-500">No players found.</td></tr>
         {% endif %}
       </tbody>
     </table>
@@ -91,6 +96,7 @@
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">ADP</th>
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Pick Range</th>
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Bye</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Compare</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-white/5">
@@ -117,14 +123,56 @@
           <td class="px-4 py-2.5 text-right text-sm font-mono font-medium text-white">{{ p.adp_formatted }}</td>
           <td class="px-4 py-2.5 text-right text-xs text-slate-500">{{ p.high|int }}–{{ p.low|int }}</td>
           <td class="px-4 py-2.5 text-right text-xs text-slate-500">{{ p.bye }}</td>
+          <td class="px-4 py-2.5 text-right">
+            <input type="checkbox" class="sel-p accent-brand w-4 h-4 rounded cursor-pointer" value="{{ p.player_id }}" aria-label="Compare {{ p.name }}">
+          </td>
         </tr>
         {% endfor %}
         {% if not players %}
-        <tr><td colspan="7" class="px-4 py-12 text-center text-sm text-slate-500">No players found.</td></tr>
+        <tr><td colspan="8" class="px-4 py-12 text-center text-sm text-slate-500">No players found.</td></tr>
         {% endif %}
       </tbody>
     </table>
   </div>
 </div>
 {% endif %}
+
+<!-- Compare → Trade Analyzer floating bar -->
+<div id="compareBar" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50">
+  <div class="flex items-center gap-3 rounded-xl border border-brand/30 bg-surface-2/95 backdrop-blur px-4 py-3 shadow-2xl">
+    <span class="text-sm text-slate-300">Compare <b id="compareCount" class="text-brand">0</b> players</span>
+    <span class="text-[10px] text-slate-500 font-mono">first 2 → Side A · next 2 → Side B</span>
+    <a id="compareLink" href="#" class="bg-brand hover:bg-brand-dark text-black text-sm font-semibold px-4 py-2 rounded-lg transition-colors font-mono whitespace-nowrap">
+      Open in Trade Analyzer →
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function initCompare() {
+    const sel = new Set();
+    const bar = document.getElementById('compareBar');
+    const count = document.getElementById('compareCount');
+    const link = document.getElementById('compareLink');
+    if (!bar || !count || !link) return;
+    const MAX = 4;
+    document.querySelectorAll('input.sel-p').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked && sel.size >= MAX) { cb.checked = false; return; }
+        cb.checked ? sel.add(cb.value) : sel.delete(cb.value);
+        const arr = Array.from(sel).slice(0, MAX);
+        count.textContent = arr.length;
+        if (arr.length >= 2) {
+          link.href = '/trades?players=' + encodeURIComponent(arr.join(','));
+          bar.classList.remove('hidden');
+        } else {
+          bar.classList.add('hidden');
+        }
+      });
+    });
+  }
+  document.addEventListener('DOMContentLoaded', initCompare);
+</script>
 {% endblock %}

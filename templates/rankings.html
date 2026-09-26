@@ -5,28 +5,37 @@
 {% block breadcrumb %}
 <div class="mb-6">
   <h1 class="text-2xl font-display font-bold text-white">Fantasy Rankings</h1>
-  <p class="text-sm text-slate-500 mt-1">{{ current_year }} Season — {{ scoring|upper }} {% if source == 'adp' %}ADP{% else %}Stats{% endif %}</p>
+  <p class="text-sm text-slate-500 mt-1">{{ current_year }} Season — {{ scoring|upper }} · {% if source == 'adp' %}Consensus ADP{% elif source == 'model' %}Redraft ADP{% else %}Stats{% endif %}</p>
 </div>
 {% endblock %}
 {% block content %}
+<div class="glass-card rounded-xl p-4 mb-4">
+  <div class="flex flex-wrap items-center gap-4 text-xs text-slate-500">
+    <span>PPR/g projection bands — Median · Ceiling · Floor</span>
+    <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span> Safe floor</span>
+    <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> Volatile</span>
+    <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span> Risky</span>
+    <span class="text-slate-600">† = estimated from model value (no recent-season sample)</span>
+  </div>
+</div>
 <div class="glass-card rounded-xl p-4 mb-6">
-  <form method="get" class="flex flex-wrap gap-3">
-    <select name="scoring" class="bg-surface-2 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand/50">
+  <form method="get" class="flex flex-wrap items-center gap-3" id="rank_filter">
+    <select name="scoring" onchange="this.form.submit()" class="bg-surface-2 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand/50">
       <option value="ppr" {% if scoring == 'ppr' %}selected{% endif %}>PPR</option>
       <option value="half_ppr" {% if scoring == 'half_ppr' %}selected{% endif %}>Half PPR</option>
       <option value="standard" {% if scoring == 'standard' %}selected{% endif %}>Standard</option>
     </select>
-    <select name="position" class="bg-surface-2 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-brand/50">
-      <option value="ALL">All Positions</option>
+    <input type="hidden" name="position" id="rank_pos" value="{{ position if position and position != 'ALL' else 'ALL' }}">
+    <div class="flex items-center gap-1.5 flex-wrap">
+      <button type="button" onclick="togglePos('rank_pos','ALL')" class="chip {% if position == 'ALL' or not position %}chip-on{% endif %}">All</button>
       {% for p in positions %}
-      <option value="{{ p }}" {% if position == p %}selected{% endif %}>{{ p }}</option>
+      <button type="button" onclick="togglePos('rank_pos','{{ p }}')" class="chip {% if position == p %}chip-on{% endif %}">{{ p }}</button>
       {% endfor %}
-    </select>
-    <button type="submit" class="bg-brand hover:bg-brand-dark text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">Update</button>
+    </div>
   </form>
 </div>
 
-{% if source == 'adp' %}
+{% if source == 'adp' or source == 'model' or source == 'expert-adp' %}
 <div class="glass-card rounded-xl overflow-hidden">
   <div class="overflow-x-auto">
     <table class="w-full stat-table">
@@ -38,6 +47,8 @@
           <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Team</th>
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">ADP</th>
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Pick Range</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consistency</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">PPR/g — Median · <span class="text-emerald-400">↑Ceil</span> · <span class="text-red-400">↓Floor</span></th>
           <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Bye</th>
         </tr>
       </thead>
@@ -62,11 +73,24 @@
           <td class="px-4 py-2.5 text-xs text-slate-400">{{ r.team }}</td>
           <td class="px-4 py-2.5 text-right text-sm font-mono font-medium text-white">{{ r.adp_formatted }}</td>
           <td class="px-4 py-2.5 text-right text-xs text-slate-500">{{ r.high|int }}–{{ r.low|int }}</td>
+          <td class="px-4 py-2.5 text-right">
+            {% set tc = r.tiers.tier %}
+            {% if tc == 'safe' %}<span class="pill bg-emerald-500/15 text-emerald-400">Safe</span>
+            {% elif tc == 'risky' %}<span class="pill bg-red-500/15 text-red-400">Risky</span>
+            {% else %}<span class="pill bg-amber-500/15 text-amber-400">Volatile</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right">
+            {% if r.tiers.med is not none %}
+            <span class="font-mono text-sm text-white {% if tc == 'safe' %}border border-emerald-500/30 rounded px-1.5 py-0.5{% elif tc == 'risky' %}border border-red-500/30 rounded px-1.5 py-0.5{% else %}border border-amber-500/30 rounded px-1.5 py-0.5{% endif %}">{{ r.tiers.med }}{% if r.tiers.proj %}<sup class="text-slate-500">†</sup>{% endif %}</span>
+            <span class="font-mono text-xs text-emerald-400/90">{{ r.tiers.ceil }}</span> ·
+            <span class="font-mono text-xs text-red-400/90">{{ r.tiers.floor }}</span>
+            {% else %}—{% endif %}
+          </td>
           <td class="px-4 py-2.5 text-right text-xs text-slate-500">{{ r.bye }}</td>
         </tr>
         {% endfor %}
         {% if not rankings %}
-        <tr><td colspan="7" class="px-4 py-12 text-center text-sm text-slate-500">No rankings available.</td></tr>
+        <tr><td colspan="9" class="px-4 py-12 text-center text-sm text-slate-500">No rankings available.</td></tr>
         {% endif %}
       </tbody>
     </table>

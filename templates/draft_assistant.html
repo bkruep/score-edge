@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+{% block title %}Draft Assistant — ScoreEdge{% endblock %}
+{% block meta_description %}Configurable yearly redraft assistant: pick your scoring (PPR/half/standard) and roster (QB/RB/WR/TE/FLEX/bench), and get a position-aware top-200 draft board.{% endblock %}
+{% block canonical %}/draft-assistant{% endblock %}
+{% block og_url %}/draft-assistant{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 flex items-end justify-between border-b border-white/5 pb-3">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">DRAFT ASSISTANT</h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">YEARLY REDRAFT · CONFIGURE ROSTER + SCORING · CLICK PLAYERS TO DRAFT</p>
+  </div>
+  <span class="tick tick-label">DRAFT CONSOLE</span>
+</div>
+{% endblock %}
+{% block content %}
+<script>
+  window.__board = {{ board_json | safe }};
+  window.__roster = {{ roster | tojson }};
+  window.__scoring = {{ scoring | tojson }};
+</script>
+
+<!-- Config panel -->
+<form method="get" action="/draft-assistant" x-data="configForm()"
+      class="glass-card rounded-xl p-5 mb-6 glow-brand">
+  <div class="flex items-center gap-2 mb-4">
+    <svg class="w-4 h-4 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+    <h2 class="font-display font-semibold text-white text-sm">League Settings</h2>
+    <span class="text-xs text-slate-500 ml-1">board re-ranks from these</span>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <!-- Scoring -->
+    <div>
+      <div class="tick-label mb-2">SCORING</div>
+      <div class="flex flex-wrap gap-2">
+        {% for s in scorings %}
+        <label class="cursor-pointer">
+          <input type="radio" name="scoring" value="{{ s }}" @change="update()"
+                 {% if s == scoring %}checked{% endif %} class="sr-only">
+          <span class="block px-3 py-2 rounded-lg text-xs font-medium border transition-colors"
+            :class="selScoring === '{{ s }}' ? 'bg-brand text-black border-brand' : 'bg-surface-3 text-slate-300 border-white/10 hover:border-brand/40'"
+            x-text="labels['{{ s }}']"></span>
+        </label>
+        {% endfor %}
+      </div>
+      <p class="text-xs text-slate-500 mt-2">PPR boosts pass-catchers · Standard boosts RBs · Half is neutral.</p>
+    </div>
+
+    <!-- Roster steppers -->
+    <div>
+      <div class="tick-label mb-2">ROSTER STARTERS</div>
+      <div class="grid grid-cols-3 gap-2">
+        {% for slot in ['QB','RB','WR','TE','FLEX'] %}
+        <div class="flex items-center justify-between px-3 py-2 bg-surface-2 border border-white/5 rounded-lg">
+          <span class="text-xs font-medium text-slate-300">{{ slot }}</span>
+          <div class="flex items-center gap-1.5">
+            <button type="button" @click="step('{{ slot }}', -1)" class="w-6 h-6 rounded bg-surface-3 text-slate-300 hover:bg-brand/20 leading-none">−</button>
+            <span class="w-6 text-center text-sm font-mono text-white" x-text="roster['{{ slot }}']"></span>
+            <button type="button" @click="step('{{ slot }}', 1)" class="w-6 h-6 rounded bg-surface-3 text-slate-300 hover:bg-brand/20 leading-none">+</button>
+          </div>
+          <input type="hidden" :name="'{{ slot }}'" :value="roster['{{ slot }}']">
+        </div>
+        {% endfor %}
+      </div>
+      <div class="flex items-center gap-4 mt-2">
+        <div class="flex items-center justify-between flex-1 px-3 py-2 bg-surface-2 border border-white/5 rounded-lg">
+          <span class="text-xs font-medium text-slate-300">Bench</span>
+          <div class="flex items-center gap-1.5">
+            <button type="button" @click="step('BN', -1)" class="w-6 h-6 rounded bg-surface-3 text-slate-300 hover:bg-brand/20 leading-none">−</button>
+            <span class="w-6 text-center text-sm font-mono text-white" x-text="roster['BN']"></span>
+            <button type="button" @click="step('BN', 1)" class="w-6 h-6 rounded bg-surface-3 text-slate-300 hover:bg-brand/20 leading-none">+</button>
+          </div>
+          <input type="hidden" :name="'BN'" :value="roster['BN']">
+        </div>
+        <button type="submit" class="bg-brand hover:bg-brand-dark text-black text-sm font-semibold px-4 py-2 rounded-md transition-colors font-mono">REBUILD BOARD</button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<div x-data="draftApp()" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <!-- Team & needs panel -->
+  <div class="lg:col-span-1">
+    <div class="glass-card rounded-xl overflow-hidden mb-4 glow-brand">
+      <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+        <h2 class="font-display font-semibold text-white text-sm">My Team</h2>
+        <span class="pill bg-surface-3 text-slate-300" x-text="'est. value ' + teamValue()"></span>
+      </div>
+      <div class="p-4 space-y-2">
+        <div class="text-xs text-slate-500 mb-1 font-mono" x-text="'Roster: ' + rosterSummary()"></div>
+        <div class="flex flex-wrap gap-1.5 mb-3">
+          <template x-for="slot in ['QB','RB','WR','TE','FLEX','K','DEF']" :key="slot">
+            <button @click="undraftSlot(slot)"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+              :class="countOf(slot) < need(slot) ? 'border-white/10 bg-surface-3/50 text-slate-300 hover:bg-brand/10' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-brand/10'"
+              x-text="slot + ' (' + countOf(slot) + '/' + need(slot) + ')'"></button>
+          </template>
+        </div>
+        <template x-if="picks.length === 0">
+          <div class="text-xs text-slate-500 py-2">No picks yet. Click players on the board to draft them.</div>
+        </template>
+        <template x-for="(p, i) in picks" :key="i">
+          <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-2/60 border border-white/5">
+            <div class="flex items-center gap-2">
+              <span class="pill" :class="posColor(p.position)" x-text="p.position"></span>
+              <span class="text-sm font-medium text-white" x-text="p.name"></span>
+              <span class="text-xs text-slate-500" x-text="p.slot === 'BN' ? '(bench)' : p.slot"></span>
+            </div>
+            <button @click="undraft(p.player_id)" class="text-slate-500 hover:text-red-400 text-xs">undo</button>
+          </div>
+        </template>
+        <div class="mt-3 pt-3 border-t border-white/5">
+          <div class="text-xs text-slate-500 mb-1">Next greatest need</div>
+          <div class="text-sm font-medium text-accent" x-text="nextNeed() || 'Bench / complete'"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="glass-card rounded-xl p-4">
+      <h2 class="font-display font-semibold text-white text-sm mb-2">How to use</h2>
+      <ul class="text-xs text-slate-400 space-y-1.5 list-disc list-inside">
+        <li>Set your scoring + roster above, then <strong class="text-slate-200">REBUILD BOARD</strong>.</li>
+        <li>Board is re-ranked by <strong class="text-slate-200">{{ scoring_labels.get(scoring) }}</strong> and how scarce/needed each position is in your league.</li>
+        <li><strong class="text-emerald-300">Steals</strong> = value rising as a position thins out — every remaining player at that slot becomes more urgent.</li>
+        <li><strong class="text-red-300">Reaches</strong> = deep remaining pool — there's no rush to draft this position.</li>
+        <li>Value re-scores live after every pick/remove: it reacts to positional scarcity and how far past ADP each player has fallen.</li>
+        <li>Roster panel tracks your configured starts + bench; click a slot to undo the last pick there.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Board -->
+  <div class="lg:col-span-2 glass-card rounded-xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <h2 class="font-display font-semibold text-white text-sm" x-text="boardTitle()"></h2>
+        <span class="text-xs text-slate-500 ml-1">available to draft</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="flex items-center rounded-lg border border-white/10 overflow-hidden">
+          <button type="button" @click="setMode('adp')"
+            class="px-2.5 py-1.5 text-[10px] font-mono font-semibold transition-colors"
+            :class="mode==='adp' ? 'bg-brand text-black' : 'bg-surface-2 text-slate-400 hover:text-white'">ADP</button>
+          <button type="button" @click="setMode('auction')"
+            class="px-2.5 py-1.5 text-[10px] font-mono font-semibold transition-colors"
+            :class="mode==='auction' ? 'bg-brand text-black' : 'bg-surface-2 text-slate-400 hover:text-white'">AUCTION</button>
+        </div>
+        <select x-model="posFilter" class="bg-surface-2 border border-white/5 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none">
+          <option value="">All</option>
+          <option value="QB">QB</option>
+          <option value="RB">RB</option>
+          <option value="WR">WR</option>
+          <option value="TE">TE</option>
+          <option value="K">K</option>
+          <option value="DEF">DEF</option>
+        </select>
+        <input type="text" x-model="q" placeholder="Search..."
+          class="bg-surface-2 border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand/50">
+      </div>
+    </div>
+
+    <!-- TOP 5 PICKS -->
+    <div class="px-5 py-4 border-b border-white/5 bg-brand/[0.05]">
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="font-display font-semibold text-brand text-sm tracking-tight">
+          <span x-text="'TOP ' + top5().length + ' PICKS - DRAFT NEXT'">TOP 5 PICKS - DRAFT NEXT</span>
+        </h3>
+        <div class="flex items-center gap-3">
+          <span class="text-[10px] font-mono text-slate-500">click = draft · REMOVE = taken by another team</span>
+          <button @click="clearRemoved()" x-show="removed.size > 0"
+            class="text-[10px] font-mono text-slate-500 hover:text-white underline underline-offset-2"
+            x-text="'Clear removed (' + removed.size + ')'">Clear removed</button>
+        </div>
+      </div>
+      <!-- Auction budget tracker -->
+      <div x-show="mode==='auction'" x-cloak class="flex flex-wrap items-center gap-3 mb-3 rounded-lg bg-surface-2/70 border border-brand/20 px-3 py-2">
+        <label class="flex items-center gap-2 text-[11px] font-mono text-slate-400">
+          Budget
+          <input type="number" min="50" max="500" step="10" x-model.number="budget"
+            class="w-20 bg-surface-3 border border-white/10 rounded px-2 py-1 text-xs text-white focus:border-brand/50">
+        </label>
+        <div class="text-[11px] font-mono">
+          <span class="text-slate-400">Remaining</span>
+          <span class="text-base font-bold text-brand" x-text="'$' + spentLeft()"></span>
+        </div>
+        <div class="flex-1 h-2 rounded-full bg-surface-3 overflow-hidden min-w-[80px]">
+          <div class="h-full rounded-full transition-all duration-500 ease-out"
+            :class="spentLeft() / budget < 0.2 ? 'bg-red-500' : 'bg-brand'"
+            :style="'width:' + Math.max(0, Math.min(100, spentLeft()/budget*100)) + '%'"></div>
+        </div>
+        <div class="text-[11px] font-mono text-slate-500" x-text="'spent $' + (budget - spentLeft()) + ' of $' + budget"></div>
+      </div>
+      <p class="text-[11px] text-slate-500 mb-3" x-text="'Ranked for your league (' + ({{ scoring_labels | tojson }})[window.__scoring || 'half-ppr'] + '). Next greatest need: ' + (nextNeed() || 'bench / complete')"></p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <template x-for="(p, i) in top5()" :key="p.player_id">
+          <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-2 border border-white/5 hover:border-brand/40 transition-colors">
+            <span class="text-[10px] font-mono text-brand w-4" x-text="'#' + (i + 1)"></span>
+            <button @click="draft(p)" class="min-w-0 flex-1 text-left" title="Click to draft">
+              <div class="text-sm font-semibold text-white truncate" x-text="p.name"></div>
+              <div class="text-[10px] text-slate-500" x-text="mode==='auction' ? p.team + ' · $' + priceOf(p) : p.team + ' · ADP ' + p.adp_formatted"></div>
+            </button>
+            <template x-if="mode==='auction'">
+              <span class="shrink-0 text-[11px] font-mono font-bold text-brand" x-text="'$' + priceOf(p)"></span>
+            </template>
+            <span class="pill" :class="posColor(p.position)" x-text="p.position"></span>
+            <button @click="removePlayer(p.player_id)" title="Remove (taken by another team)"
+              class="shrink-0 px-2 py-1 rounded text-[9px] font-mono border border-white/10 text-slate-500 hover:border-red-500/40 hover:text-red-400 transition-colors">REMOVE</button>
+          </div>
+        </template>
+        <template x-if="top5().length === 0">
+          <div class="col-span-full px-3 py-6 text-center text-xs text-slate-500">No players available — you've drafted or removed everyone left on the board.</div>
+        </template>
+      </div>
+    </div>
+
+    <div class="max-h-[640px] overflow-y-auto overflow-x-auto">
+      <table class="w-full stat-table">
+        <thead>
+          <tr class="border-b border-white/5 sticky top-0 z-10 bg-surface-1">
+            <th class="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Rank</th>
+            <th class="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Player</th>
+            <th class="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Pos</th>
+            <th class="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Team</th>
+            <th class="px-4 py-2.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider" x-show="mode==='adp'">ADP</th>
+            <th class="px-4 py-2.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider" x-show="mode==='auction'" x-cloak>Price</th>
+            <th class="px-4 py-2.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Value</th>
+            <th class="px-4 py-2.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Taken</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          <template x-for="p in filtered()" :key="p.player_id">
+            <tr @click="isGone(p.player_id) ? null : draft(p)" class="cursor-pointer hover:bg-brand/5 transition-colors"
+                :class="isGone(p.player_id) ? 'opacity-30 pointer-events-none' : ''">
+              <td class="px-4 py-2 text-xs text-slate-500 font-mono" x-text="p.rank"></td>
+              <td class="px-4 py-2 text-sm font-medium text-white" x-text="p.name"></td>
+              <td class="px-4 py-2"><span class="pill" :class="posColor(p.position)" x-text="p.position"></span></td>
+              <td class="px-4 py-2 text-xs text-slate-400" x-text="p.team"></td>
+              <td class="px-4 py-2 text-right text-sm font-mono text-white" x-show="mode==='adp'" x-text="p.adp_formatted"></td>
+              <td class="px-4 py-2 text-right text-sm font-mono font-semibold text-brand" x-show="mode==='auction'" x-cloak x-text="'$' + priceOf(p)"></td>
+              <td class="px-4 py-2 text-right">
+                <div class="inline-flex items-center gap-1.5">
+                  <div class="flex items-center gap-1">
+                    <span class="pill whitespace-nowrap"
+                      :class="liveClass(p.liveTag)"
+                      :title="liveTip(p)"
+                      x-text="p.liveTag"></span>
+                    <div class="w-8 h-1.5 rounded-full bg-surface-3 overflow-hidden">
+                      <div class="h-full rounded-full bg-brand transition-all duration-500"
+                        :style="'width:' + Math.max(4, p.live) + '%'"></div>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-2 text-right">
+                <button
+                  @click.stop="removePlayer(p.player_id)"
+                  title="Remove (taken by another team)"
+                  class="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border transition-colors"
+                  :class="removed.has(p.player_id)
+                    ? 'bg-brand/10 text-brand border-brand/30'
+                    : 'bg-surface-3 text-slate-400 border-white/10 hover:border-red-500/40 hover:text-red-400'"
+                  x-text="removed.has(p.player_id) ? 'UNDO' : 'REMOVE'">
+                </button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+function configForm() {
+  const base = window.__roster || { QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DEF:1, BN:6 };
+  return {
+    roster: { ...base },
+    selScoring: window.__scoring || 'half-ppr',
+    labels: {{ scoring_labels | tojson }},
+    limits: { QB: [0,4], RB: [0,5], WR: [0,6], TE: [0,4], FLEX: [0,3], BN: [0,15] },
+    step(slot, d) {
+      const [lo, hi] = this.limits[slot] || [0, 20];
+      const v = (this.roster[slot] || 0) + d;
+      this.roster[slot] = Math.max(lo, Math.min(hi, v));
+      this.selScoring = document.querySelector('input[name="scoring"]:checked')?.value || this.selScoring;
+    },
+    update() {
+      this.selScoring = document.querySelector('input[name="scoring"]:checked')?.value || this.selScoring;
+    }
+  };
+}
+
+function draftApp() {
+  const roster = window.__roster || { QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DEF:1, BN:6 };
+  return {
+    board: window.__board || [],
+    picks: [],        // [{name, position, team, player_id, slot}]
+    posFilter: '',
+    q: '',
+    removed: new Set(), // players taken by OTHER teams this draft session (not persisted)
+    needs: { QB: roster.QB||1, RB: roster.RB||2, WR: roster.WR||2, TE: roster.TE||1, FLEX: roster.FLEX||1, K: roster.K||1, DEF: roster.DEF||1 },
+    teams: 12, // snake-round clock assumption (12-team)
+    mode: 'adp', // 'adp' | 'auction'
+    budget: 200,
+    setMode(m) { this.mode = m; },
+    priceOf(p) {
+      if (typeof p.price === 'number' && p.price > 0) return p.price;
+      const a = typeof p.auction === 'number' && p.auction > 0 ? p.auction : 1;
+      return a;
+    },
+    spentLeft() {
+      const spent = this.picks.reduce((s, p) => s + this.priceOf(p), 0);
+      return Math.max(0, Math.round(this.budget - spent));
+    },
+    boardTitle() {
+      const labels = {{ scoring_labels | tojson }};
+      const s = window.__scoring || 'half-ppr';
+      return (labels[s] || s) + ' Draft Board';
+    },
+    rosterSummary() {
+      return 'QB ' + (this.needs.QB||0) + ' · RB ' + (this.needs.RB||0) + ' · WR ' + (this.needs.WR||0) + ' · TE ' + (this.needs.TE||0) + ' · FLEX ' + (this.needs.FLEX||0) + ' · bench ' + (window.__roster.BN||0);
+    },
+    countOf(slot) {
+      if (slot === 'FLEX') return this.picks.filter(p => p.slot === 'FLEX').length;
+      if (slot === 'BN') return this.picks.filter(p => p.slot === 'BN').length;
+      return this.picks.filter(p => p.slot === slot).length;
+    },
+    need(slot) { return this.needs[slot] || 0; },
+    filtered() {
+      let list = this.boardLive().filter(p => !p.gone);
+      if (this.posFilter) list = list.filter(p => p.position === this.posFilter);
+      if (this.q) list = list.filter(p => (p.name || '').toLowerCase().includes(this.q.toLowerCase()));
+      if (this.mode === 'auction') list = [...list].sort((a, b) => b.price - a.price || (a.rank - b.rank));
+      return list;
+    },
+    available() {
+      let list = this.boardLive().filter(p => !p.gone);
+      if (this.mode === 'auction') list = [...list].sort((a, b) => b.price - a.price);
+      return list;
+    },
+    top5() {
+      const src = this.mode === 'auction'
+        ? [...this.available()].sort((a, b) => b.price - a.price)
+        : [...this.available()].sort((a, b) => (b.live - a.live) || (a.rank - b.rank));
+      return src.slice(0, 5);
+    },
+    /* ---- live value engine (re-scored after every pick / remove) ---- */
+    turn() { return (this.picks.length || 0) + (this.removed.size || 0); },
+    roundOf(adp) {
+      const n = Number(adp);
+      return (Number.isFinite(n) && n > 0) ? Math.ceil(n / this.teams) : 999;
+    },
+    currentRound() { return Math.floor(this.turn() / this.teams) + 1; },
+    availCount(pos) {
+      return this.board.filter(p => p.position === pos && !this.isGone(p.player_id)).length;
+    },
+    posMult(pos) {
+      // Positional scarcity multiplier: when talent thins, every remaining
+      // player at that position gains urgency; a deep pool penalises them.
+      const slots = (this.needs[pos] || 0) * this.teams;
+      const psf = slots ? this.availCount(pos) / slots : 1;
+      const m = 1 + (1 - psf) * 0.6;
+      return Math.max(0.7, Math.min(1.35, m));
+    },
+    liveValue(p) {
+      const base = typeof p.value_score === 'number' ? p.value_score : 50;
+      let v = base * this.posMult(p.position);
+      const fell = Math.max(0, this.currentRound() - this.roundOf(p.adp));
+      v += Math.min(fell * 3, 12); // credit for falling past their expected round
+      return Math.max(0, Math.min(100, Math.round(v)));
+    },
+    tagOf(v) {
+      if (v >= 62) return 'steal';
+      if (v <= 40) return 'reach';
+      return 'fair';
+    },
+    boardLive() {
+      return this.board.map(p => {
+        const v = this.liveValue(p);
+        const price = typeof p.auction === 'number' && p.auction > 0 ? p.auction : 1;
+        return { ...p, gone: this.isGone(p.player_id), live: v, liveTag: this.tagOf(v), price };
+      });
+    },
+    liveClass(tag) {
+      return tag === 'steal' ? 'bg-brand/10 text-brand border-brand/30'
+        : tag === 'reach' ? 'bg-red-500/10 text-red-400 border-red-500/25'
+        : 'bg-surface-3 text-slate-400';
+    },
+    liveTip(p) {
+      const m = this.posMult(p.position);
+      const fell = Math.max(0, this.currentRound() - this.roundOf(p.adp));
+      const slots = (this.needs[p.position] || 0) * this.teams;
+      const avail = this.availCount(p.position);
+      const psf = slots ? avail / slots : 1;
+      return 'Now: ' + p.live + '/100 · ' + p.position + ' pool ' + avail + '/' + slots + ' slots (' + psf.toFixed(2) + '×) · ' + (fell ? 'fell ' + fell + ' rnd past ADP' : 'on-ADP clock');
+    },
+    removePlayer(id) {
+      if (this.removed.has(id)) this.removed.delete(id);
+      else this.removed.add(id);
+    },
+    clearRemoved() {
+      this.removed = new Set();
+    },
+    isStarter(pos) { return ['QB','RB','WR','TE','K','DEF'].includes(pos); },
+    isDrafted(id) { return this.picks.some(p => p.player_id === id); },
+    isGone(id) { return this.isDrafted(id) || this.removed.has(id); },
+    draft(p) {
+      if (this.isDrafted(p.player_id)) return;
+      let slot = p.position;
+      if (this.isStarter(p.position) && this.countOf(p.position) < this.needs[p.position]) {
+        slot = p.position;
+      } else if (['RB','WR','TE'].includes(p.position) && this.countOf('FLEX') < this.needs.FLEX) {
+        slot = 'FLEX';
+      } else {
+        slot = 'BN';
+      }
+      const isBn = slot === 'BN';
+      const price = isBn ? 1 : (typeof p.price === 'number' && p.price > 0 ? p.price : 1);
+      this.picks.push({ name: p.name, position: p.position, team: p.team, player_id: p.player_id, slot: slot, price: price });
+    },
+    undraft(id) { this.picks = this.picks.filter(p => p.player_id !== id); },
+    undraftSlot(slot) {
+      const idx = this.picks.map(p => p.slot).lastIndexOf(slot);
+      if (idx >= 0) { this.picks.splice(idx, 1); }
+    },
+    posColor(pos) {
+      const m = { QB: 'bg-purple-500/15 text-purple-300 border-purple-500/20', RB: 'bg-blue-500/15 text-blue-300 border-blue-500/20', WR: 'bg-brand/10 text-brand border-brand/20', TE: 'bg-amber-500/15 text-amber-300 border-amber-500/20', K: 'bg-surface-3 text-slate-400', DEF: 'bg-surface-3 text-slate-400' };
+      return m[pos] || 'bg-surface-3 text-slate-400';
+    },
+    valueOf(name) {
+      const f = this.boardLive().find(x => x.name === name);
+      return f ? f.live : 50;
+    },
+    teamValue() {
+      const starters = this.picks.filter(p => p.slot !== 'BN' && ['QB','RB','WR','TE'].includes(p.position));
+      return starters.reduce((acc, p) => acc + this.valueOf(p.name), 0);
+    },
+    nextNeed() {
+      const order = ['RB', 'WR', 'QB', 'TE'];
+      for (const slot of order) {
+        if (this.countOf(slot) < this.needs[slot]) return 'Draft a ' + slot;
+      }
+      if (this.countOf('FLEX') < this.needs.FLEX) return 'Fill your FLEX with the best RB/WR/TE';
+      if (this.countOf('K') < this.needs.K) return 'Grab a Kicker';
+      if (this.countOf('DEF') < this.needs.DEF) return 'Grab a Defense';
+      return 'Starters set — draft bench depth';
+    },
+  };
+}
+</script>
+{% endblock %}

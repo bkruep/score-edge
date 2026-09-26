@@ -30,6 +30,49 @@
   </div>
 </div>
 
+{% if perf %}
+<div class="glass-card rounded-xl overflow-hidden mb-8">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <svg class="w-4 h-4 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+    <h2 class="font-display font-semibold text-white text-sm">Performance vs {{ perf.position }} Average</h2>
+    <span class="text-xs text-slate-500 ml-1">per game · n={{ perf.count }} {{ perf.position }}s</span>
+  </div>
+  <div class="p-5 space-y-4">
+    {% for key, label, fmt in [('ppr', 'PPR', '%.1f'), ('half', 'Half-PPR', '%.1f'), ('std', 'Standard', '%.1f')] %}
+    {% set pv = perf['player_' + key] %}
+    {% set av = perf['avg_' + key] %}
+    {% set maxv = [pv, av]|max %}
+    {% set pw = (pv / maxv * 100) if maxv else 0 %}
+    {% set aw = (av / maxv * 100) if maxv else 0 %}
+    <div>
+      <div class="flex items-center justify-between text-xs mb-1.5">
+        <span class="text-slate-400">{{ label }}</span>
+        <span class="font-mono">
+          <span class="text-white">{{ (fmt % pv) }} / game</span>
+          <span class="text-slate-500 mx-1">vs avg {{ (fmt % av) }}</span>
+          <span class="{% if pv >= av %}text-emerald-400{% else %}text-red-400{% endif %} font-semibold">{{ "+" if pv >= av else "" }}{{ "%.0f"|format((pv / av - 1.0) * 100 if av else 0) }}%</span>
+        </span>
+      </div>
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] text-slate-500 w-8">{{ label }}</span>
+          <div class="flex-1 h-2 rounded bg-surface-3/50 overflow-hidden">
+            <div class="h-full rounded {% if pv >= av %}bg-emerald-400/80{% else %}bg-amber-400/70{% endif %}" style="width: {{ pw }}%"></div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] text-slate-500 w-8">POS AVG</span>
+          <div class="flex-1 h-2 rounded bg-surface-3/50 overflow-hidden">
+            <div class="h-full rounded bg-slate-400/50" style="width: {{ aw }}%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
   <div class="glass-card rounded-xl overflow-hidden">
     <div class="px-5 py-4 border-b border-white/5"><h2 class="font-display font-semibold text-white text-sm">Passing</h2></div>

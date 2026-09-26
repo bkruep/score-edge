@@ -5,23 +5,57 @@
 {% block breadcrumb %}
 <div class="mb-6">
   <h1 class="text-2xl font-display font-bold text-white">Trade Analyzer</h1>
-  <p class="text-sm text-slate-500 mt-1">Compare two players side by side for fantasy trades</p>
+  <p class="text-sm text-slate-500 mt-1">Compare players — including 2-for-2 packages — with roster impact</p>
 </div>
 {% endblock %}
 {% block content %}
+<script type="application/json" id="pre-a">{{ pre_a|tojson }}</script>
+<script type="application/json" id="pre-b">{{ pre_b|tojson }}</script>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6"
-     x-data="{ sideA: { query: '', results: '', open: false, name: '', id: '' },
-              sideB: { query: '', results: '', open: false, name: '', id: '' },
-              loading: false, result: '' }"
-     @trade-compare.window="if(sideA.id && sideB.id) {
-       loading = true; result = '';
-       fetch('/api/trade-compare?a=' + sideA.id + '&b=' + sideB.id)
-         .then(r => r.text())
-         .then(t => { result = t; loading = false; });
-     }">
+     x-data="{
+       sideA: { query: '', results: '', open: false, players: [] },
+       sideB: { query: '', results: '', open: false, players: [] },
+       loading: false, result: '',
+       init() {
+         const pa = JSON.parse((document.getElementById('pre-a') || { textContent: '[]' }).textContent || '[]');
+         const pb = JSON.parse((document.getElementById('pre-b') || { textContent: '[]' }).textContent || '[]');
+         this.sideA.players = pa.slice(0, 2).map(p => ({ id: String(p.id), name: p.name }));
+         this.sideB.players = pb.slice(0, 2).map(p => ({ id: String(p.id), name: p.name }));
+         this.maybeCompare();
+       },
+       selectPlayer(side, pid, name) {
+         let d = side === 'A' ? this.sideA : this.sideB;
+         if (d.players.length >= 2) return;
+         if (d.players.some(p => p.id === pid)) return;
+         d.players.push({ id: pid, name: name || 'Player' });
+         d.query = ''; d.open = false;
+         this.maybeCompare();
+       },
+       removePlayer(side, idx) {
+         let d = side === 'A' ? this.sideA : this.sideB;
+         d.players.splice(idx, 1);
+         this.maybeCompare();
+       },
+       clearSide(side) {
+         let d = side === 'A' ? this.sideA : this.sideB;
+         d.players = [];
+         this.maybeCompare();
+       },
+       maybeCompare() {
+         if (this.sideA.players.length && this.sideB.players.length) this.compare();
+       },
+       compare() {
+         this.loading = true; this.result = '';
+         let a = this.sideA.players.map(p => p.id).join(',');
+         let b = this.sideB.players.map(p => p.id).join(',');
+         fetch('/api/trade-compare?a=' + encodeURIComponent(a) + '&b=' + encodeURIComponent(b))
+.then(r => r.text())
+            .then(t => { this.result = t; this.loading = false; });
+        }
+      }">
 
   <div>
-    <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Side A</label>
+    <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Side A <span class="text-slate-600 normal-case">(up to 2 players)</span></label>
     <div class="relative">
       <input type="text" x-model="sideA.query" placeholder="Search player..."
         class="w-full bg-surface-2 border border-white/5 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand/50"
@@ -33,25 +67,24 @@
              let link = $event.target.closest('a');
              if (link && link.href.includes('/players/')) {
                $event.preventDefault();
-               let pid = link.href.split('/players/')[1];
-               let nameEl = link.querySelector('.text-sm');
-               sideA.name = nameEl ? nameEl.textContent : '';
-               sideA.id = pid;
-               sideA.query = sideA.name;
-               sideA.open = false;
-               $dispatch('trade-compare');
+               selectPlayer('A', link.href.split('/players/')[1], (link.querySelector('.text-sm') || {}).textContent || '');
              }
            "
            x-html="sideA.results"></div>
     </div>
-    <div x-show="sideA.name" class="mt-2 px-3 py-2 rounded-lg bg-brand/10 border border-brand/20 text-sm text-brand-light">
-      <span class="font-medium" x-text="sideA.name"></span>
-      <button @click="sideA.name = ''; sideA.id = ''; sideA.query = ''; $dispatch('trade-compare')" class="ml-2 text-slate-500 hover:text-white text-xs">clear</button>
+    <div class="mt-2 flex flex-wrap gap-2" x-show="sideA.players.length" x-cloak>
+      <template x-for="(p, i) in sideA.players" :key="p.id">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-brand/10 border border-brand/20 text-sm text-brand-light">
+          <span x-text="p.name"></span>
+          <button @click="removePlayer('A', i)" class="text-brand-light/60 hover:text-white text-xs">&times;</button>
+        </span>
+      </template>
+      <button @click="clearSide('A')" class="text-xs text-slate-500 hover:text-white px-1">clear all</button>
     </div>
   </div>
 
   <div>
-    <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Side B</label>
+    <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider">Side B <span class="text-slate-600 normal-case">(up to 2 players)</span></label>
     <div class="relative">
       <input type="text" x-model="sideB.query" placeholder="Search player..."
         class="w-full bg-surface-2 border border-white/5 rounded-lg px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand/50"
@@ -63,32 +96,31 @@
              let link = $event.target.closest('a');
              if (link && link.href.includes('/players/')) {
                $event.preventDefault();
-               let pid = link.href.split('/players/')[1];
-               let nameEl = link.querySelector('.text-sm');
-               sideB.name = nameEl ? nameEl.textContent : '';
-               sideB.id = pid;
-               sideB.query = sideB.name;
-               sideB.open = false;
-               $dispatch('trade-compare');
+               selectPlayer('B', link.href.split('/players/')[1], (link.querySelector('.text-sm') || {}).textContent || '');
              }
            "
            x-html="sideB.results"></div>
     </div>
-    <div x-show="sideB.name" class="mt-2 px-3 py-2 rounded-lg bg-accent/10 border border-accent/20 text-sm text-accent">
-      <span class="font-medium" x-text="sideB.name"></span>
-      <button @click="sideB.name = ''; sideB.id = ''; sideB.query = ''; $dispatch('trade-compare')" class="ml-2 text-slate-500 hover:text-white text-xs">clear</button>
+    <div class="mt-2 flex flex-wrap gap-2" x-show="sideB.players.length" x-cloak>
+      <template x-for="(p, i) in sideB.players" :key="p.id">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-accent/10 border border-accent/20 text-sm text-accent">
+          <span x-text="p.name"></span>
+          <button @click="removePlayer('B', i)" class="text-accent/60 hover:text-white text-xs">&times;</button>
+        </span>
+      </template>
+      <button @click="clearSide('B')" class="text-xs text-slate-500 hover:text-white px-1">clear all</button>
     </div>
   </div>
 
   <div x-show="loading" class="col-span-full glass-card rounded-xl p-8 text-center">
-    <div class="text-sm text-slate-400">Comparing players...</div>
+    <div class="text-sm text-slate-400">Comparing rosters...</div>
   </div>
 
   <div x-show="result && !loading" class="col-span-full" x-html="result"></div>
 
-  <div x-show="!sideA.id || !sideB.id" class="col-span-full glass-card rounded-xl p-8 text-center">
+  <div x-show="!sideA.players.length || !sideB.players.length" class="col-span-full glass-card rounded-xl p-8 text-center">
     <svg class="w-12 h-12 text-brand-light mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-    <p class="text-sm text-slate-400">Search for two players to compare their fantasy value.</p>
+    <p class="text-sm text-slate-400">Search for one or two players on each side to compare their fantasy value.</p>
   </div>
 </div>
 {% endblock %}

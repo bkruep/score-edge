@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Line Lab — Line Movement Console | ScoreEdge{% endblock %}
+{% block meta_description %}Every main-line movement this week in one console: top movers, sample counts, and the full spreads + totals sparkline wall. ScoreEdge.{% endblock %}
+{% block canonical %}/line-lab{% endblock %}
+{% block og_url %}/line-lab{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-white/5 pb-3">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">LINE LAB</h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">MOVEMENT CONSOLE &middot; FIRST-SEEN BASELINE &rarr; CURRENT PRICE</p>
+  </div>
+  <div class="text-right">
+    <div class="text-[10px] font-mono text-slate-600">{{ n_spr }} SPR &middot; {{ n_ou }} O/U TRACKED</div>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+{% if not movers and not spr and not ou %}
+<div class="glass-card rounded-xl p-10 text-center animate-fadeup">
+  <div class="text-sm text-slate-400">No line movement tracked yet.</div>
+  <div class="text-[11px] text-slate-600 mt-2 font-mono">Each fresh odds fetch samples the main spreads and totals; changes stack into the wall below.</div>
+</div>
+{% else %}
+<div class="glass-card rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-3 border-b border-white/5">
+    <h2 class="font-display font-semibold text-white text-sm">Top Movers</h2>
+    <span class="text-xs text-slate-500 ml-1">biggest drift off baseline this week</span>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-white/5">
+    {% for s in movers %}
+    <div class="p-4 bg-surface-1 hover:bg-brand/5 transition-colors">
+      <div class="flex items-start justify-between gap-2">
+        <div class="min-w-0">
+          <div class="text-xs font-mono font-semibold text-white truncate">{{ s.game }}</div>
+          <div class="text-[10px] font-mono text-slate-500 mt-0.5 truncate">{{ s.market }} · {{ s.side }}</div>
+        </div>
+        <span class="text-sm font-mono font-bold shrink-0 {% if s.up %}text-emerald-400{% elif s.down %}text-rose-400{% else %}text-slate-500{% endif %}">
+          {{ '▲ +' if s.up else '▼ ' if s.down else '' }}{{ '%.1f'|format(s.delta) if s.up or s.down else '—' }}
+        </span>
+      </div>
+      <div class="mt-3 flex items-center justify-between text-[10px] font-mono text-slate-500">
+        <span>base {{ '%.0f'|format(s.base) }}</span>
+        <span class="text-slate-300">→ {{ '%.0f'|format(s.line) }}</span>
+        <span>{{ s.n }} pts</span>
+      </div>
+    </div>
+    {% endfor %}
+    {% if not movers %}<div class="p-4 bg-surface-1 col-span-full text-xs text-slate-500 font-mono">No movement yet — samples are stacking.</div>{% endif %}
+  </div>
+</div>
+
+{% set channels = [('SPREADS', spr, 'spr'), ('TOTALS', ou, 'ou')] %}
+{% for label, series, key in channels %}
+<div class="mb-6">
+  <div class="flex items-center justify-between mb-3 px-1">
+    <h2 class="font-display font-semibold text-white text-sm">{{ label }}</h2>
+    <span class="text-[10px] font-mono text-slate-600">{{ series|length }} TRACKED</span>
+  </div>
+  {% if series %}
+  <div class="grid md:grid-cols-2 gap-4 xl:grid-cols-3">
+    {% for s in series %}
+    <div class="glass-card rounded-xl p-4 border-l-2 {% if s.up %}border-emerald-400/60{% elif s.down %}border-rose-400/60{% else %}border-white/10{% endif %}">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div class="min-w-0">
+          <div class="text-xs font-mono font-semibold text-white truncate">{{ s.game }}</div>
+          <div class="text-[10px] font-mono text-slate-500 mt-0.5 truncate">{{ s.side }}</div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="text-sm font-mono font-bold {% if s.up %}text-emerald-400{% elif s.down %}text-rose-400{% else %}text-slate-400{% endif %}">
+            {{ '▲ +' if s.up else '▼ ' if s.down else '' }}{{ '%.1f'|format(s.delta) if s.up or s.down else '—' }}
+          </div>
+          <div class="text-[10px] font-mono text-slate-500">{{ '%.0f'|format(s.base) }} → {{ '%.0f'|format(s.line) }}</div>
+        </div>
+      </div>
+      <svg viewBox="0 0 {{ s.width }} {{ s.height }}" class="w-full h-auto" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="g{{ key }}-{{ loop.index }}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="{{ '#34d399' if s.up else '#f87171' if s.down else '#64748b' }}" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="{{ '#34d399' if s.up else '#f87171' if s.down else '#64748b' }}" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M {{ ' '.join(s.poly.split()) }} {{ s.width }},{{ s.height }} 0,{{ s.height }}" fill="url(#g{{ key }}-{{ loop.index }})" stroke="none"></path>
+        <line x1="0" y1="{{ s.base_y }}" x2="{{ s.width }}" y2="{{ s.base_y }}" stroke="#94a3b8" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3"></line>
+        <polyline points="{{ s.poly }}" fill="none" stroke="{{ '#34d399' if s.up else '#f87171' if s.down else '#64748b' }}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"></polyline>
+        <circle cx="{{ s.cur_x }}" cy="{{ s.cur_y }}" r="2.75" fill="{{ '#34d399' if s.up else '#f87171' if s.down else '#94a3b8' }}"></circle>
+      </svg>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="glass-card rounded-xl p-6 text-center text-xs text-slate-500 font-mono">No {{ label }} series sampled yet.</div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

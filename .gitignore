@@ -14,3 +14,7 @@ dist/
 build/
 .DS_Store
 Thumbs.db
+odds_cache.pkl
+.data_cache/
+_probe_*.py
+probe_*.py

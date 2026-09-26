@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Prop Radar — Position Prop Mass | ScoreEdge{% endblock %}
+{% block meta_description %}Every player carrying any prop edge, clustered by position — circle size is the edge, tint is the team. ScoreEdge.{% endblock %}
+{% block canonical %}/prop-radar{% endblock %}
+{% block og_url %}/prop-radar{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-white/5 pb-3">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">PROP RADAR</h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">GROUPED-CIRCLE PROP MASS &middot; SIZE = EDGE &middot; TINT = TEAM</p>
+  </div>
+  <div class="text-right">
+    <div class="text-[10px] font-mono text-slate-600">CLUSTERS: QB · RB · WR · TE</div>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+{% if not groups %}
+<div class="glass-card rounded-xl p-10 text-center animate-fadeup">
+  <div class="text-sm text-slate-400">No prop edges on the board yet.</div>
+  <div class="text-[11px] text-slate-600 mt-2 font-mono">The radar fills from the player-prop pool on the Live Lines board.</div>
+</div>
+{% else %}
+<div>
+<div class="mb-5 flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] font-mono text-slate-500">
+  <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border" style="border-color:#34d399"></span>circle size</span>
+  <span>edge magnitude</span>
+  <span class="ml-2">—</span>
+  <span class="inline-flex items-center gap-1.5"><span class="w-4 h-2 rounded-full" style="background:linear-gradient(90deg,#10b981,#0f766e,#475569)"></span></span>
+  <span>team tint</span>
+  <span class="ml-2">—</span>
+  <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border border-emerald-300"></span></span>
+  <span>price agrees with player numbers</span>
+</div>
+<div class="glass-card rounded-xl p-4">
+  <div class="flex items-center justify-between mb-3">
+    <span class="font-display font-semibold text-white text-sm">FULL RADAR — QB &middot; RB &middot; WR &middot; TE</span>
+    <span class="text-[10px] font-mono text-slate-500">peak edges per cluster</span>
+  </div>
+  <svg id="radar" data-groups='{{ groups|tojson }}' viewBox="0 0 1160 340" class="w-full h-auto"></svg>
+</div>
+<div id="radar-panel" class="fixed bottom-4 right-4 z-40 w-80 glass-card rounded-lg px-3.5 py-3 text-[11px] font-mono border-brand/20" style="display:none">
+  <div class="flex items-start justify-between gap-2">
+    <div class="min-w-0">
+      <div class="font-display font-semibold text-white text-sm" id="rp-name"></div>
+      <div class="text-slate-400 mt-0.5 truncate" id="rp-play"></div>
+    </div>
+    <button onclick="document.getElementById('radar-panel').style.display='none'" class="text-slate-600 hover:text-white shrink-0">✕</button>
+  </div>
+  <div class="mt-2 flex items-center gap-2 flex-wrap">
+    <span class="pill bg-surface-3 text-slate-300" id="rp-team"></span>
+    <span class="pill bg-emerald-500/20 text-emerald-400" id="rp-edge"></span>
+    <span class="pill bg-brand/15 text-brand" id="rp-confirm" style="display:none" title="Price agrees with the player's season numbers">MODEL OK</span>
+  </div>
+  <div class="mt-1.5 flex justify-between"><span class="text-slate-500">book</span><span class="text-slate-300" id="rp-book"></span></div>
+</div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // One large diagram: each position cluster packed into its own quadrant.
+  // Circle size is the edge, tint is the team, dashed ring = price agreement.
+  (function () {
+    (function () {
+      window.addEventListener('lab-pick', function (e) {
+        var d = e.detail;
+        var p = document.getElementById('radar-panel');
+        if (!p) return;
+        document.getElementById('rp-name').textContent = d.name || '';
+        document.getElementById('rp-play').textContent = d.play || d.name || '';
+        document.getElementById('rp-team').textContent = d.team || '?';
+        document.getElementById('rp-edge').textContent = '+' + (d.edge !== undefined ? d.edge : 0) + '%';
+        document.getElementById('rp-confirm').style.display = d.confirm ? 'inline-flex' : 'none';
+        document.getElementById('rp-book').textContent = d.book || '—';
+        p.style.display = 'block';
+      });
+    })();
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.getElementById('radar');
+    if (!svg) return;
+    var groups;
+    try { groups = JSON.parse(svg.getAttribute('data-groups')); } catch (e) { return; }
+    var W = 1160, H = 340;
+    var centers = [[145, 200], [435, 200], [725, 200], [1015, 200]];
+    var REGION = 124;
+    var clusters = [];
+    groups.forEach(function (g, gi) {
+      var cx = centers[gi][0], cy = centers[gi][1];
+      var maxR = Math.max(parseFloat(g.max) || 1, 0.01);
+      var items = g.players.slice();
+      var N = items.length;
+      var cap = N === 1 ? 96 : N === 2 ? 62 : N <= 6 ? 46 : 40;
+      items.forEach(function (it) { it.r = Math.round(16 + (it.edge / maxR) * (cap - 16)); });
+      items.sort(function (a, b) { return b.r - a.r; });
+      if (N === 1) {
+        items[0].x = cx; items[0].y = cy;
+      } else if (N <= 6) {
+        // Even ring layout so small clusters sit side-by-side cleanly.
+        var rad = (items[0].r + items[1].r + 9) / (2 * Math.sin(Math.PI / N));
+        var maxExt = 130 - items[0].r;
+        if (rad > maxExt) rad = maxExt;
+        if (rad < 26) rad = 26;
+        items.forEach(function (it, i) {
+          var a = (i / N) * 2 * Math.PI - Math.PI / 2;
+          it.x = cx + rad * Math.cos(a);
+          it.y = cy + rad * Math.sin(a);
+        });
+      } else {
+        var placed = [];
+        function collides(x, y, r) {
+          for (var i = 0; i < placed.length; i++) {
+            var p = placed[i], dx = x - p.x, dy = y - p.y, rr = r + p.r + 9;
+            if (dx * dx + dy * dy < rr * rr) return true;
+          }
+          return false;
+        }
+        function inRegion(x, y, r) {
+          var dx = x - cx, dy = y - cy, lim = REGION - r - 3;
+          return dx * dx + dy * dy <= lim * lim;
+        }
+        items.forEach(function (it) {
+          var put = false;
+          for (var k = 1; k < 2000 && !put; k++) {
+            var a = k * 2.399963, d = 7 * Math.sqrt(k);
+            var x = cx + d * Math.cos(a), y = cy + d * Math.sin(a);
+            if (inRegion(x, y, it.r) && !collides(x, y, it.r)) { it.x = x; it.y = y; put = true; }
+          }
+          if (!put) { it.x = cx + (Math.random() * 40 - 20); it.y = cy + (Math.random() * 40 - 20); }
+          placed.push({ x: it.x, y: it.y, r: it.r });
+        });
+      }
+      clusters.push({ cx: cx, cy: cy, pos: g.pos, items: items });
+    });
+    // Pass 1: cluster frames (dashed ring + faint position watermark) — bottom layer.
+    clusters.forEach(function (cl) {
+      var ring = document.createElementNS(NS, 'circle');
+      ring.setAttribute('cx', cl.cx); ring.setAttribute('cy', cl.cy);
+      ring.setAttribute('r', 118); ring.setAttribute('fill', 'none');
+      ring.setAttribute('stroke', 'rgba(148,163,184,0.16)'); ring.setAttribute('stroke-width', '1');
+      ring.setAttribute('stroke-dasharray', '3 5');
+      svg.appendChild(ring);
+      var wm = document.createElementNS(NS, 'text');
+      wm.setAttribute('x', cl.cx); wm.setAttribute('y', cl.cy + 9); wm.setAttribute('text-anchor', 'middle');
+      wm.setAttribute('font-size', '72'); wm.setAttribute('font-family', 'monospace');
+      wm.setAttribute('font-weight', '700'); wm.setAttribute('fill', 'rgba(148,163,184,0.07)');
+      wm.textContent = cl.pos;
+      svg.appendChild(wm);
+    });
+    // Pass 2: every circle + confirm ring.
+    clusters.forEach(function (cl) {
+      cl.items.forEach(function (it) {
+        var c = document.createElementNS(NS, 'circle');
+        c.setAttribute('cx', it.x); c.setAttribute('cy', it.y); c.setAttribute('r', it.r);
+        c.setAttribute('fill', it.color); c.setAttribute('fill-opacity', '0.28');
+        c.setAttribute('stroke', it.color); c.setAttribute('stroke-width', '2');
+        c.style.cursor = 'pointer';
+        var _it = it;
+        c.addEventListener('click', function () {
+          function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+          var play = (_it.side || _it.label)
+            ? (cap(_it.side) + ' ' + ((_it.line !== undefined && _it.line !== null) ? _it.line + ' ' : '') + (_it.label || '')).replace(/\s+/g, ' ').trim()
+            : _it.name;
+          window.dispatchEvent(new CustomEvent('lab-pick', { detail: {
+            name: _it.name, play: play, team: _it.team, edge: _it.edge,
+            book: _it.book, confirm: !!_it.confirm
+          } }));
+        });
+        svg.appendChild(c);
+        if (it.confirm) {
+          var o = document.createElementNS(NS, 'circle');
+          o.setAttribute('cx', it.x); o.setAttribute('cy', it.y); o.setAttribute('r', it.r + 5);
+          o.setAttribute('fill', 'none'); o.setAttribute('stroke', '#34d399');
+          o.setAttribute('stroke-width', '1.5'); o.setAttribute('stroke-dasharray', '3 5');
+          svg.appendChild(o);
+        }
+        it._fs = it.r >= 80 ? 17 : it.r >= 45 ? 15 : 13;
+      });
+    });
+    // Pass 3: labels on top of every circle (nothing covers the text).
+    clusters.forEach(function (cl) {
+      cl.items.forEach(function (it) {
+        var fs = it._fs;
+        var maxChars = Math.max(4, Math.floor(it.r * 2 / (fs * 0.62)));
+        var lab = it.last || '?';
+        if (lab.length > maxChars) lab = '#' + Math.round(it.edge);
+        var t = document.createElementNS(NS, 'text');
+        t.setAttribute('x', it.x); t.setAttribute('y', it.y + fs * 0.36); t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('font-size', fs); t.setAttribute('font-family', 'monospace');
+        t.setAttribute('font-weight', '700'); t.setAttribute('fill', '#f8fafc');
+        t.setAttribute('stroke', 'rgba(2,6,23,0.9)'); t.setAttribute('stroke-width', '3');
+        t.setAttribute('paint-order', 'stroke'); t.setAttribute('style', 'paint-order:stroke');
+        t.textContent = lab;
+        svg.appendChild(t);
+        if (it.r >= 80) {
+          var s = document.createElementNS(NS, 'text');
+          s.setAttribute('x', it.x); s.setAttribute('y', it.y + fs * 0.36 + 19); s.setAttribute('text-anchor', 'middle');
+          s.setAttribute('font-size', '13'); s.setAttribute('font-family', 'monospace');
+          s.setAttribute('font-weight', '700'); s.setAttribute('fill', it.color);
+          s.setAttribute('stroke', 'rgba(2,6,23,0.9)'); s.setAttribute('stroke-width', '3');
+          s.setAttribute('paint-order', 'stroke'); s.setAttribute('style', 'paint-order:stroke');
+          s.textContent = it.edge + '%';
+          svg.appendChild(s);
+        }
+      });
+    });
+  })();
+</script>
+{% endblock %}

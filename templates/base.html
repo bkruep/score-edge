@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}ScoreEdge — Multi-Sport Analytics &amp; Sports Betting{% endblock %}</title>
-  <meta name="description" content="{% block meta_description %}Multi-sport analytics: fantasy rankings, sports betting odds, player stats, and projections. NFL, NBA, MLB, NHL, MLS, College Football & Basketball. Data-driven insights.{% endblock %}">
-  <meta name="keywords" content="{% block keywords %}NFL, NBA, MLB, NHL, MLS, college football, college basketball, fantasy football, sports betting, odds, projections, rankings, analytics{% endblock %}">
+  <title>{% block title %}ScoreEdge — NFL Sports Betting & Analytics{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}ScoreEdge — live NFL betting dashboard: best lines across books, +EV value spots, steam moves, player props, touchdown hunt angles, DFS optimizers and rankings.{% endblock %}">
+  <meta name="keywords" content="{% block keywords %}NFL, sports betting, best odds, value spots, +EV, moneylines, spreads, totals, player props, touchdown bets, DFS, rankings{% endblock %}">
   <meta name="author" content="ScoreEdge">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://scoreedge.onrender.com{% block canonical %}{% endblock %}">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="ScoreEdge">
-  <meta property="og:title" content="{% block og_title %}ScoreEdge — Multi-Sport Analytics &amp; Betting{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}Fantasy rankings, sports betting odds, player projections, and analytics for NFL, NBA, MLB, NHL, MLS, and college sports.{% endblock %}">
+  <meta property="og:title" content="{% block og_title %}ScoreEdge — NFL Betting Edge{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Live NFL betting lines, +EV value spots, steam moves and best bets across sportsbooks.{% endblock %}">
   <meta property="og:url" content="https://scoreedge.onrender.com{% block og_url %}{% endblock %}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{% block tw_title %}ScoreEdge{% endblock %}">
-  <meta name="twitter:description" content="{% block tw_description %}Multi-sport analytics, fantasy rankings, sports betting odds, and projections.{% endblock %}">
+  <meta name="twitter:description" content="{% block tw_description %}Live NFL betting lines, value spots, and +EV best bets.{% endblock %}">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
   <script src="https://cdn.tailwindcss.com"></script>
@@ -26,167 +26,546 @@
       theme: {
         extend: {
           colors: {
-            brand: { DEFAULT: '#6366f1', dark: '#4f46e5', light: '#818cf8', glow: '#6366f180' },
-            accent: { DEFAULT: '#06b6d4', dark: '#0891b2', light: '#22d3ee' },
-            surface: { 0: '#060a14', 1: '#0c1222', 2: '#131b2e', 3: '#1a2540', 4: '#223052' },
+            brand: { DEFAULT: '#00e676', dark: '#00c853', light: '#69f0ae', glow: '#00e67626', dim: '#00e67680' },
+            accent: { DEFAULT: '#00e676', dark: '#00c853', light: '#69f0ae' },
+            surface: { 0: '#04060b', 1: '#070b12', 2: '#0c1120', 3: '#131a2e', 4: '#1b2540' },
+            prop: { DEFAULT: '#a78bfa', dark: '#8b5cf6', light: '#c4b5fd' },
+            steam: { DEFAULT: '#fbbf24', dark: '#f59e0b', light: '#fde68a' },
+            up: '#00e676',
+            down: '#f87171',
+            watch: '#fbbf24',
           },
-          fontFamily: { display: ['Space Grotesk', 'system-ui', 'sans-serif'], sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+          fontFamily: {
+            display: ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif'],
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          },
         }
       }
     }
   </script>
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 
   <style>
-    body { font-family: 'Inter', system-ui, sans-serif; background: #060a14; color: #e2e8f0; }
-    h1, h2, h3, .font-display { font-family: 'Space Grotesk', system-ui, sans-serif; }
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: #0c1222; }
-    ::-webkit-scrollbar-thumb { background: #223052; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #334568; }
-    .glass { background: rgba(12, 18, 34, 0.7); backdrop-filter: blur(16px); border: 1px solid rgba(99, 102, 241, 0.1); }
-    .glass-card { background: rgba(19, 27, 46, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(99, 102, 241, 0.08); }
-    .glow-brand { box-shadow: 0 0 30px rgba(99, 102, 241, 0.15); }
-    .glow-accent { box-shadow: 0 0 30px rgba(6, 182, 212, 0.15); }
-    .gradient-text { background: linear-gradient(135deg, #818cf8, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .gradient-border { border-image: linear-gradient(135deg, #6366f1, #06b6d4) 1; }
-    .hero-glow { background: radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 70%); }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #04060b; color: #cbd5e1; }
+    h1, h2, h3, .font-display { font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 600; letter-spacing: -0.015em; }
+    code, .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #070b12; }
+    ::-webkit-scrollbar-thumb { background: #1b2540; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #2a3856; }
+    /* faint command-grid backdrop */
+    .terminal-bg {
+      background-color: #04060b;
+      background-image:
+        linear-gradient(rgba(0, 230, 118, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 230, 118, 0.02) 1px, transparent 1px);
+      background-size: 48px 48px;
+    }
+    .glass { background: rgba(7, 11, 18, 0.82); backdrop-filter: blur(14px); border: 1px solid rgba(148, 163, 184, 0.09); }
+    .glass-card { background: rgba(12, 17, 32, 0.72); backdrop-filter: blur(10px); border: 1px solid rgba(148, 163, 184, 0.08); }
+    .glow-brand { box-shadow: 0 0 0 1px rgba(0, 230, 118, 0.08), 0 8px 40px rgba(0, 230, 118, 0.06); }
+    .glow-accent { box-shadow: 0 0 0 1px rgba(0, 230, 118, 0.10), 0 8px 40px rgba(0, 230, 118, 0.08); }
+    .gradient-text { background: linear-gradient(92deg, #69f0ae 0%, #00e676 55%, #38bdf8 120%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .gradient-border { border: 1px solid rgba(0, 230, 118, 0.25); }
+    .hero-glow { background:
+        radial-gradient(ellipse 70% 60% at 12% -5%, rgba(0, 230, 118, 0.09) 0%, transparent 55%),
+        radial-gradient(ellipse 60% 70% at 95% 5%, rgba(56, 189, 248, 0.05) 0%, transparent 50%),
+        linear-gradient(125deg, rgba(0, 230, 118, 0.03) 0%, rgba(10, 12, 20, 0) 40%); position: relative; }
     [x-cloak] { display: none !important; }
-    .nav-link { transition: all 0.15s ease; }
-    .nav-link:hover { background: rgba(99, 102, 241, 0.1); }
-    .nav-link.active { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
-    .stat-table th { position: sticky; top: 0; z-index: 10; background: #131b2e; }
-    .stat-table tr:hover td { background: rgba(99, 102, 241, 0.05); }
+    .nav-link { transition: all 0.15s ease; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.02em; }
+    .nav-link:hover { background: rgba(0, 230, 118, 0.08); color: #e2e8f0; }
+    .nav-link.active { background: rgba(0, 230, 118, 0.14); color: #00e676; }
+    .stat-table th { position: sticky; top: 0; z-index: 10; background: #0c1120; }
+    .stat-table tr:hover td { background: rgba(0, 230, 118, 0.045); }
     .fade-in { animation: fadeIn 0.3s ease-in; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-    .search-results { backdrop-filter: blur(16px); background: rgba(12, 18, 34, 0.95); }
-    .pill { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 0.7rem; font-weight: 500; }
+    .search-results { backdrop-filter: blur(14px); background: rgba(7, 11, 18, 0.98); }
+    .pill { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 600; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.04em; border: 1px solid transparent; }
+    .chip { border: 1px solid rgba(255,255,255,0.10); background: #0c1120; color: #94a3b8; padding: 4px 12px; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.04em; cursor: pointer; transition: all .15s ease; }
+    .chip:hover { color: #fff; border-color: rgba(255,255,255,0.35); }
+    .chip-on { border-color: rgba(0,230,118,0.55); background: rgba(0,230,118,0.12); color: #fff; }
+    .tick-label { font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: #64748b; }
+    .tick::after { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #00e676; margin-left: 8px; box-shadow: 0 0 8px #00e676; animation: pulse 1.8s infinite; vertical-align: baseline; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+    .animate-fadeup { opacity: 0; transform: translateY(14px); animation: fadeUp .55s cubic-bezier(.22,.9,.3,1) forwards; }
+    @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+    .value-fill { background: linear-gradient(90deg, #10b981, #00e676); box-shadow: 0 0 10px rgba(0, 230, 118, 0.5); }
+    /* sidebar */
+    .side-link { display: flex; align-items: center; gap: 0.65rem; padding: 0.42rem 0.7rem; border-radius: 8px; font-size: 0.82rem; font-weight: 500; color: #94a3b8; transition: all .14s ease; border: 1px solid transparent; }
+    .side-link:hover { color: #e2e8f0; background: rgba(255,255,255,0.04); }
+    .side-link.active { color: #00e676; background: rgba(0,230,118,0.10); border-color: rgba(0,230,118,0.22); }
+    .side-link.active svg { color: #00e676; }
+    .side-group { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase; color: #475569; padding: 0.85rem 0.7rem 0.35rem; }
+    .live-dot { width: 6px; height: 6px; border-radius: 9999px; background: #00e676; box-shadow: 0 0 8px #00e676; animation: pulse 1.8s infinite; }
+    /* charts (pure CSS/SVG — no chart libs, nothing that can block paint) */
+    .hbar { height: 6px; border-radius: 9999px; background: linear-gradient(90deg, rgba(0,230,118,0.18), rgba(0,230,118,0.55)); box-shadow: 0 0 12px rgba(0,230,118,0.18); }
+    .hbar-violet { background: linear-gradient(90deg, rgba(139,92,246,0.22), rgba(167,139,250,0.65)); box-shadow: 0 0 12px rgba(139,92,246,0.22); }
+    .hbar-amber { background: linear-gradient(90deg, rgba(245,158,11,0.22), rgba(251,191,36,0.7)); box-shadow: 0 0 12px rgba(245,158,11,0.2); }
+    .m-field { display: flex; align-items: flex-end; gap: 4px; height: 44px; }
+    .m-bar { flex: 1; border-radius: 3px 3px 0 0; background: linear-gradient(180deg, rgba(0,230,118,0.75), rgba(0,230,118,0.26)); min-height: 3px; transition: height .4s ease; }
+    .m-bar.peak { background: linear-gradient(180deg, #69f0ae, rgba(0,230,118,0.35)); }
+    .spark polyline { fill: none; stroke: #00e676; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .spark .fill { fill: rgba(0,230,118,0.10); stroke: none; }
+    .steam-chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; padding: 3px 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; font-weight: 600; border: 1px solid; }
+    .steam-up { color: #fde68a; border-color: rgba(251,191,36,0.35); background: rgba(251,191,36,0.08); }
+    .steam-down { color: #a5f3fc; border-color: rgba(56,189,248,0.35); background: rgba(56,189,248,0.08); }
+    .card-hover { transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+    .card-hover:hover { transform: translateY(-2px); border-color: rgba(0,230,118,0.35) !important; box-shadow: 0 12px 40px rgba(0,230,118,0.07); }
+    .divider-x { border-top: 1px solid rgba(148,163,184,0.08); }
+    /* live ticker */
+    .ticker { overflow: hidden; position: relative; -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+    .ticker-track { display: flex; width: max-content; animation: tickerScroll 40s linear infinite; }
+    .ticker:hover .ticker-track { animation-play-state: paused; }
+    @keyframes tickerScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    .tick-item { display: inline-flex; align-items: center; gap: 10px; padding: 0 22px; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #94a3b8; white-space: nowrap; }
+    .tick-item b { color: #e2e8f0; font-weight: 500; }
+    .tick-item em { font-style: normal; color: #00e676; }
+    /* radar */
+    .radar-wrap { position: relative; }
+    .radar-svg { width: 100%; height: auto; display: block; }
+    .radar-poly { fill: rgba(0,230,118,0.14); stroke: rgba(0,230,118,0.85); stroke-width: 2; transition: opacity .25s ease; }
+    .radar-poly.edge { fill: rgba(167,139,250,0.15); stroke: rgba(167,139,250,0.9); }
+    .radar-gdot { fill: rgba(0,230,118,0.75); cursor: pointer; transition: r .15s ease, fill .15s ease; animation: radarPing 2.6s ease-out infinite; }
+    @keyframes radarPing { 0% { opacity: 1; } 70% { opacity: 0.5; } 100% { opacity: 1; } }
+    .radar-txt { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #64748b; letter-spacing: 0.02em; }
+    .radar-vert:hover ~ .radar-txt { fill: #fff; }
+    .radar-hub { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+    /* game cards */
+    .game-card { transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease; }
+    .game-card:hover { border-color: rgba(0,230,118,0.3) !important; transform: translateY(-2px); box-shadow: 0 14px 44px rgba(0,230,118,0.07); }
+    .heat-chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 9999px; padding: 2px 10px; font-family: 'JetBrains Mono', monospace; font-size: 0.66rem; font-weight: 700; border: 1px solid; }
+    .heat-1 { color: #fca5a5; border-color: rgba(248,113,113,0.35); background: rgba(248,113,113,0.10); }
+    .heat-2 { color: #fdba74; border-color: rgba(251,146,60,0.35); background: rgba(251,146,60,0.10); }
+    .heat-3 { color: #fde68a; border-color: rgba(251,191,36,0.38); background: rgba(251,191,36,0.10); }
+    .heat-4p { color: #6ee7b7; border-color: rgba(52,211,153,0.42); background: rgba(52,211,153,0.10); }
+    .bar-row:hover .hbar { filter: brightness(1.45); }
+    .m-bar:hover { filter: brightness(1.5); transform: scaleY(1.08); transform-origin: bottom; }
+    .vert-dot { transition: transform .15s ease; transform-origin: center; }
+    .vert-dot:hover { transform: scale(1.7); }
+    .kpi-num { transition: color .2s ease; }
+    /* command deck */
+    .mmap { display: grid; gap: 6px; }
+    .mmap-cell { border-radius: 8px; transition: all .15s ease; cursor: pointer; text-align: center; }
+    .mmap-cell:hover { transform: translateY(-1px); filter: brightness(1.25); }
+    .mmap-label { font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; letter-spacing: 0.08em; color: #64748b; }
+    .deck-live { box-shadow: 0 0 0 1px rgba(0,230,118,0.22), 0 0 24px rgba(0,230,118,0.08); }
+    .rev-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 9999px; font-family: 'JetBrains Mono', monospace; font-size: 0.64rem; letter-spacing: 0.04em; border: 1px solid rgba(148,163,184,0.18); color: #94a3b8; background: rgba(12,17,32,0.6); cursor: pointer; transition: all .14s ease; white-space: nowrap; }
+    .rev-chip:hover { color: #fff; border-color: rgba(0,230,118,0.45); }
+    .rev-chip.on { color: #00e676; border-color: rgba(0,230,118,0.55); background: rgba(0,230,118,0.10); }
+    .rev-chip.on-props { color: #c4b5fd; border-color: rgba(167,139,250,0.5); background: rgba(167,139,250,0.10); }
+    input[type="range"].dial { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 9999px; background: linear-gradient(90deg, rgba(0,230,118,0.5), rgba(0,230,118,0.9)); outline: none; }
+    input[type="range"].dial::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #00e676; border: 3px solid #04060b; box-shadow: 0 0 0 1px rgba(0,230,118,0.6), 0 0 14px rgba(0,230,118,0.55); cursor: pointer; }
+    input[type="range"].dial::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #00e676; border: 3px solid #04060b; box-shadow: 0 0 0 1px rgba(0,230,118,0.6), 0 0 14px rgba(0,230,118,0.55); cursor: pointer; }
+    .play-row { transition: background .12s ease; }
+    .play-row:hover { background: rgba(0,230,118,0.05); }
+    .sort-th { cursor: pointer; user-select: none; }
+    .sort-th:hover { color: #e2e8f0; }
+    .bar-vert { border-radius: 3px 3px 0 0; min-height: 3px; transition: height .25s ease, background .25s ease; }
+    .edge-ring { box-shadow: 0 0 0 2px rgba(255,255,255,0.75), 0 0 18px rgba(0,230,118,0.35); }
+    /* edge gems holo cards */
+    .holo-gem { border: 1px solid rgba(0,230,118,0.22); background: linear-gradient(150deg, rgba(6,14,11,0.95) 0%, rgba(10,26,17,0.92) 45%, rgba(4,10,18,0.95) 100%); }
+    .holo-gem:hover { border-color: rgba(0,230,118,0.55); box-shadow: 0 0 24px rgba(0,230,118,0.28), inset 0 0 30px rgba(0,230,118,0.05); }
+    .gem-sheen { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, transparent 30%, rgba(0,230,118,0.10) 46%, rgba(120,255,214,0.14) 50%, rgba(0,230,118,0.10) 54%, transparent 70%); background-size: 260% 260%; opacity: 0; transition: opacity .3s ease; }
+    .holo-gem:hover .gem-sheen { opacity: 1; animation: gemSweep 1.2s ease infinite; }
+    @keyframes gemSweep { 0% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
+    .gem-rank { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.14em; color: #00e676; }
+    .gem-type { font-family: 'JetBrains Mono', monospace; font-size: 0.55rem; font-weight: 700; letter-spacing: 0.14em; color: rgba(148,163,184,0.7); border: 1px solid rgba(148,163,184,0.18); padding: 2px 6px; border-radius: 6px; }
+    .gem-edge { text-shadow: 0 0 16px rgba(0,230,118,0.45); }
+    .pulse-dot-wrap { display: flex; align-items: center; gap: 8px; }
+    .proof-glow { position: absolute; top: -160px; right: -80px; width: 420px; height: 420px; border-radius: 9999px; pointer-events: none; background: radial-gradient(circle, rgba(0,230,118,0.10) 0%, transparent 70%); animation: pulseGlow 5s ease-in-out infinite; }
+    @keyframes pulseGlow { 0%, 100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
+    /* tracked slip — global LEDGER drawer */
+    .slip-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(0,230,118,0.35); background: rgba(0,230,118,0.08); color: #00e676; cursor: pointer; transition: all .14s ease; font-size: 0.95rem; line-height: 1; }
+    .slip-btn:hover { background: rgba(0,230,118,0.22); box-shadow: 0 0 12px rgba(0,230,118,0.35); }
+    .slip-btn.added { background: rgba(0,230,118,0.95); color: #04060b; }
+    #ledger-fab { position: fixed; bottom: 1.1rem; right: 1.1rem; z-index: 70; display: flex; align-items: center; gap: 8px; padding: 7px 14px 7px 9px; border-radius: 9999px; cursor: pointer; transition: all .18s ease; }
+    #ledger-fab:hover { transform: translateY(-2px); }
+    .ledger-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 9999px; background: #00e676; color: #04060b; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; font-weight: 700; }
+    #ledger-panel { position: fixed; bottom: 4.3rem; right: 1.1rem; z-index: 70; width: min(360px, calc(100vw - 22px)); max-height: 62vh; overflow-y: auto; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,0.55); }
+    .ledger-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.10); background: rgba(12,17,32,0.9); }
+    .ledger-row.won { border-color: rgba(0,230,118,0.4); }
+    .ledger-row.lost { border-color: rgba(248,113,113,0.35); }
+    .ledger-row.push { border-color: rgba(148,163,184,0.25); }
+    .st-pill { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 9999px; font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 700; }
+    @keyframes slipFlash { 0% { transform: scale(1); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
+    .slip-btn.added { animation: slipFlash .25s ease; }
+    .spinner { border: 2px solid rgba(0,230,118,0.2); border-top-color: #00e676; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .scan-line { position: relative; overflow: hidden; }
+    .scan-line::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 40%, rgba(0,230,118,0.06) 50%, transparent 60%); transform: translateX(-100%); animation: scan 3.2s ease-in-out infinite; }
+    @keyframes scan { to { transform: translateX(100%); } }
+
+    /* ---- TIDE EDGE HEAT-CELL (market map) ---- */
+    .mmap-cell { position: relative; }
+    .mmap-cell.tide { animation: tideCell var(--tide-dur, 3s) ease-in-out infinite; }
+    .mmap-cell.tide::after {
+      content: ''; position: absolute; inset: 0; border-radius: 8px; pointer-events: none;
+      background: radial-gradient(ellipse at 50% 70%, rgba(0,230,118,0.55) 0%, transparent 72%);
+      opacity: 0; animation: tideSweep var(--tide-dur, 3s) ease-in-out infinite;
+    }
+    .mmap-cell.tide.prop-cell.tide::after { background: radial-gradient(ellipse at 50% 70%, rgba(167,139,250,0.55) 0%, transparent 72%); }
+    @keyframes tideCell {
+      0%, 100% { box-shadow: inset 0 0 12px rgba(0,0,0,0.18), 0 0 0 rgba(0,230,118,0); }
+      50% { box-shadow: inset 0 0 12px rgba(0,0,0,0.10), 0 0 calc(6px + var(--tide-e, 0) * 4px) rgba(0,230,118,var(--tide-a, 0.35)); }
+    }
+    @keyframes tideSweep {
+      0%, 100% { opacity: 0; transform: translateY(30%); }
+      50% { opacity: calc(var(--tide-e, 0) * 0.5); transform: translateY(-15%); }
+    }
+
+    /* ---- (visualizations removed — CSS cleared with them) ---- */
   </style>
   {% block head %}{% endblock %}
 </head>
-<body class="min-h-screen flex flex-col">
-  <!-- Top Nav -->
-  <nav class="glass sticky top-0 z-50 border-b border-white/5">
-    <div class="max-w-7xl mx-auto px-4">
-      <div class="flex items-center justify-between h-14">
-        <div class="flex items-center gap-6">
-          <a href="/" class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand to-accent flex items-center justify-center">
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            </div>
-            <span class="font-display font-bold text-white text-lg tracking-tight">Score<span class="text-brand-light">Edge</span></span>
-          </a>
-          <!-- Sport Selector -->
-          <div class="hidden lg:flex items-center bg-surface-2 rounded-lg p-0.5 border border-white/5">
-            <a href="/" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'nfl' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">NFL</a>
-            <a href="/nba" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'nba' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">NBA</a>
-            <a href="/cfb" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'cfb' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">CFB</a>
-            <a href="/cbb" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'cbb' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">CBB</a>
-            <a href="/mlb" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'mlb' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">MLB</a>
-            <a href="/nhl" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'nhl' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">NHL</a>
-            <a href="/mls" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'mls' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">MLS</a>
-            <a href="/golf" class="sport-tab px-2.5 py-1 rounded-md text-xs font-medium {% if active_sport == 'golf' %}bg-brand/20 text-brand-light{% else %}text-slate-500 hover:text-slate-300{% endif %}">Golf</a>
-          </div>
-          <!-- Page Nav -->
-          <div class="hidden md:flex items-center gap-1">
-            <a href="/" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'home' %}active{% else %}text-slate-400{% endif %}">Dashboard</a>
-            <a href="/players" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'players' %}active{% else %}text-slate-400{% endif %}">Players</a>
-            <a href="/rankings" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'rankings' %}active{% else %}text-slate-400{% endif %}">Rankings</a>
-            <a href="/bets" class="nav-link px-3 py-1.5 rounded-lg text-sm {% if active_page == 'bets' %}active{% else %}text-slate-400{% endif %}">Sports Betting</a>
-          </div>
-        </div>
-        <div class="flex items-center gap-3">
-          <div class="relative" x-data="{ open: false, query: '', results: [] }" @click.away="open = false">
-            <div class="flex items-center gap-2 bg-surface-2 border border-white/5 rounded-lg px-3 py-1.5">
-              <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-              <input type="text" placeholder="Search players..."
-                class="bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none w-48"
-                x-model="query" @input.debounce.300ms="if(query.length >= 2) { fetch('/api/player-search?q=' + encodeURIComponent(query)).then(r => r.text()).then(t => { results = t; open = true; }) } else { open = false }"
-                @focus="if(query.length >= 2 && results) open = true">
-            </div>
-            <div x-show="open && results.length > 0" x-cloak
-                 class="absolute right-0 top-full mt-2 w-96 rounded-xl search-results shadow-2xl overflow-hidden z-50" x-html="results"></div>
-          </div>
-          <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-600 hover:text-brand-light transition-colors">
-            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-          </a>
-        </div>
+<body class="min-h-screen terminal-bg" style="color-scheme: dark;">
+<div x-data="{ navOpen: false }" class="lg:flex min-h-screen">
+
+  <!-- ======================= SIDEBAR (desktop) ======================= -->
+  <aside class="hidden lg:flex flex-col fixed inset-y-0 left-0 w-[232px] glass border-r border-white/5 z-40">
+    <div class="flex items-center gap-2.5 px-4 h-14 border-b border-white/5 shrink-0">
+      <div class="w-8 h-8 rounded-md bg-brand/10 border border-brand/40 flex items-center justify-center">
+        <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+      </div>
+      <div>
+        <div class="font-display font-bold text-white text-[15px] leading-none tracking-tight">Score<span class="text-brand">Edge</span></div>
+        <div class="text-[10px] text-slate-500 font-mono mt-1 tracking-wide">BETTING · ANALYTICS</div>
       </div>
     </div>
-  </nav>
 
-  <div class="flex-1">
+    <nav class="flex-1 overflow-y-auto px-3 py-2">
+      {% set active = active_page|default('') %}
+
+      <div class="side-group">League</div>
+      <div class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg mb-1" style="border:1px solid rgba(0,230,118,0.16); background:rgba(0,230,118,0.05);">
+        <span class="w-6 h-6 rounded-md bg-brand/15 border border-brand/40 flex items-center justify-center text-[11px] font-bold text-brand">🏈</span>
+        <div class="flex-1">
+          <div class="text-xs font-semibold text-white leading-none">NFL</div>
+          <div class="text-[10px] font-mono text-slate-500 mt-1">SEASON {{ current_year }}</div>
+        </div>
+        <span class="live-dot"></span>
+      </div>
+
+      <div class="side-group">Overview</div>
+      <a href="/" class="side-link {% if active == 'home' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a href="/bets" class="side-link {% if active == 'bets' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+        <span>Live Lines</span>
+        <span class="live-dot ml-auto"></span>
+      </a>
+      <a href="/props" class="side-link {% if active == 'props' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
+        <span>Player Props</span>
+        <span class="ml-auto text-[10px] font-mono text-slate-600">+EV</span>
+      </a>
+      <a href="/touchdown" class="side-link {% if active == 'td' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span>Touchdown Hunt</span>
+      </a>
+
+      <div class="side-group">Bet Lab</div>
+      <a href="/edge-deck" class="side-link {% if active == 'edge_deck' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2.25l8.66 5v10l-8.66 5-8.66-5v-10L12 2.25zM12 7.5l6 3.46v6.93L12 20.88l-6-3.46V10.96l6-3.46z"/></svg>
+        <span>Edge Deck</span>
+      </a>
+      <a href="/line-lab" class="side-link {% if active == 'line_lab' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L8.31 12l2.5 2.5 6.75-6.75 2.44 2.44L21.75 9l-1.06-1.06-2.44 2.44-6.75-6.75L9 6.19 2.25 12.94l-1.5-1.5"/></svg>
+        <span>Line Lab</span>
+      </a>
+      <a href="/value-lab" class="side-link {% if active == 'value_lab' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v3.375c0 .621-.504 1.125-1.125 1.125h-2.25A1.125 1.125 0 013 16.5v-3.375zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125v-11.25zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125v-15.75z"/></svg>
+        <span>Value Scatter Lab</span>
+      </a>
+      <a href="/prop-radar" class="side-link {% if active == 'prop_radar' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18zm0-5a4 4 0 100-8 4 4 0 000 8z"/></svg>
+        <span>Prop Radar</span>
+      </a>
+
+      <div class="side-group">Tools</div>
+      <a href="/dfs" class="side-link {% if active == 'dfs' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625v3.375"/></svg>
+        <span>DFS Optimizer</span>
+      </a>
+
+      <div class="side-group">More Leagues</div>
+      {% set leagues = [('nba','NBA','🏀'),('cfb','CFB','🏈'),('cbb','CBB','🏀'),('mlb','MLB','⚾'),('nhl','NHL','🏒'),('mls','MLS','⚽'),('golf','Golf','⛳')] %}
+      {% for key, name, icon in leagues %}
+      <a href="/{{ key }}" class="side-link {% if active_sport == key %}active{% endif %}">
+        <span class="w-[17px] h-[17px] inline-flex items-center justify-center text-[12px] opacity-80">{{ icon }}</span>
+        <span>{{ name }}</span>
+        <span class="ml-auto text-[9px] font-mono text-slate-600 tracking-wide">SOON</span>
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="px-4 py-3 border-t border-white/5 shrink-0">
+      <div class="flex items-center justify-between">
+        <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-600 hover:text-brand transition-colors">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126L5.117z"/></svg>
+        </a>
+        <span class="text-[10px] font-mono text-slate-600">LIVE MARKET DATA</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ======================= MOBILE top bar ======================= -->
+  <header class="lg:hidden sticky top-0 z-50 glass border-b border-white/5">
+    <div class="flex items-center justify-between px-4 h-14">
+      <a href="/" class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-md bg-brand/10 border border-brand/40 flex items-center justify-center">
+          <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        </div>
+        <span class="font-display font-bold text-white text-base tracking-tight">Score<span class="text-brand">Edge</span></span>
+      </a>
+      <div class="flex items-center gap-2">
+        <a href="/dfs" class="pill bg-surface-3 text-slate-300">DFS</a>
+        <a href="/bets" class="pill bg-brand/10 text-brand border-brand/25">BETS</a>
+        <button @click="navOpen = !navOpen" class="w-9 h-9 rounded-md border border-white/10 flex items-center justify-center text-slate-300">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+        </button>
+      </div>
+    </div>
+    <div x-show="navOpen" x-cloak x-transition.opacity class="border-t border-white/5 bg-surface-1 px-3 py-2">
+      <a href="/" class="side-link {% if active_page == 'home' %}active{% endif %}">Dashboard</a>
+      <a href="/bets" class="side-link {% if active_page == 'bets' %}active{% endif %}">Live Lines</a>
+      <a href="/props" class="side-link {% if active_page == 'props' %}active{% endif %}">Player Props</a>
+      <a href="/touchdown" class="side-link {% if active_page == 'td' %}active{% endif %}">Touchdown Hunt</a>
+      <a href="/edge-deck" class="side-link {% if active_page == 'edge_deck' %}active{% endif %}">Edge Deck</a>
+      <a href="/line-lab" class="side-link {% if active_page == 'line_lab' %}active{% endif %}">Line Lab</a>
+      <a href="/value-lab" class="side-link {% if active_page == 'value_lab' %}active{% endif %}">Value Scatter Lab</a>
+      <a href="/prop-radar" class="side-link {% if active_page == 'prop_radar' %}active{% endif %}">Prop Radar</a>
+      <a href="/dfs" class="side-link {% if active_page == 'dfs' %}active{% endif %}">DFS Optimizer</a>
+      <div class="divider-x my-2"></div>
+      {% for key, name, icon in leagues %}
+      <a href="/{{ key }}" class="side-link">{{ icon }} {{ name }} — soon</a>
+      {% endfor %}
+    </div>
+  </header>
+
+  <!-- ======================= MAIN ======================= -->
+  <div class="flex-1 lg:ml-[232px] min-w-0 flex flex-col">
     <div class="hero-glow">
-      <div class="max-w-7xl mx-auto px-4 py-6">
+      <div class="max-w-[1280px] mx-auto px-4 sm:px-6 py-6">
         {% block breadcrumb %}{% endblock %}
         {% block content %}{% endblock %}
       </div>
     </div>
-  </div>
 
-  <!-- Footer -->
-  <footer class="border-t border-white/5 bg-surface-1 mt-auto">
-    <div class="max-w-7xl mx-auto px-4 py-8">
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
-        <div>
-          <div class="flex items-center gap-2 mb-3">
-            <div class="w-6 h-6 rounded bg-gradient-to-br from-brand to-accent flex items-center justify-center">
-              <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+    <footer class="border-t border-white/5 bg-surface-1 mt-auto">
+      <div class="max-w-[1280px] mx-auto px-6 py-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-center gap-2">
+            <div class="w-6 h-6 rounded bg-brand/10 border border-brand/40 flex items-center justify-center">
+              <svg class="w-3.5 h-3.5 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
             </div>
-            <span class="font-display font-bold text-white text-sm">ScoreEdge</span>
+            <span class="font-display font-bold text-white text-sm">Score<span class="text-brand">Edge</span></span>
+            <span class="text-xs text-slate-600 font-mono ml-1">// edge-first NFL betting analytics</span>
           </div>
-          <p class="text-xs text-slate-500 leading-relaxed">Multi-sport analytics, fantasy rankings, sports betting odds, and projections. Data-driven for every game.</p>
+          <div class="flex items-center gap-5">
+            <a href="/bets" class="text-xs text-slate-500 hover:text-white transition-colors">Live Lines</a>
+            <a href="/edge-deck" class="text-xs text-slate-500 hover:text-white transition-colors">Edge Deck</a>
+            <a href="/dfs" class="text-xs text-slate-500 hover:text-white transition-colors">DFS</a>
+            <span class="text-[10px] font-mono text-slate-700">data: SharpAPI · nfldata.org · Open-Meteo</span>
+          </div>
         </div>
-        <div>
-          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Sports</h4>
-          <ul class="space-y-1.5">
-            <li><a href="/" class="text-xs text-slate-500 hover:text-white transition-colors">NFL</a></li>
-            <li><a href="/nba" class="text-xs text-slate-500 hover:text-white transition-colors">NBA</a></li>
-            <li><a href="/cfb" class="text-xs text-slate-500 hover:text-white transition-colors">College Football</a></li>
-            <li><a href="/cbb" class="text-xs text-slate-500 hover:text-white transition-colors">College Basketball</a></li>
-            <li><a href="/mlb" class="text-xs text-slate-500 hover:text-white transition-colors">MLB</a></li>
-            <li><a href="/nhl" class="text-xs text-slate-500 hover:text-white transition-colors">NHL</a></li>
-            <li><a href="/mls" class="text-xs text-slate-500 hover:text-white transition-colors">MLS</a></li>
-            <li><a href="/golf" class="text-xs text-slate-500 hover:text-white transition-colors">Golf</a></li>
-          </ul>
-        </div>
-        <div>
-          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Analytics</h4>
-          <ul class="space-y-1.5">
-            <li><a href="/players" class="text-xs text-slate-500 hover:text-white transition-colors">Players</a></li>
-            <li><a href="/rankings" class="text-xs text-slate-500 hover:text-white transition-colors">Fantasy Rankings</a></li>
-            <li><a href="/bets" class="text-xs text-slate-500 hover:text-white transition-colors">Sports Betting</a></li>
-          </ul>
-        </div>
-        <div>
-          <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Data</h4>
-          <ul class="space-y-1.5">
-            <li><a href="https://nfldata.org" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">nfldata.org</a></li>
-            <li><a href="https://fantasyfootballcalculator.com" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">FFC ADP</a></li>
-            <li><a href="https://the-odds-api.com" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">The Odds API</a></li>
-            <li><a href="https://open-meteo.com" target="_blank" class="text-xs text-slate-500 hover:text-white transition-colors">Open-Meteo</a></li>
-          </ul>
+        <div class="border-t border-white/5 mt-4 pt-4 flex items-center justify-between">
+          <p class="text-xs text-slate-600">&copy; {{ current_year }} ScoreEdge. Built by <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-500 hover:text-brand-light transition-colors">@BryanKruep</a>. Not affiliated with the NFL or any sportsbook.</p>
         </div>
       </div>
-      <div class="border-t border-white/5 pt-4 flex items-center justify-between">
-        <p class="text-xs text-slate-600">&copy; {{ current_year }} ScoreEdge. Not affiliated with the NFL, NBA, MLB, NHL, or MLS.</p>
-        <p class="text-xs text-slate-600">Built by <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-500 hover:text-brand-light transition-colors">@BryanKruep</a></p>
+    </footer>
+  </div>
+</div>
+
+<script>
+  function togglePos(inputId, val) {
+    var inp = document.getElementById(inputId);
+    if (!inp) return;
+    if (inp.value === val) { inp.value = 'ALL'; }
+    else { inp.value = val; }
+    if (inp.form) inp.form.submit();
+  }
+</script>
+
+<!-- ======================= GLOBAL TRACKED SLIP / LEDGER ======================= -->
+<button id="ledger-fab" class="glass" type="button" style="position:fixed;bottom:1.1rem;right:1.1rem;z-index:70;display:none;flex;align-items:center;gap:8px;padding:7px 14px 7px 9px;border-radius:9999px;cursor:pointer;">
+  <span id="ledger-count" class="ledger-badge">0</span>
+  <span class="text-xs font-mono text-white">SLIP</span>
+  <span id="ledger-edge" class="text-xs font-mono text-emerald-400">—</span>
+</button>
+
+<div id="ledger-panel" class="glass" style="position:fixed;bottom:4.3rem;right:1.1rem;z-index:70;width:min(360px,calc(100vw - 22px));max-height:62vh;overflow-y:auto;border-radius:14px;display:none;box-shadow:0 24px 70px rgba(0,0,0,0.55);">
+  <div class="px-3.5 py-2.5 border-b border-white/5 sticky top-0" style="background:rgba(7,11,18,0.96);backdrop-filter:blur(10px);">
+    <div class="flex items-center justify-between">
+      <span class="tick-label">YOUR LEDGER — TRACKED PLAYS</span>
+      <button id="ledger-clear" class="text-[10px] font-mono text-slate-500 hover:text-red-400 transition-colors" type="button">CLEAR</button>
+    </div>
+    <div class="mt-2 grid grid-cols-3 gap-2 text-center">
+      <div class="rounded-lg border border-white/5 px-1 py-1.5">
+        <div id="ledger-k-open" class="text-base font-display font-bold text-white leading-none">0</div>
+        <div class="text-[9px] font-mono text-slate-600 mt-1">OPEN</div>
+      </div>
+      <div class="rounded-lg border border-white/5 px-1 py-1.5">
+        <div id="ledger-k-edge" class="text-base font-display font-bold text-emerald-400 leading-none">—</div>
+        <div class="text-[9px] font-mono text-slate-600 mt-1">COMBINED</div>
+      </div>
+      <div class="rounded-lg border border-white/5 px-1 py-1.5">
+        <div id="ledger-k-roi" class="text-base font-display font-bold leading-none">—</div>
+        <div class="text-[9px] font-mono text-slate-600 mt-1">ROI (1U)</div>
       </div>
     </div>
-  </footer>
+    <button id="ledger-resolve" class="mt-2 w-full py-2 rounded-lg border border-brand/40 bg-brand/10 text-brand font-mono text-xs font-bold tracking-wider hover:bg-brand/20 transition-colors" type="button" style="display:none;">
+      RESOLVE AFTER GAMES HIT FINAL
+    </button>
+  </div>
+  <div id="ledger-rows" class="px-3.5 py-3 grid gap-2"></div>
+  <div class="px-3.5 py-2 border-t border-white/5 text-[9px] font-mono text-slate-600">
+    tracks at the price you locked · settles against real final scores
+  </div>
+</div>
 
-  <script>
-    document.addEventListener('keydown', function(e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        document.querySelector('nav input[type="text"]').focus();
+<script>
+  (function () {
+    var KEY = 'scoreedge_slip_v1';
+    var items = [];
+    try { items = JSON.parse(localStorage.getItem(KEY) || '[]') || []; } catch (e) { items = []; }
+
+    var fab = document.getElementById('ledger-fab');
+    var panel = document.getElementById('ledger-panel');
+    var rowsEl = document.getElementById('ledger-rows');
+    var open = false;
+
+    function amDec(a) { a = parseInt(a, 10) || -110; return a > 0 ? 1 + a / 100 : 1 + 100 / (-a); }
+    function amTxt(a) { a = parseInt(a, 10) || 0; return a > 0 ? '+' + a : String(a); }
+    function decAm(d) { if (d >= 2) return '+' + Math.round((d - 1) * 100); return String(Math.round(-100 / (d - 1))); }
+    function combined() {
+      var d = 1;
+      for (var i = 0; i < items.length; i++) d *= amDec(items[i].a);
+      return d;
+    }
+    function profitOf(it) {
+      if (!it.status || it.status === 'push' || it.status === 'undecided') return null;
+      return it.status === 'won' ? (amDec(it.a) - 1) : -1;
+    }
+    function roi() { var u = 0, p = 0, pr; for (var i = 0; i < items.length; i++) { pr = profitOf(items[i]); if (pr === null) continue; u++; p += pr; } return u ? p / u * 100 : 0; }
+    function hasOpen() { for (var i = 0; i < items.length; i++) if (!items[i].status) return true; return false; }
+    function hasSettled() { for (var i = 0; i < items.length; i++) if (items[i].status) return true; return false; }
+    function save() { try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {} }
+
+    function el(tag, cls, txt) {
+      var n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (txt !== undefined && txt !== null) n.textContent = txt;
+      return n;
+    }
+
+    function render() {
+      fab.style.display = items.length ? 'flex' : 'none';
+      document.getElementById('ledger-count').textContent = items.length;
+      var ed = items.length ? (combined() - 1) * 100 : 0;
+      var edgeEl = document.getElementById('ledger-edge');
+      edgeEl.textContent = items.length ? (ed >= 0 ? '+' : '') + ed.toFixed(0) + '%' : '—';
+      edgeEl.className = 'text-xs font-mono ' + (ed >= 0 ? 'text-emerald-400' : 'text-red-400');
+
+      document.getElementById('ledger-k-open').textContent = items.length;
+      var ke = document.getElementById('ledger-k-edge');
+      ke.textContent = items.length ? (ed >= 0 ? '+' : '') + ed.toFixed(0) + '% (' + decAm(combined()) + ')' : '—';
+      ke.className = 'text-base font-display font-bold leading-none ' + (ed >= 0 ? 'text-emerald-400' : 'text-red-400');
+      var r = roi(), kr = document.getElementById('ledger-k-roi');
+      kr.textContent = hasSettled() ? (r >= 0 ? '+' : '') + r.toFixed(1) + '%' : '—';
+      kr.className = 'text-base font-display font-bold leading-none ' + (r >= 0 ? 'text-emerald-400' : 'text-red-400');
+      document.getElementById('ledger-resolve').style.display = hasOpen() ? 'block' : 'none';
+
+      rowsEl.innerHTML = '';
+      for (var i = 0; i < items.length; i++) {
+        (function (it) {
+          var row = el('div', 'ledger-row');
+          if (it.status === 'won') row.classList.add('won');
+          else if (it.status === 'lost') row.classList.add('lost');
+          else if (it.status === 'push') row.classList.add('push');
+          var body = el('div', 'min-w-0 flex-1');
+          body.appendChild(el('div', 'text-xs text-white font-medium leading-snug truncate', it.s));
+          var sub = el('div', 'text-[9px] font-mono text-slate-500 mt-0.5 truncate');
+          sub.appendChild(document.createTextNode(it.g + ' · ' + it.b + ' · ' + it.m));
+          if (it.l !== null && it.l !== undefined) sub.appendChild(document.createTextNode(' · ' + it.l));
+          if (it.e) { var ep = el('span', 'text-emerald-400', ' +' + it.e + '%'); sub.appendChild(ep); }
+          body.appendChild(sub);
+          row.appendChild(body);
+          row.appendChild(el('span', 'text-[11px] font-mono shrink-0', amTxt(it.a)));
+          if (it.status === 'won') row.appendChild(el('span', 'st-pill bg-emerald-500/20 text-emerald-400', 'W'));
+          else if (it.status === 'lost') row.appendChild(el('span', 'st-pill bg-red-500/20 text-red-400', 'L'));
+          else if (it.status === 'push') row.appendChild(el('span', 'st-pill bg-white/10 text-slate-400', 'P'));
+          var x = el('button', 'text-slate-600 hover:text-red-400 transition-colors shrink-0 text-xs font-mono', '✕');
+          x.type = 'button';
+          x.addEventListener('click', function () { remove(it.id); });
+          row.appendChild(x);
+          rowsEl.appendChild(row);
+        })(items[i]);
       }
+      panel.style.display = (open && items.length) ? 'block' : 'none';
+    }
+
+    function add(entry) {
+      if (!entry || typeof entry !== 'object') return false;
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (!it.status && it.g === entry.g && it.s === entry.s && it.m === entry.m && Number(it.l) === Number(entry.l)) return false;
+      }
+      entry.id = 's' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+      items.push(entry);
+      save(); render();
+      return true;
+    }
+    function remove(id) { items = items.filter(function (x) { return x.id !== id; }); save(); render(); }
+    function clearAll() { items = []; save(); render(); }
+
+    function flash(btn) { if (!btn) return; btn.classList.add('added'); setTimeout(function () { btn.classList.remove('added'); }, 320); }
+
+    fab.addEventListener('click', function () { open = !open; render(); });
+    document.getElementById('ledger-clear').addEventListener('click', clearAll);
+    document.getElementById('ledger-resolve').addEventListener('click', function () {
+      var openItems = items.filter(function (it) { return !it.status; });
+      if (!openItems.length) return;
+      fetch('/api/slip-resolve', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: openItems.map(function (it) {
+          return { market: it.m, game: it.g, side: it.s, line: it.l, player: it.p };
+        }) })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        var res = (d && d.results) || [];
+        for (var i = 0; i < res.length && i < openItems.length; i++) {
+          var st = res[i] && res[i].status;
+          if (st && st !== 'undecided') {
+            for (var j = 0; j < items.length; j++) {
+              if (items[j].id === openItems[i].id) { items[j].status = st; }
+            }
+          }
+        }
+        save(); render();
+      }).catch(function () {});
     });
-  </script>
-  {% block scripts %}{% endblock %}
+
+    document.addEventListener('click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('[data-slip]') : null;
+      if (!b) return;
+      var raw = b.getAttribute('data-slip');
+      try { var e = JSON.parse(raw); window.SlipLedger.add(e); window.SlipLedger.flash(b); } catch (err) {}
+    });
+
+    window.SlipLedger = {
+      add: add, remove: remove, clearAll: clearAll, flash: flash,
+      count: function () { return items.length; },
+      list: function () { return items.slice(); },
+      resolve: function () { document.getElementById('ledger-resolve').click(); }
+    };
+    render();
+  })();
+</script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

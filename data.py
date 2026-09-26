@@ -1,25 +1,88 @@
 from __future__ import annotations
-import io, os, time
+import io, os, time, json
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 import requests
 
 # ---------------------------------------------------------------------------
-# Shared cache
+# Shared cache (in-memory + on-disk so restarts/expiry don't re-download)
 # ---------------------------------------------------------------------------
 
 _CACHE: dict[str, tuple[float, object]] = {}
-CACHE_TTL = 1800
+CACHE_TTL = 1800  # 30 min in memory
+
+_DISK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".data_cache")
+_DISK_TTL = 86400 * 7  # 7 days on disk
+os.makedirs(_DISK_DIR, exist_ok=True)
+
+
+def _disk_path(key: str) -> str:
+    safe = "".join(c if c.isalnum() else "_" for c in key)
+    return os.path.join(_DISK_DIR, f"{safe}.json")
+
+
+def _get_disk(key: str):
+    path = _disk_path(key)
+    try:
+        if not os.path.exists(path):
+            return None
+        if time.time() - os.path.getmtime(path) > _DISK_TTL:
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _put_disk(key: str, val):
+    try:
+        with open(_disk_path(key), "w", encoding="utf-8") as f:
+            json.dump(_serializable(val), f)
+    except Exception:
+        pass
+
+
+def _serializable(val):
+    if isinstance(val, pd.DataFrame):
+        return {"__df__": True, "records": val.to_dict("records"), "columns": list(val.columns)}
+    if isinstance(val, (list, tuple)):
+        return [_serializable(v) for v in val]
+    if isinstance(val, dict):
+        return {k: _serializable(v) for k, v in val.items()}
+    try:
+        json.dumps(val)
+        return val
+    except (TypeError, ValueError):
+        return str(val)
+
+
+def _materialize(val):
+    if isinstance(val, dict) and val.get("__df__"):
+        try:
+            return pd.DataFrame(val["records"], columns=val.get("columns"))
+        except Exception:
+            pass
+    return val
+
 
 def _get_cached(key: str):
     if key in _CACHE:
         ts, val = _CACHE[key]
         if time.time() - ts < CACHE_TTL:
             return val
+    # Fall back to disk (load once per process to avoid repeated disk reads)
+    if key not in _CACHE:
+        disk = _get_disk(key)
+        if disk is not None:
+            val = _materialize(disk)
+            _CACHE[key] = (time.time(), val)
+            return val
     return None
+
 
 def _set_cached(key: str, val):
     _CACHE[key] = (time.time(), val)
+    _put_disk(key, val)
 
 # ---------------------------------------------------------------------------
 # Odds API (shared across sports)
@@ -81,26 +144,54 @@ SLEEPER_BASE = "https://api.sleeper.app/v1"
 
 FANTASY_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF", "DST"}
 
+
+def _get_retry(url: str, params: dict, attempts: int = 3, timeout: int = 12) -> requests.Response | None:
+    """GET with retry+backoff. nfldata.org is flaky (drops TLS connections and
+    rate-limits), so retry transient failures before giving up. Returns None if
+    every attempt fails, else the last non-exception response."""
+    last = None
+    for i in range(attempts):
+        try:
+            r = requests.get(url, params=params, timeout=timeout)
+            if r.status_code == 200:
+                return r
+            last = r
+        except Exception as e:  # TLS EOF, timeouts, connection resets
+            last = e
+        if i < attempts - 1:
+            time.sleep(0.4 * (i + 1))  # small backoff
+    return last
+
+
+def _fetch_stats_page(season: int, offset: int, limit: int) -> list[dict]:
+    url = f"{NFLDATA_BASE}/stats/season"
+    params = {"season": season, "limit": limit, "offset": offset}
+    r = _get_retry(url, params)
+    if r is None or not isinstance(r, requests.Response) or r.status_code != 200:
+        return []
+    return r.json().get("data", [])
+
+
 def load_player_stats(season: int = 2025) -> pd.DataFrame:
     key = f"nfl_stats_{season}"
     cached = _get_cached(key)
     if cached is not None:
         return cached
     try:
-        all_rows = []
-        offset = 0
+        # NOTE: nfldata.org drops TLS connections under concurrent requests
+        # (SSL UNEXPECTED_EOF_WHILE_READING), so pages must be fetched serially.
+        # The disk cache below makes repeat loads near-instant regardless.
         limit = 500
+        all_rows: list[dict] = []
+        offset = 0
         while True:
-            url = f"{NFLDATA_BASE}/stats/season"
-            params = {"season": season, "limit": limit, "offset": offset}
-            r = requests.get(url, params=params, timeout=60)
-            r.raise_for_status()
-            data = r.json()
-            rows = data.get("data", [])
-            all_rows.extend(rows)
-            if len(rows) < limit or offset + limit >= data.get("total", 0):
+            page = _fetch_stats_page(season, offset, limit)
+            all_rows.extend(page)
+            if len(page) < limit:
                 break
             offset += limit
+            if offset > limit * 24:  # safety cap (~12k rows)
+                break
         if not all_rows:
             return pd.DataFrame()
         df = pd.DataFrame(all_rows)
@@ -109,21 +200,26 @@ def load_player_stats(season: int = 2025) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
+
 def load_schedule(season: int = 2025) -> pd.DataFrame:
     key = f"nfl_schedule_{season}"
     cached = _get_cached(key)
     if cached is not None:
         return cached
     try:
-        all_games = []
-        for week in range(1, 19):
+        def fetch_week(week: int) -> list[dict]:
             url = f"{NFLDATA_BASE}/games"
             params = {"season": season, "week": week}
-            r = requests.get(url, params=params, timeout=30)
-            if r.status_code == 200:
-                data = r.json()
-                games = data.get("data", [])
-                all_games.extend(games)
+            r = _get_retry(url, params)
+            if r is not None and isinstance(r, requests.Response) and r.status_code == 200:
+                return r.json().get("data", [])
+            return []
+
+        # NOTE: fetched serially — nfldata.org drops concurrent TLS connections
+        # (SSL UNEXPECTED_EOF_WHILE_READING). Disk cache keeps repeat loads fast.
+        all_games = []
+        for week in range(1, 19):
+            all_games.extend(fetch_week(week))
         if not all_games:
             return pd.DataFrame()
         df = pd.DataFrame(all_games)
@@ -147,16 +243,46 @@ def load_rosters() -> dict:
     except Exception:
         return {}
 
+LEAGUELOGS_BASE = "https://developer.leaguelogs.com/v1"
+
+
+def load_league_logs_market(profile: str = "redraft-1qb-12t-ppr1") -> list[dict]:
+    """Real 2026-27 Sleeper redraft ADP via the LeagueLogs developer API.
+
+    Returns an ordered list of player records keyed by `sleeperPlayerId` with
+    `overallRank`, `positionRank`, and a market `value` (100 = consensus top).
+    Covers QB/RB/WR/TE only. This is a free no-key API; attribution to LeagueLogs
+    is expected and provided via the returned meta/by the UI footer.
+    """
+    key = f"leaguelogs_{profile}"
+    cached = _get_cached(key)
+    if cached is not None:
+        return cached
+    try:
+        url = f"{LEAGUELOGS_BASE}/market/{profile}"
+        r = requests.get(url, timeout=30, headers={"Accept": "application/json"})
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        _set_cached(key, data)
+        return data
+    except Exception:
+        return []
+
+
 FFC_BASE = "https://fantasyfootballcalculator.com/api/v1"
 
-def load_adp(scoring: str = "ppr") -> pd.DataFrame:
-    key = f"ffc_adp_{scoring}"
+def load_adp(scoring: str = "ppr", year: int | None = None) -> pd.DataFrame:
+    if year is None:
+        from datetime import datetime as _dt
+        now = _dt.now()
+        year = now.year if now.month >= 8 else now.year - 1
+    key = f"ffc_adp_{scoring}_{year}"
     cached = _get_cached(key)
     if cached is not None:
         return cached
     try:
         url = f"{FFC_BASE}/adp/{scoring}"
-        params = {"teams": 12}
+        params = {"teams": 12, "position": "all", "year": year}
         r = requests.get(url, params=params, timeout=30)
         r.raise_for_status()
         data = r.json()
