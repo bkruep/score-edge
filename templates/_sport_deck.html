@@ -1,0 +1,641 @@
+{% extends "base.html" %}
+{% set has_tape = best_bets|length > 0 %}
+{% set has_props = props|length > 0 %}
+{% set has_edge = analytics.n_markets > 0 or analytics.n_quotes > 0 %}
+{% block title %}{{ sport_cfg.name }} — Command Deck | ScoreEdge{% endblock %}
+{% block meta_description %}{{ sport_cfg.name }} betting command deck — moneyline, spread, totals and player props with real edge detection, market motion and portfolio math in one scrolly board.{% endblock %}
+
+{% macro edge_dial(q, size=34) %}
+{% set pts = q.edge_pts() %}
+{% set pct = [0, [pts / 3.0 * 100, 100]|min]|max %}
+{% set col = '#00e676' if q.is_playable else ('#fbbf24' if pts > 0 else '#64748b') %}
+<svg class="inline-block align-middle shrink-0" width="{{ size }}" height="{{ size }}" viewBox="0 0 34 34" title="True edge {{ '%.1f'|format(pts) }} pts">
+  <circle cx="17" cy="17" r="14" fill="none" stroke="rgba(148,163,184,0.15)" stroke-width="3.5"/>
+  <circle cx="17" cy="17" r="14" fill="none" stroke="{{ col }}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="{{ '%.0f'|format(pct) }} 100" class="dial-arc" style="--dial:{{ '%.0f'|format(pct) }}" transform="rotate(-90 17 17)"/>
+  <text x="17" y="20.5" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="8.5" fill="#e2e8f0">{{ '%.1f'|format(pts) }}</text>
+</svg>
+{% endmacro %}
+
+{% macro gap_bar(q, cap=3.0) %}
+{% set w = [0, [q.edge_pts() / cap * 100, 100]|min]|max %}
+<div class="w-14 h-[5px] rounded-full bg-white/5 overflow-hidden inline-block align-middle">
+  <div class="h-full rounded-full {{ 'bg-brand' if q.is_playable else 'bg-amber-400/70' }}" style="width:{{ '%.0f'|format(w) }}%"></div>
+</div>
+{% endmacro %}
+
+{% macro imp_chip(q, analytics=None) %}
+{% set sg = ((analytics.signals or {}).get(q|sigkey) or {}) if analytics else {} %}
+{% set fair = sg.fair_prob if sg.fair_prob is not none else none %}
+<span class="pill bg-slate-500/10 text-slate-400 border-white/10" title="True implied{% if fair %} · fair {{ '%.0f'|format(fair*100) }}% · kelly {{ '%.1f'|format(sg.kelly_pct or 0.0) }}%{% endif %}">{{ '%.0f'|format(odds.implied_prob(q.best_odds)) }}%{% if fair %}<span class="text-brand/80"> ↦ {{ '%.0f'|format(fair*100) }}%</span>{% endif %}</span>
+{% endmacro %}
+
+{% macro slip_btn(q) %}
+<button type="button" class="slip-btn" title="Track this play" data-slip='{{ q.slip_payload()|tojson }}'>+</button>
+{% endmacro %}
+
+{% macro ladder(q, n=3) %}
+{% if q.book_ladder(n) %}
+<div class="mt-1 flex flex-wrap gap-1 {% if n > 2 %}justify-start{% endif %}">
+  {% for bk in q.book_ladder(n) %}
+  <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1.5 py-0.5 text-[8px] font-mono leading-none {% if bk.book == q.best_book %}text-brand border-brand/30{% endif %}" title="{{ bk.book }}">{{ bk.book }} {{ bk.am }}{% if bk.edge is not none %} +{{ bk.edge }}{% endif %}</span>
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% block head %}
+<style>
+  .deck-nav { position: sticky; top: 60px; z-index: 45; }
+  .deck-nav .chip { background: rgba(12,17,32,0.85); }
+  .deck-hero { position: relative; overflow: hidden; }
+  .deck-hero::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(640px 320px at 8% -12%, rgba(0,230,118,0.14), transparent 62%),
+                radial-gradient(520px 300px at 96% 118%, rgba(56,189,248,0.10), transparent 60%); }
+  .deck-eyebrow { letter-spacing: .34em; }
+  .deck-box { position: relative; }
+  .deck-box .hot { transition: box-shadow .3s ease, border-color .3s ease, background-color .3s ease; }
+  .deck-box .hot.on { box-shadow: inset 0 0 0 1px rgba(0,230,118,0.55), 0 0 18px rgba(0,230,118,0.28); background: rgba(0,230,118,0.07); }
+  .scan { position: relative; overflow: hidden; }
+  .scan::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 40%, rgba(0,230,118,0.06) 52%, transparent 64%); transform: translateX(-100%); animation: scan 4.6s ease-in-out infinite; pointer-events: none; }
+  section[id] { scroll-margin-top: 118px; }
+  .deck-rule { height: 1px; background: linear-gradient(90deg, transparent, rgba(0,230,118,0.35), transparent); }
+  #deck-field #edge-field { height: 320px; }
+  @keyframes dialIn { from { stroke-dashoffset: var(--dial, 0); } to { stroke-dashoffset: 0; } }
+  .dial-arc { stroke-dashoffset: var(--dial, 0); animation: dialIn .95s cubic-bezier(.16,1,.3,1) both; }
+  @media (prefers-reduced-motion: reduce) { .scan::after, .deck-hero::before, .dial-arc { animation: none !important; } .dial-arc { stroke-dashoffset: 0; } }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+<nav class="deck-nav mb-6 flex items-center gap-1.5 flex-wrap" aria-label="Deck sections">
+  <a href="#deck-field" class="chip deck-spy" data-spy="deck-field">Field</a>
+  {% if has_tape %}<a href="#deck-tape" class="chip deck-spy" data-spy="deck-tape">Best Bets</a>{% endif %}
+  <a href="#deck-games" class="chip deck-spy" data-spy="deck-games">Box</a>
+  {% if has_props %}<a href="#deck-props" class="chip deck-spy" data-spy="deck-props">Props</a>{% endif %}
+  {% if has_edge %}<a href="#deck-edge" class="chip deck-spy" data-spy="deck-edge">Deep Edge</a>{% endif %}
+  <span class="ml-auto flex items-center gap-2">
+    <span class="pill bg-brand/15 text-brand border-brand/25">LIVE</span>
+    <span class="text-[10px] font-mono text-slate-600">{{ slate.events|length }} games · {{ total_lines }} lines · refreshed {{ slate.fetched_at|truncate(12, True, '') }}</span>
+  </span>
+</nav>
+{% endblock %}
+
+{% block content %}
+{% if odds_error %}
+<div class="glass-card rounded-xl p-4 mb-6 flex items-center gap-3 border-amber-500/20">
+  <svg class="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+  <div>
+    <div class="text-sm font-medium text-white">Odds unavailable</div>
+    <div class="text-xs text-slate-400">{{ odds_error }}</div>
+  </div>
+</div>
+{% endif %}
+
+<!-- HERO -->
+<section class="deck-hero glass-card rounded-2xl p-6 md:p-8 mb-8 rv">
+  <div class="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-8 items-center relative z-10">
+    <div>
+      <div class="deck-eyebrow text-[11px] font-mono text-brand/80 uppercase mb-3">ScoreEdge · {% block deck_eyebrow %}Command Deck{% endblock %}</div>
+      <h1 class="text-4xl md:text-5xl font-display font-bold text-white tracking-tight leading-none">
+        <span class="mr-2">{{ sport_cfg.icon }}</span><span class="gradient-text">{{ sport_cfg.name|upper }}</span>
+      </h1>
+      <p class="text-sm text-slate-400 font-mono mt-3 max-w-xl">{% block deck_tagline %}{{ market_names.get('moneyline', 'Moneyline') }} · {{ market_names.get('point_spread', 'Spread') }} · {{ market_names.get('total_points', 'Total') }}{% if not no_props %} · player props{% endif %} — best price vs book consensus, ranked by true edge.{% endblock %}</p>
+      <div class="mt-5 flex items-center gap-2 flex-wrap">
+        <a href="/{{ active_sport }}/edge" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Deep tables →</a>
+        {% if not no_props %}<a href="/{{ active_sport }}/props" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Full props →</a>{% endif %}
+        <span class="pill bg-emerald-500/15 text-emerald-400 border-emerald-500/25">boards refresh straight from the feed</span>
+      </div>
+    </div>
+    <div>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="cmd-stat tilt deck-tilt rounded-xl p-4">
+          <div class="ring"></div>
+          <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">Games</div>
+          <div class="text-2xl font-display font-bold text-white mt-1" data-count="{{ slate.events|length }}">{{ slate.events|length }}</div>
+        </div>
+        <div class="cmd-stat tilt deck-tilt rounded-xl p-4">
+          <div class="ring"></div>
+          <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">Lines</div>
+          <div class="text-2xl font-display font-bold gradient-text mt-1" data-count="{{ total_lines }}">{{ total_lines }}</div>
+        </div>
+        <div class="cmd-stat tilt deck-tilt rounded-xl p-4">
+          <div class="ring"></div>
+          <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">Plays</div>
+          <div class="text-2xl font-display font-bold text-white mt-1" data-count="{{ best_bets|length }}">{{ best_bets|length }}</div>
+        </div>
+        <div class="cmd-stat tilt deck-tilt rounded-xl p-4">
+          <div class="ring"></div>
+          <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">Top edge</div>
+          <div class="text-2xl font-display font-bold text-brand mt-1" data-count="{{ top_edge }}" data-sign="+" data-dec="2">{{ top_edge }}</div>
+        </div>
+      </div>
+      <div class="mt-3 rounded-xl border border-white/5 bg-black/30 px-4 py-3">
+        <div class="flex items-center justify-between text-[10px] font-mono text-slate-500 mb-2">
+          <span>LIVE PULSE</span><span id="deck-clock" class="text-slate-400"></span>
+        </div>
+        <canvas id="deck-wave" class="w-full h-8" aria-hidden="true"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EDGE LANDSCAPE -->
+<section id="deck-field" class="mb-8 rv">
+  <div class="flex items-center gap-2 mb-3">
+    <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Edge Landscape</h2>
+    <span class="text-xs text-slate-600 font-mono">nodes sized by quote count · edge = best market edge in win-prob pts</span>
+  </div>
+  <div class="glass-card tilt3d rounded-2xl overflow-hidden scan">
+    <div class="edge-field-wrap">
+      <canvas id="edge-field" class="w-full block" aria-label="Edge field"></canvas>
+    </div>
+    <div id="deck-legend" class="flex flex-wrap items-center justify-center gap-1.5 px-4 py-3 border-t border-white/5 bg-black/20"></div>
+  </div>
+</section>
+
+<!-- SIGNATURE MODULE (per sport: MLB "The Box", NBA "The Starting Five", NFL "The Gridiron"; others use the generic board) -->
+{% block deck_signature %}
+<section id="deck-games" class="mb-8">
+  <div class="flex items-center gap-2 mb-3">
+    <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Game Board — Matchups &amp; Best Price</h2>
+    <span class="text-xs text-slate-600 font-mono">{{ playable_games }}/{{ matchups|length }} games with a playable edge · best price across books</span>
+  </div>
+  {% if active_sport == 'cfb' %}
+  <div class="mb-3 -mt-1 flex items-center gap-2 flex-wrap">
+    {% if scope_all %}
+    <span class="pill bg-surface-3 text-slate-300">all games (incl. FCS)</span>
+    <a href="/cfb" class="pill bg-brand/10 text-brand border-brand/25 hover:bg-brand/20 transition-colors">Power-4 + Group of 5 only</a>
+    {% else %}
+    <span class="pill bg-brand/10 text-brand border-brand/25">Power-4 + Group of 5 only</span>
+    <a href="/cfb?all=1" class="pill bg-surface-3 text-slate-400 hover:bg-surface-2 transition-colors">show all games (incl. FCS)</a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if matchups %}
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for m in matchups %}
+    <article class="glass-card deck-box scan rv rounded-xl p-4 flex flex-col" data-box style="--rd:{{ loop.index0 * 55 }}ms">
+      <header class="flex items-center gap-2 pb-3 mb-3 border-b border-white/5">
+        <span class="w-1.5 h-1.5 rounded-full bg-brand animate-pulse"></span>
+        <h3 class="font-display font-semibold text-white text-sm truncate" title="{{ m.game }}">{{ m.game }}</h3>
+        <span class="ml-auto pill bg-surface-3 text-slate-400">{{ m.n_markets }} mkts</span>
+      </header>
+
+      <div class="space-y-2">
+        {% for bucket, label in [(m.ml, market_names.get('moneyline', 'Moneyline')), (m.spr, market_names.get('point_spread', 'Spread')), (m.tot, market_names.get('total_points', 'Total'))] %}
+        {% if bucket %}
+        <div class="rounded-lg bg-white/[0.03] border border-white/5 px-2.5 py-1.5 hot" data-hot>
+          <div class="text-[9px] font-mono uppercase tracking-widest text-slate-500 mb-1">{{ label }}</div>
+          {% for q in bucket %}
+          <div class="flex items-center gap-2 leading-tight">
+            <span class="text-[11px] text-slate-300 truncate flex-1">{{ q.selection }}{% if q.line is not none %} {{ q.line }}{% endif %}</span>
+            <span class="text-[9px] font-mono text-slate-600">{{ q.best_book }}</span>
+            <span class="font-mono text-xs {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+
+      {% if m.top_props %}
+      <div class="mt-auto pt-3">
+        <div class="text-[9px] font-mono uppercase tracking-widest text-slate-600 mb-1.5">Top props</div>
+        <div class="space-y-1.5">
+          {% for q in m.top_props %}
+          <div class="flex items-center gap-2">
+            <span class="min-w-0 flex-1 text-xs text-slate-200 truncate">{{ q.player_name }} <span class="text-slate-500">{{ q.line }}</span></span>
+            <span class="text-[9px] font-mono text-slate-600">{{ market_names.get(q.market, prop_labels.get(q.market, q.market|replace('player_','')|replace('_',' ')|title)) }}</span>
+            <span class="font-mono text-xs {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</span>
+            {{ edge_dial(q, 26) }}
+            {{ slip_btn(q) }}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% elif m.best %}
+      <div class="mt-auto pt-3 border-t border-white/5 flex items-center gap-2">
+        <span class="text-[9px] font-mono uppercase tracking-widest text-slate-600">Best play</span>
+        <span class="min-w-0 flex-1 text-xs text-white truncate">{{ m.best.selection }}{% if m.best.line is not none %} {{ m.best.line }}{% endif %} <span class="text-slate-600">{{ market_names.get(m.best.market, m.best.market) }}</span></span>
+        <span class="font-mono text-xs {% if m.best.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(m.best.best_odds) }}</span>
+        {{ edge_dial(m.best, 26) }}
+        {{ slip_btn(m.best) }}
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="glass-card rounded-xl p-10 text-center">
+    <div class="text-3xl mb-3">{{ sport_cfg.icon }}</div>
+    <div class="text-sm font-medium text-white mb-1">No {{ sport_cfg.name }} games right now</div>
+    <div class="text-xs text-slate-500 max-w-md mx-auto">The live feed has no {{ sport_cfg.name }} matchups posted. The board lights up automatically once the books open.</div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
+
+<!-- BEST BETS TAPE -->
+{% if has_tape %}
+<section id="deck-tape" class="mb-8 rv">
+  <div class="flex items-center gap-2 mb-3">
+    <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Best Bets — Ranked by True Edge</h2>
+    <span class="text-xs text-slate-600 font-mono">{{ best_bets|length }} plays · {{ best_markets }} markets · avg +{{ avg_edge }} pts</span>
+  </div>
+  <div class="glass-card rounded-xl overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full stat-table">
+        <thead>
+          <tr class="border-b border-white/5">
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Play</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Market</th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Best</th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Imp</th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+            <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Edge</th>
+            <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for q in best_bets %}
+          <tr class="row {% if loop.index <= 2 %}shimmer-row{% endif %}" data-txt="{{ q.selection ~ ' ' ~ (q.player_name or '') ~ ' ' ~ q.game }}">
+            <td class="px-4 py-2.5 text-sm text-white">
+              <span>{{ q.player_name or q.selection }}{% if not q.player_name and q.line is not none %} <span class="text-slate-500 text-xs">{{ q.line }}</span>{% endif %}</span>
+              <span class="text-slate-600 text-xs">· {{ q.game }}</span>
+            </td>
+            <td class="px-4 py-2.5 text-xs text-slate-400">{{ prop_labels.get(q.market, market_names.get(q.market, q.market)) }}</td>
+            <td class="px-4 py-2.5 text-right">
+              <div class="text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</div>
+              <div class="text-[9px] font-mono text-slate-500 leading-none">{{ q.best_book }}</div>
+            </td>
+            <td class="px-4 py-2.5 text-right">{{ imp_chip(q, analytics) }}</td>
+            <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-500">{{ q.consensus_odds }}</td>
+            <td class="px-4 py-2.5 text-right"><div class="flex items-center justify-end gap-2">{{ gap_bar(q) }}{{ edge_dial(q, 30) }}</div></td>
+            <td class="px-4 py-2.5 text-center">{{ slip_btn(q) }}</td>
+          </tr>
+          <tr class="row-detail" style="display:none">
+            <td colspan="7" class="px-4 py-3 bg-black/25">
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="text-[10px] font-mono uppercase tracking-widest text-slate-600">Book ladder — best price vs consensus</span>
+                {% for bk in q.book_ladder(6) %}
+                <span class="ladder-pill bg-surface-3 text-slate-200 border border-white/10 rounded px-2 py-1 text-[10px] font-mono {% if bk.book == q.best_book %}ring-1 ring-brand/50 text-brand{% endif %}" style="--d:{{ (loop.index0 * 45) }}ms">{{ bk.book }} {{ bk.am }}{% if bk.edge is not none %} +{{ bk.edge }}{% endif %}</span>
+                {% endfor %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- PROPS -->
+<section id="deck-props" class="mb-8 {% if not has_props %}hidden{% endif %}">
+  <div class="flex items-center gap-2 mb-3">
+    <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Props</h2>
+    <span class="text-xs text-slate-600 font-mono">{{ props_players }} players · {{ props_markets }} markets · top +{{ top_prop_edge }} pts</span>
+  </div>
+  <div class="flex items-center gap-1.5 flex-wrap mb-3" id="deck-prop-chips">
+    <button type="button" data-mmkt="" class="mmkt-chip chip chip-on">All</button>
+    {% for mk, label in prop_groups %}
+    <button type="button" data-mmkt="{{ mk }}" class="mmkt-chip chip">{{ label }}</button>
+    {% endfor %}
+  </div>
+  {% for mk, label in prop_groups %}
+  <div class="mmkt-group mb-4 rv {% if not loop.first %}hidden{% endif %}" data-mmkt="{{ mk }}" style="--rd:{{ loop.index0 * 55 }}ms">
+    <div class="glass-card rounded-xl overflow-hidden">
+      <div class="px-5 py-3 border-b border-white/5 flex items-center gap-2">
+        <h3 class="font-display font-semibold text-white text-sm">{{ label }}</h3>
+        <span class="text-xs text-slate-500 font-mono">{{ prop_groups_group[mk]|length }} plays · best +{{ '%.1f'|format(prop_group_top[mk]) }} pts</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full stat-table">
+          <thead>
+            <tr class="border-b border-white/5">
+              <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Player</th>
+              <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Line</th>
+              <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Best</th>
+              <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Imp</th>
+              <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Edge</th>
+              <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/5">
+            {% for q in prop_groups_group[mk][:40] %}
+            <tr class="row">
+              <td class="px-4 py-2.5 text-sm text-white">{{ q.player_name }} <span class="text-slate-600 text-xs">· {{ q.game }}</span></td>
+              <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">{{ q.line }}{% if q.side %} <span class="text-slate-500 text-xs">{{ q.side }}</span>{% endif %}</td>
+              <td class="px-4 py-2.5 text-right">
+                <div class="text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</div>
+                <div class="text-[9px] font-mono text-slate-500 leading-none">{{ q.best_book }}</div>
+              </td>
+              <td class="px-4 py-2.5 text-right">{{ imp_chip(q, analytics) }}</td>
+              <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-500">{{ q.consensus_odds }}</td>
+              <td class="px-4 py-2.5 text-right"><div class="flex items-center justify-end gap-2">{{ gap_bar(q) }}{{ edge_dial(q, 30) }}</div></td>
+              <td class="px-4 py-2.5 text-center">{{ slip_btn(q) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% set group_total = prop_groups_group[mk]|length %}
+      {% if group_total > 40 %}
+      <div class="px-5 py-3 border-t border-white/5 text-center">
+        <a href="/{{ active_sport }}/props" class="pill bg-surface-3 text-slate-400 hover:text-brand transition-colors">{{ group_total - 40 }} more {{ label|lower }} plays — full board →</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+<!-- DEEP EDGE -->
+{% if has_edge %}
+<section id="deck-edge" class="mb-8 rv">
+  <div class="flex items-center gap-2 mb-3">
+    <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Deep Edge — Market Forensics</h2>
+    <span class="text-xs text-slate-600 font-mono">{{ analytics.n_quotes }} quotes · {{ analytics.n_usable }}/{{ analytics.n_markets }} usable markets · avg vig {{ analytics.avg_vig }}%</span>
+  </div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <div class="glass-card rounded-xl p-4">
+      <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">Portfolio EV</div>
+      <div class="text-xl font-display font-bold text-brand mt-1">+{{ '%.1f'|format(analytics.portfolio.expected_profit) }}u</div>
+      <div class="text-[10px] font-mono text-slate-600">{{ analytics.portfolio.groups }} groups · {{ analytics.portfolio.legs }} legs</div>
+    </div>
+    <div class="glass-card rounded-xl p-4">
+      <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">Projected ROI</div>
+      <div class="text-xl font-display font-bold {% if analytics.portfolio.roi > 0 %}text-brand{% else %}text-white{% endif %} mt-1">{{ '%.1f'|format(analytics.portfolio.roi) }}%</div>
+      <div class="text-[10px] font-mono text-slate-600">{{ analytics.portfolio_summary }}</div>
+    </div>
+    <div class="glass-card rounded-xl p-4">
+      <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">Arbs found</div>
+      <div class="text-xl font-display font-bold text-white mt-1">{{ analytics.arbs|length }}</div>
+      {% if analytics.suspect_arbs %}<div class="text-[10px] font-mono text-slate-500">{{ analytics.suspect_arbs|length }} suspect — feed defects</div>{% endif %}
+    </div>
+    <div class="glass-card rounded-xl p-4">
+      <div class="text-[10px] font-mono uppercase tracking-widest text-slate-500">Feed issues</div>
+      <div class="text-xl font-display font-bold {% if analytics.n_issues %}text-amber-400{% else %}text-white{% endif %} mt-1">{{ analytics.n_issues }}</div>
+      <div class="text-[10px] font-mono text-slate-600">internal-consistency guard</div>
+    </div>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="glass-card rounded-xl p-4">
+      <div class="text-xs font-mono uppercase tracking-widest text-slate-500 mb-3">Sharp positioning</div>
+      {% if analytics.sharp_books %}
+      <div class="space-y-2">
+        {% for r in analytics.sharp_books %}
+        <div class="flex items-center justify-between text-xs font-mono">
+          <span class="text-slate-300">{{ r.book }} <span class="text-slate-600">· {{ r.tier }}</span></span>
+          <span class="text-slate-300">{{ r.price }}</span>
+          <span class="text-brand">+{{ r.residual_pts }}</span>
+        </div>
+        <div class="text-[10px] text-slate-600 leading-none">{{ r.game }} · {{ market_names.get(r.market, r.market) }}</div>
+        {% endfor %}
+      </div>
+      {% else %}<div class="text-xs text-slate-500">No 3-book price divergences on this slate.</div>{% endif %}
+    </div>
+    <div class="glass-card rounded-xl p-4">
+      <div class="text-xs font-mono uppercase tracking-widest text-slate-500 mb-3">Arbitrage</div>
+      {% if analytics.arbs %}
+      <div class="space-y-2">
+        {% for a in analytics.arbs %}
+        <div class="flex items-center justify-between text-xs font-mono">
+          <span class="text-slate-300 truncate max-w-[180px]">{{ a.label_a }} <span class="text-slate-600">vs</span> {{ a.label_b }}</span>
+          <span class="text-brand">+{{ '%.1f'|format(a.profit_pct) }}%</span>
+        </div>
+        <div class="text-[10px] text-slate-600 leading-none">{{ a.price_a }} / {{ a.price_b }} · {{ '%.2f'|format(a.combined_decimal) }} dec</div>
+        {% endfor %}
+      </div>
+      {% else %}<div class="text-xs text-slate-500">No stakeable arbitrage right now.</div>{% endif %}
+    </div>
+    <div class="glass-card rounded-xl p-4">
+      <div class="text-xs font-mono uppercase tracking-widest text-slate-500 mb-3">Biggest movers</div>
+      {% if analytics.movers %}
+      <div class="space-y-2">
+        {% for m in analytics.movers %}
+        <div class="flex items-center justify-between text-xs font-mono">
+          <span class="text-slate-300 truncate max-w-[170px]">{{ m.label }}</span>
+          <span class="{% if m.movement and m.movement.change < 0 %}text-amber-400{% else %}text-brand{% endif %}">{{ m.movement.change if m.movement else '' }}</span>
+        </div>
+        <div class="text-[10px] text-slate-600 leading-none">{{ m.movement.open_price if m.movement else '' }} → {{ m.movement.current_price if m.movement else '' }}{% if m.movement and m.movement.is_sharp_move %} <span class="text-brand">· sharp</span>{% endif %}</div>
+        {% endfor %}
+      </div>
+      {% else %}<div class="text-xs text-slate-500">No 15+ price-step moves on this slate yet.</div>{% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<div class="deck-rule my-6"></div>
+<div class="flex items-center flex-wrap gap-2 mb-2 rv">
+  <span class="text-[10px] font-mono uppercase tracking-widest text-slate-600">Open the full {{ sport_cfg.name }} board</span>
+  <a href="/{{ active_sport }}/best" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Best Bets</a>
+  {% if not no_props %}<a href="/{{ active_sport }}/props" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Props</a>{% endif %}
+  <a href="/{{ active_sport }}/games" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Matchups</a>
+  <a href="/{{ active_sport }}/edge" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Deep Edge</a>
+  <a href="/bets" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Home deck</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="application/json" id="deck-nodes">{{ deck.edge_nodes|tojson }}</script>
+<script>
+(function () {
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var fine = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  /* clock */
+  var clk = document.getElementById('deck-clock');
+  if (clk) { function tick(){ clk.textContent = new Date().toISOString().slice(11,19); } tick(); setInterval(tick, 1000); }
+  window.runWave(document.getElementById('deck-wave'));
+
+  /* reveal */
+  var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('on'); io.unobserve(e.target); } });
+  }, { rootMargin: '0px 0px -6% 0px' }) : null;
+  document.querySelectorAll('.rv').forEach(function (el) { if (io) io.observe(el); else el.classList.add('on'); });
+
+  /* count-ups */
+  if (!reduced) {
+    document.querySelectorAll('[data-count]').forEach(function (el) {
+      var target = parseFloat(el.getAttribute('data-count'));
+      var dec = parseInt(el.getAttribute('data-dec') || '0', 10);
+      var sign = el.getAttribute('data-sign') || '';
+      if (isNaN(target)) return;
+      var t0 = null, dur = 1150;
+      function step(ts) {
+        if (!t0) t0 = ts;
+        var p = Math.min((ts - t0) / dur, 1);
+        var e = 1 - Math.pow(1 - p, 3);
+        el.textContent = sign + (target * e).toFixed(dec);
+        if (p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  /* edge landscape */
+  var nodes = [];
+  try { nodes = JSON.parse(document.getElementById('deck-nodes').textContent || '[]'); } catch (e) {}
+  var legend = document.getElementById('deck-legend');
+  var scrollTo = function (tag) {
+    var el = document.getElementById(tag === 'props' ? 'deck-props' : 'deck-tape');
+    if (!el || el.classList.contains('hidden')) { el = document.getElementById('deck-games') || document.getElementById('deck-field'); }
+    if (el) el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+  };
+  var main = document.getElementById('edge-field');
+  if (main && nodes.length) {
+    window.runFieldSim(main, nodes, { surface: {{ active_sport|tojson }}, onClick: function (n) { scrollTo(n.tag); } });
+    if (legend) {
+      nodes.forEach(function (n) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'pill bg-surface-3 text-slate-300 hover:text-brand transition-colors pointer-events-auto';
+        b.textContent = n.name + ' · ' + n.plays + ' picks · +' + n.edge.toFixed(1);
+        b.addEventListener('click', function () { scrollTo(n.tag); });
+        legend.appendChild(b);
+      });
+    }
+  }
+
+  /* section nav spy + smooth scroll */
+  var spies = document.querySelectorAll('.deck-spy');
+  spies.forEach(function (a) {
+    a.addEventListener('click', function (ev) {
+      var id = a.getAttribute('data-spy');
+      var el = document.getElementById(id);
+      if (el) { ev.preventDefault(); el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' }); }
+    });
+  });
+  if ('IntersectionObserver' in window && spies.length) {
+    var spyIo = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        spies.forEach(function (a) {
+          a.classList.toggle('chip-on', a.getAttribute('data-spy') === e.target.id);
+        });
+      });
+    }, { rootMargin: '-30% 0px -58% 0px' });
+    ['deck-field', 'deck-tape', 'deck-games', 'deck-props', 'deck-edge'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) spyIo.observe(el);
+    });
+  }
+
+  /* tape expand cascade */
+  document.querySelectorAll('#deck-tape tr.row').forEach(function (tr) {
+    tr.addEventListener('click', function (ev) {
+      if (ev.target.closest('[data-slip]')) return;
+      var det = tr.nextElementSibling;
+      if (!det || !det.classList.contains('row-detail')) return;
+      var open = !tr.classList.contains('open');
+      tr.classList.toggle('open', open);
+      det.style.display = open ? '' : 'none';
+      if (open) {
+        var pills = det.querySelectorAll('.ladder-pill');
+        pills.forEach(function (pl) {
+          pl.classList.remove('ladder-pill'); void pl.offsetWidth; pl.classList.add('ladder-pill');
+        });
+      }
+    });
+  });
+
+  /* prop market filter */
+  var mk = null;
+  var groups = document.querySelectorAll('.mmkt-group');
+  document.querySelectorAll('.mmkt-chip').forEach(function (c) {
+    c.addEventListener('click', function () {
+      mk = c.getAttribute('data-mmkt') || null;
+      document.querySelectorAll('.mmkt-chip').forEach(function (x) { x.classList.toggle('chip-on', x === c); });
+      groups.forEach(function (g) { g.classList.toggle('hidden', mk !== null && g.getAttribute('data-mmkt') !== mk); });
+    });
+  });
+
+  /* game-card price pulse */
+  if (!reduced) {
+    var pboxes = Array.prototype.slice.call(document.querySelectorAll('[data-box]'));
+    var pcells = [];
+    pboxes.forEach(function (box) {
+      Array.prototype.forEach.call(box.querySelectorAll('[data-hot]'), function (c, i) {
+        pcells.push({ el: c, off: i * 2 });
+      });
+    });
+    if (pcells.length) {
+      var pstep = 0;
+      setInterval(function () {
+        pcells.forEach(function (c) {
+          c.el.classList.remove('on');
+          if ((pstep + c.off) % 12 === 0) c.el.classList.add('on');
+        });
+        pstep++;
+      }, 560);
+      pboxes.forEach(function (box) {
+        box.addEventListener('mouseenter', function () {
+          Array.prototype.forEach.call(box.querySelectorAll('[data-hot]'), function (c) { c.classList.remove('on'); });
+        });
+      });
+    }
+  }
+
+  /* magnetic tilt on KPIs */
+  if (!reduced && fine) {
+    document.querySelectorAll('.deck-tilt').forEach(function (card) {
+      var rafT = null;
+      card.addEventListener('mousemove', function (ev) {
+        if (rafT) return;
+        rafT = requestAnimationFrame(function () {
+          rafT = null;
+          var r = card.getBoundingClientRect();
+          var px = (ev.clientX - r.left) / r.width - .5;
+          var py = (ev.clientY - r.top) / r.height - .5;
+          card.style.setProperty('--ry', (px * 10).toFixed(2) + 'deg');
+          card.style.setProperty('--rx', (-py * 10).toFixed(2) + 'deg');
+          card.style.setProperty('--ty', '-3px');
+        });
+      });
+      card.addEventListener('mouseleave', function () {
+        if (rafT) { cancelAnimationFrame(rafT); rafT = null; }
+        card.style.setProperty('--rx', '0deg');
+        card.style.setProperty('--ry', '0deg');
+        card.style.setProperty('--ty', '-2px');
+      });
+    });
+  }
+
+  /* 3D tilt on the field card */
+  if (!reduced && fine) {
+    var t3 = document.querySelector('.tilt3d');
+    if (t3) {
+      var raf3 = null;
+      t3.addEventListener('mousemove', function (ev) {
+        if (raf3) return;
+        raf3 = requestAnimationFrame(function () {
+          raf3 = null;
+          var r = t3.getBoundingClientRect();
+          var px = (ev.clientX - r.left) / r.width - .5;
+          var py = (ev.clientY - r.top) / r.height - .5;
+          t3.style.setProperty('--ry3', (px * 3).toFixed(2) + 'deg');
+          t3.style.setProperty('--rx3', (-py * 3).toFixed(2) + 'deg');
+        });
+      });
+      t3.addEventListener('mouseleave', function () {
+        if (raf3) { cancelAnimationFrame(raf3); raf3 = null; }
+        t3.style.setProperty('--rx3', '0deg');
+        t3.style.setProperty('--ry3', '0deg');
+      });
+    }
+  }
+
+  /* hash deep-link */
+  if (location.hash) { var h = document.getElementById(location.hash.slice(1)); if (h) setTimeout(function () { h.scrollIntoView({ behavior: 'auto', block: 'start' }); }, 120); }
+})();
+</script>
+{% endblock %}

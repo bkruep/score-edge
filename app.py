@@ -170,6 +170,7 @@ def _prop_to_quote(p) -> BetQuote:
         event_id=p.event_id, game=p.game, selection=sel, market=p.market,
         best_odds=p.best_odds, consensus_odds=p.consensus_odds,
         best_book=p.best_book, edge_pct=p.edge_pct, player_name=p.player_name,
+        line=getattr(p, "line", None),
         book_odds=getattr(p, "book_odds", None),
     )
 
@@ -1111,7 +1112,7 @@ def home(request: Request):
     })
 
 
-@app.get("/nfl", response_class=HTMLResponse)
+@app.get("/nfl/dashboard", response_class=HTMLResponse)
 def nfl_board(request: Request):
     ensure_data()
     season = _get_season()
@@ -2653,12 +2654,18 @@ def _sport_matchups(slate: dict, props: list) -> list:
         if playable:
             best = max(playable, key=lambda q: q.edge_pts())
         covered = [k for k in ("ml", "spr", "tot") if buckets.get(k)]
+        props = sorted((q for q in buckets.get("prop", []) if q.edge_pts() > 0),
+                       key=lambda q: q.edge_pts(), reverse=True)
+        top_plays = sorted((q for q in (rows + (buckets.get("prop") or [])) if q.edge_pts() > 0),
+                           key=lambda q: q.edge_pts(), reverse=True)[:5]
         out.append({
             "game": game,
             "ml": buckets.get("ml", []),
             "spr": buckets.get("spr", []),
             "tot": buckets.get("tot", []),
             "props": buckets.get("prop", []),
+            "top_props": props[:3],
+            "top_plays": top_plays,
             "best": best,
             "n_markets": len(covered),
         })
@@ -2669,7 +2676,7 @@ def _sport_matchups(slate: dict, props: list) -> list:
 SPORT_TABS = [("lines", "Lines"), ("best", "Best Bets"), ("props", "Props"), ("games", "Matchups"), ("edge", "Deep Edge")]
 
 
-def _sport_hub(request: Request, tag: str, tab: str = "lines", include_all: bool = False):
+def _sport_ctx(request: Request, tag: str, tab: str = "lines", include_all: bool = False) -> dict:
     cfg = odds.SPORTS[tag]
     if tab not in [k for k, _ in SPORT_TABS]:
         tab = "lines"
@@ -2689,8 +2696,11 @@ def _sport_hub(request: Request, tag: str, tab: str = "lines", include_all: bool
     prop_groups_labeled = [
         (mk, odds.PROP_LABELS.get(mk, mk.replace("player_", "").replace("_", " ").title()))
         for mk in prop_groups]
-    prop_groups_group = {mk: [q for q in props if q.market == mk] for mk in prop_groups}
-    return templates.TemplateResponse(request, "sport_hub.html", {
+    prop_groups_group = {mk: sorted((q for q in props if q.market == mk),
+                                 key=lambda q: q.edge_pts(), reverse=True) for mk in prop_groups}
+    prop_group_top = {mk: round(max((q.edge_pts() for q in rows), default=0.0), 2)
+                      for mk, rows in prop_groups_group.items()}
+    return {
         **_ctx(request, tag),
         "odds": odds,
         "sport_cfg": cfg,
@@ -2715,13 +2725,134 @@ def _sport_hub(request: Request, tag: str, tab: str = "lines", include_all: bool
         "top_prop_edge": round(max((q.edge_pts() for q in props), default=0.0), 2),
         "prop_groups": prop_groups_labeled,
         "prop_groups_group": prop_groups_group,
+        "prop_group_top": prop_group_top,
         "playable_games": sum(1 for m in matchups if m.get("best")),
         "analytics": analytics,
+        "edge_nodes": _edge_nodes(slate, props, market_names, cfg.get("icon", "◆")),
+    }
+
+
+def _sport_hub(request: Request, tag: str, tab: str = "lines", include_all: bool = False):
+    return templates.TemplateResponse(request, "sport_hub.html",
+                                      _sport_ctx(request, tag, tab, include_all))
+
+
+def _edge_nodes(slate: dict, props: list, market_names: dict, icon: str = "◆") -> list[dict]:
+    """Node list for the deck's edge-landscape sim: one node per market family
+    (main lines + each prop market), sized by quote count, edge = best edge."""
+    def fam(rows, name, tag):
+        tops = [q.edge_pts() for q in rows]
+        return {"tag": tag, "name": name, "icon": icon, "plays": len(rows),
+                "edge": round(max(tops, default=0.0), 1)}
+    groups = []
+    for key, name, tag in (("moneylines", market_names.get("moneyline", "Moneyline"), "lines"),
+                           ("spreads", market_names.get("point_spread", "Spread"), "lines"),
+                           ("totals", market_names.get("total_points", "Total"), "lines")):
+        rows = slate.get(key) or []
+        if rows:
+            groups.append(fam(rows, name, tag))
+    if props:
+        by_mk: dict[str, list] = {}
+        for q in props:
+            by_mk.setdefault(q.market, []).append(q)
+        for mk, rows in by_mk.items():
+            label = odds.PROP_LABELS.get(mk, mk.replace("player_", "").replace("_", " ").title())
+            groups.append(fam(rows, label, "props"))
+    if not groups:
+        groups = [{"tag": "lines", "name": "Moneyline", "icon": icon, "plays": 0, "edge": 0.0}]
+    groups.sort(key=lambda g: g["plays"] * 3 + g["edge"], reverse=True)
+    return groups[:10]
+
+
+def _sport_deck(request: Request, tag: str, signature_tpl: str | None = None, include_all: bool = False):
+    """Per-sport command deck. A shared shell (edge landscape, best-bets tape,
+    props, matchups, deep edge) plus an optional signature module per sport."""
+    ctx = _sport_ctx(request, tag, include_all=include_all)
+    return templates.TemplateResponse(request, signature_tpl or "_sport_deck.html", {
+        **ctx,
+        "deck": {"edge_nodes": ctx["edge_nodes"]},
     })
+
+
+NFL_DECK_CFG = {
+    "sport": "football", "league": "nfl", "name": "NFL", "icon": "🏈",
+    "markets": ["moneyline", "point_spread", "total_points"],
+    "market_names": {"moneyline": "Moneyline", "point_spread": "Spread", "total_points": "Total"},
+}
+
+
+def _nfl_deck_ctx(request: Request) -> dict:
+    """Command-deck context for the NFL board. NFL is not in odds.SPORTS (it has
+    its own feed + week-board pipeline), so instead of _sport_ctx we assemble the
+    same shell keys from the fullest merged week board and promote NFL PlayerProp
+    objects to BetQuote so the shared deck engine (edge_pts/is_playable/markups)
+    applies unchanged."""
+    cfg = NFL_DECK_CFG
+    slate = _current_slate() or {}
+    error = "" if odds.API_KEY else "No API key set. Add ODDS_API_KEY to your environment."
+    raw_props = list(slate.get("props") or [])
+    props = [_prop_to_quote(p) for p in raw_props if getattr(p, "edge_pct", 0)]
+    best_bets = _sport_best_bets(slate, props)
+    matchups = _sport_matchups(slate, props)
+    try:
+        analytics = marketfeed.enrich(marketfeed._slate_quotes(slate) + props, "nfl")
+    except Exception:
+        analytics = {"n_quotes": 0, "n_usable": 0, "n_markets": 0, "avg_vig": 0.0,
+                     "portfolio": {"expected_profit": 0.0, "roi": 0.0, "groups": 0, "legs": 0},
+                     "portfolio_summary": "No market data on this slate.",
+                     "arbs": [], "suspect_arbs": [], "n_issues": 0,
+                     "sharp_books": [], "movers": [], "signals": []}
+    total_lines = (len(slate.get("moneylines") or []) + len(slate.get("spreads") or [])
+                   + len(slate.get("totals") or []))
+    market_names = dict(odds.DEFAULT_MARKET_NAMES)
+    market_names.update(cfg.get("market_names") or {})
+    avg_edge = round(sum(q.edge_pts() for q in best_bets) / len(best_bets), 1) if best_bets else 0.0
+    top_edge = round(max((q.edge_pts() for q in best_bets), default=0.0), 2)
+    prop_groups = sorted({q.market for q in props})
+    prop_groups_labeled = [
+        (mk, odds.PROP_LABELS.get(mk, mk.replace("player_", "").replace("_", " ").title()))
+        for mk in prop_groups]
+    prop_groups_group = {mk: sorted((q for q in props if q.market == mk),
+                                    key=lambda q: q.edge_pts(), reverse=True) for mk in prop_groups}
+    prop_group_top = {mk: round(max((q.edge_pts() for q in rows), default=0.0), 2)
+                      for mk, rows in prop_groups_group.items()}
+    return {
+        **_ctx(request, "nfl", active_page="nfl"),
+        "odds": odds,
+        "sport_cfg": cfg,
+        "slate": slate,
+        "odds_error": error,
+        "props": props,
+        "props_error": "",
+        "best_bets": best_bets,
+        "matchups": matchups,
+        "total_lines": total_lines,
+        "market_names": market_names,
+        "prop_labels": odds.PROP_LABELS,
+        "no_props": False,
+        "scope_all": False,
+        "avg_edge": avg_edge,
+        "top_edge": top_edge,
+        "props_players": len({(q.player_name or "").casefold() for q in props}),
+        "props_markets": len(prop_groups),
+        "top_prop_edge": round(max((q.edge_pts() for q in props), default=0.0), 2),
+        "prop_groups": prop_groups_labeled,
+        "prop_groups_group": prop_groups_group,
+        "prop_group_top": prop_group_top,
+        "playable_games": sum(1 for m in matchups if m.get("best")),
+        "analytics": analytics,
+        "edge_nodes": _edge_nodes(slate, props, market_names, cfg["icon"]),
+        "deck": {"edge_nodes": _edge_nodes(slate, props, market_names, cfg["icon"])},
+    }
+
+
+@app.get("/nfl", response_class=HTMLResponse)
+def nfl_page(request: Request):
+    return templates.TemplateResponse(request, "_nfl_deck.html", _nfl_deck_ctx(request))
 
 @app.get("/nba", response_class=HTMLResponse)
 def nba_page(request: Request):
-    return _sport_hub(request, "nba", "lines")
+    return _sport_deck(request, "nba", signature_tpl="_nba_deck.html")
 
 @app.get("/nba/best", response_class=HTMLResponse)
 def nba_best(request: Request):
@@ -2741,7 +2872,7 @@ def nba_edge(request: Request):
 
 @app.get("/cfb", response_class=HTMLResponse)
 def cfb_page(request: Request, all: str = ""):
-    return _sport_hub(request, "cfb", "lines", include_all=all.strip().casefold() in ("1", "true", "yes", "on"))
+    return _sport_deck(request, "cfb", include_all=all.strip().casefold() in ("1", "true", "yes", "on"))
 
 @app.get("/cfb/best", response_class=HTMLResponse)
 def cfb_best(request: Request):
@@ -2761,7 +2892,7 @@ def cfb_edge(request: Request):
 
 @app.get("/cbb", response_class=HTMLResponse)
 def cbb_page(request: Request):
-    return _sport_hub(request, "cbb", "lines")
+    return _sport_deck(request, "cbb")
 
 @app.get("/cbb/best", response_class=HTMLResponse)
 def cbb_best(request: Request):
@@ -2781,7 +2912,7 @@ def cbb_edge(request: Request):
 
 @app.get("/mlb", response_class=HTMLResponse)
 def mlb_page(request: Request):
-    return _sport_hub(request, "mlb", "lines")
+    return _sport_deck(request, "mlb", signature_tpl="_mlb_deck.html")
 
 @app.get("/mlb/best", response_class=HTMLResponse)
 def mlb_best(request: Request):
@@ -2801,7 +2932,7 @@ def mlb_edge(request: Request):
 
 @app.get("/nhl", response_class=HTMLResponse)
 def nhl_page(request: Request):
-    return _sport_hub(request, "nhl", "lines")
+    return _sport_deck(request, "nhl")
 
 @app.get("/nhl/best", response_class=HTMLResponse)
 def nhl_best(request: Request):
@@ -2821,7 +2952,7 @@ def nhl_edge(request: Request):
 
 @app.get("/mls", response_class=HTMLResponse)
 def mls_page(request: Request):
-    return _sport_hub(request, "mls", "lines")
+    return _sport_deck(request, "mls")
 
 @app.get("/mls/best", response_class=HTMLResponse)
 def mls_best(request: Request):

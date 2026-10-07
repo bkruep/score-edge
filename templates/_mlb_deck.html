@@ -1,0 +1,94 @@
+{% extends "_sport_deck.html" %}
+
+{% macro slip_btn(q) %}
+<button type="button" class="slip-btn" title="Track this play" data-slip='{{ q.slip_payload()|tojson }}'>+</button>
+{% endmacro %}
+
+{% block deck_eyebrow %}MLB · The Box{% endblock %}
+{% block deck_tagline %}Run lines, totals and player props across the whole slate — pitch-to-pitch odds readout, best price vs consensus, ranked by true edge.{% endblock %}
+
+{% block deck_signature %}
+<section id="deck-games" class="mb-8">
+  <div class="flex items-center gap-2 mb-3">
+    <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">The Box — Game Board</h2>
+    <span class="text-xs text-slate-600 font-mono">{{ playable_games }}/{{ matchups|length }} games with a playable edge · hover a box, prices pulse</span>
+  </div>
+
+  {% if matchups %}
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for m in matchups %}
+    <article class="glass-card deck-box scan rv rounded-xl p-4 flex flex-col" data-box style="--rd:{{ loop.index0 * 60 }}ms">
+      <header class="flex items-center gap-2 pb-3 mb-3 border-b border-white/5">
+        <span class="w-1.5 h-1.5 rounded-full bg-brand animate-pulse"></span>
+        <h3 class="font-display font-semibold text-white text-sm truncate" title="{{ m.game }}">{{ m.game }}</h3>
+        <span class="ml-auto pill bg-surface-3 text-slate-400">{{ m.n_markets }} mkts</span>
+      </header>
+
+      {% if m.ml %}
+      <div class="space-y-1.5 mb-2">
+        {% for q in m.ml %}
+        <div class="grid grid-cols-[1fr_auto_auto] items-center gap-2 hot" data-hot>
+          <span class="text-xs text-slate-300 truncate">{{ q.selection }}</span>
+          <span class="text-[9px] font-mono text-slate-600">{{ q.best_book }}</span>
+          <span class="text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if m.spr %}
+      <div class="grid grid-cols-2 gap-1.5 mb-2">
+        {% for q in m.spr %}
+        <div class="rounded-lg bg-white/[0.03] border border-white/5 px-2.5 py-1.5 hot" data-hot>
+          <div class="text-[9px] font-mono uppercase tracking-widest text-slate-500">{{ market_names.get('point_spread', 'Run Line') }}</div>
+          <div class="text-xs text-slate-200 mt-0.5 truncate">{{ q.selection }} {{ q.line }}</div>
+          <div class="text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if m.tot %}
+      <div class="grid grid-cols-2 gap-1.5 mb-3">
+        {% for q in m.tot %}
+        <div class="rounded-lg bg-white/[0.03] border border-white/5 px-2.5 py-1.5 hot" data-hot>
+          <div class="text-[9px] font-mono uppercase tracking-widest text-slate-500">{{ market_names.get('total_points', 'Total') }} {{ q.line }}</div>
+          <div class="text-xs {% if q.selection|lower == 'over' %}text-emerald-400{% else %}text-slate-300{% endif %} mt-0.5">{{ q.selection }}</div>
+          <div class="text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% set top_props = m.top_props %}
+      <div class="mt-auto">
+        {% if top_props %}
+        <div class="text-[9px] font-mono uppercase tracking-widest text-slate-600 mb-1.5">Top props</div>
+        <div class="space-y-1">
+          {% for q in top_props %}
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-slate-200 truncate w-0 flex-1" title="{{ q.player_name }} — {{ q.line }}">{{ q.player_name }} <span class="text-slate-500">{{ q.line }}</span></span>
+            <span class="text-[9px] font-mono text-slate-600 ml-auto">{{ prop_labels.get(q.market, q.market|replace('player_','')|replace('_',' ')|title) }}</span>
+            <svg class="w-3.5 h-3.5 text-brand shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414L7.293 8.707l1.414 1.414L13 9.414 13 7h-1z" clip-rule="evenodd"/></svg>
+            <span class="font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</span>
+            {{ slip_btn(q) }}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-[10px] font-mono text-slate-600">No positively-edged props priced on this game yet.</div>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="glass-card rounded-xl p-10 text-center">
+    <div class="text-3xl mb-3">{{ sport_cfg.icon }}</div>
+    <div class="text-sm font-medium text-white mb-1">No {{ sport_cfg.name }} games right now</div>
+    <div class="text-xs text-slate-500 max-w-md mx-auto">The live feed has no {{ sport_cfg.name }} matchups posted. The box lights up automatically once the books open.</div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

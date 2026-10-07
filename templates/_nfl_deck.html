@@ -1,0 +1,108 @@
+{% extends "_sport_deck.html" %}
+
+{% macro slip_btn(q) %}
+<button type="button" class="slip-btn" title="Track this play" data-slip='{{ q.slip_payload()|tojson }}'>+</button>
+{% endmacro %}
+
+{% macro mini_dial(q) %}
+{% set pts = q.edge_pts() %}
+{% set pct = [0, [pts / 3.0 * 100, 100]|min]|max %}
+{% set col = '#00e676' if q.is_playable else ('#fbbf24' if pts > 0 else '#64748b') %}
+<svg class="inline-block align-middle shrink-0" width="26" height="26" viewBox="0 0 34 34" title="True edge {{ '%.1f'|format(pts) }} pts">
+  <circle cx="17" cy="17" r="14" fill="none" stroke="rgba(148,163,184,0.15)" stroke-width="3.5"/>
+  <circle cx="17" cy="17" r="14" fill="none" stroke="{{ col }}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="{{ '%.0f'|format(pct) }} 100" class="dial-arc" style="--dial:{{ '%.0f'|format(pct) }}" transform="rotate(-90 17 17)"/>
+  <text x="17" y="20.5" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="8.5" fill="#e2e8f0">{{ '%.1f'|format(pts) }}</text>
+</svg>
+{% endmacro %}
+
+{% block deck_eyebrow %}NFL · The Gridiron{% endblock %}
+{% block deck_tagline %}Spread, total and moneyline on every game — plus the sharpest player-prop edges — ranked into each game's five best plays and priced against book consensus.{% endblock %}
+
+{% block deck_signature %}
+<div class="mb-4 flex items-center gap-1.5 flex-wrap">
+  <span class="text-[10px] font-mono uppercase tracking-wider text-slate-600 mr-1">NFL tools</span>
+  <a href="/bets" class="chip">Live Lines</a>
+  <a href="/props" class="chip">Player Props</a>
+  <a href="/touchdown" class="chip">TD Hunt</a>
+  <a href="/edge-deck" class="chip">Edge Deck</a>
+  <a href="/line-lab" class="chip">Line Lab</a>
+  <a href="/value-lab" class="chip">Value Lab</a>
+  <a href="/prop-radar" class="chip">Prop Radar</a>
+  <a href="/dfs" class="chip">DFS</a>
+  <a href="/nfl/dashboard" class="chip">Classic dashboard</a>
+</div>
+<section id="deck-games" class="mb-8">
+  <div class="flex items-center gap-2 mb-3">
+    <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">The Gridiron — Top Plays Per Game</h2>
+    <span class="text-xs text-slate-600 font-mono">{{ playable_games }}/{{ matchups|length }} games with a playable edge · top 5 plays each, ranked by true edge</span>
+  </div>
+
+  {% if matchups %}
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for m in matchups %}
+    <article class="glass-card deck-box scan rv rounded-xl p-4 flex flex-col" data-box style="--rd:{{ loop.index0 * 55 }}ms">
+      <header class="flex items-center gap-2 pb-3 mb-3 border-b border-white/5">
+        <span class="w-1.5 h-1.5 rounded-full bg-brand animate-pulse"></span>
+        <h3 class="font-display font-semibold text-white text-sm truncate" title="{{ m.game }}">{{ m.game }}</h3>
+        <span class="ml-auto pill bg-surface-3 text-slate-400">{{ m.n_markets }} mkts</span>
+      </header>
+
+      {% if m.ml or m.spr or m.tot %}
+      <div class="grid grid-cols-3 gap-1.5 mb-3">
+        {% if m.ml %}
+        <div class="rounded-lg bg-white/[0.03] border border-white/5 px-2 py-1.5 hot" data-hot>
+          <div class="text-[9px] font-mono uppercase tracking-widest text-slate-500">{{ market_names.get('moneyline', 'ML') }}</div>
+          {% for q in m.ml %}
+          <div class="text-[11px] text-slate-300 truncate leading-tight">{{ q.selection }} <span class="font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</span></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if m.spr %}
+        <div class="rounded-lg bg-white/[0.03] border border-white/5 px-2 py-1.5 hot" data-hot>
+          <div class="text-[9px] font-mono uppercase tracking-widest text-slate-500">{{ market_names.get('point_spread', 'Spread') }}</div>
+          {% for q in m.spr %}
+          <div class="text-[11px] text-slate-300 truncate leading-tight">{{ q.selection }} {{ q.line }} <span class="font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</span></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if m.tot %}
+        <div class="rounded-lg bg-white/[0.03] border border-white/5 px-2 py-1.5 hot" data-hot>
+          <div class="text-[9px] font-mono uppercase tracking-widest text-slate-500">{{ market_names.get('total_points', 'Total') }}</div>
+          {% for q in m.tot %}
+          <div class="text-[11px] text-slate-300 truncate leading-tight">{{ q.selection }} {{ q.line }} <span class="font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</span></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="text-[9px] font-mono uppercase tracking-widest text-slate-600 mb-1.5">Top 5 edges</div>
+      <ol class="space-y-1.5 mt-auto">
+        {% for q in m.top_plays %}
+        <li class="flex items-center gap-2.5">
+          <span class="w-5 h-5 shrink-0 rounded-full grid place-items-center text-[10px] font-mono font-bold {% if loop.index == 1 %}bg-brand text-black{% else %}bg-white/5 text-slate-400{% endif %}">{{ loop.index }}</span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-xs text-white truncate">{{ q.player_name or q.selection }}<span class="text-slate-500">{% if q.player_name and q.line %} {{ q.line }}{% endif %}</span></span>
+            <span class="block text-[9px] font-mono text-slate-600">{{ market_names.get(q.market, prop_labels.get(q.market, q.market|replace('player_','')|replace('_',' ')|title)) }}</span>
+          </span>
+          <span class="font-mono text-xs {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</span>
+          {{ mini_dial(q) }}
+          {{ slip_btn(q) }}
+        </li>
+        {% else %}
+        <li class="text-[10px] font-mono text-slate-600">No positively-edged plays priced on this game yet.</li>
+        {% endfor %}
+      </ol>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="glass-card rounded-xl p-10 text-center">
+    <div class="text-3xl mb-3">{{ sport_cfg.icon }}</div>
+    <div class="text-sm font-medium text-white mb-1">No {{ sport_cfg.name }} games right now</div>
+    <div class="text-xs text-slate-500 max-w-md mx-auto">The live feed has no {{ sport_cfg.name }} matchups posted. The board lights up automatically once the books open.</div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
