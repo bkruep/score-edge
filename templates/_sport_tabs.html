@@ -1,0 +1,17 @@
+<div class="mb-6 -mt-1">
+  <div class="flex items-center gap-0.5 overflow-x-auto tabbar">
+    {% for key, name in tabs %}
+    <a href="/{{ active_sport }}{% if key != 'lines' %}/{{ key }}{% endif %}"
+       class="tab {% if active_tab == key %}tab-on{% endif %}"
+       {% if key != 'lines' and odds_error %}aria-disabled="true"{% endif %}>
+      {{ name }}
+      {% if key == 'lines' %}<span class="tab-count">{{ total_lines }}</span>
+      {% elif key == 'best' %}<span class="tab-count">{{ best_bets|length }}</span>
+      {% elif key == 'props' %}<span class="tab-count">{{ props|length }}</span>
+      {% elif key == 'games' %}<span class="tab-count">{{ matchups|length }}</span>
+      {% elif key == 'edge' %}<span class="tab-count">{{ analytics.n_markets }}</span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</div>

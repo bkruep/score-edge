@@ -18,6 +18,8 @@ except Exception:
 import data
 from odds import BetQuote
 import odds
+import edge
+import marketfeed
 import draft
 import dfs
 import td_promo
@@ -28,17 +30,46 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
 
+
+def _sigkey(value) -> str:
+    """Map a BetQuote to its analytics-signal key (mirrors marketfeed.enrich)."""
+    try:
+        return edge.quote_key(value.event_id, value.market,
+                              value.selection or "", value.line, value.player_name)
+    except Exception:
+        return ""
+
+
+def _qtype(q) -> str:
+    """Categorize a quote into the dashboard's market filter buckets."""
+    m = (getattr(q, "market", "") or "").lower()
+    if getattr(q, "player_name", None):
+        return "prop"
+    if m == "moneyline":
+        return "ml"
+    if "spread" in m or m in ("puck_line", "spread_total"):
+        return "spr"
+    if "total" in m or m in ("ou_points", "over_under", "o_u"):
+        return "tot"
+    if m.startswith("player"):
+        return "prop"
+    return "ml"
+
+
+templates.env.filters["sigkey"] = _sigkey
+templates.env.filters["qtype"] = _qtype
+
 CACHE_BUST = hashlib.md5(str(datetime.now().hour).encode()).hexdigest()[:8]
 FANTASY_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF", "DST"}
 
 SPORTS = {
-    "nfl": {"name": "NFL", "href": "/", "icon": "ðŸˆ"},
-    "nba": {"name": "NBA", "href": "/nba", "icon": "ðŸ€"},
-    "cfb": {"name": "CFB", "href": "/cfb", "icon": "ðŸˆ"},
-    "cbb": {"name": "CBB", "href": "/cbb", "icon": "ðŸ€"},
-    "mlb": {"name": "MLB", "href": "/mlb", "icon": "âš¾"},
-    "nhl": {"name": "NHL", "href": "/nhl", "icon": "ðŸ’"},
-    "mls": {"name": "MLS", "href": "/mls", "icon": "âš½"},
+    "nfl": {"name": "NFL", "href": "/", "icon": "🏈"},
+    "nba": {"name": "NBA", "href": "/nba", "icon": "🏀"},
+    "cfb": {"name": "CFB", "href": "/cfb", "icon": "🏈"},
+    "cbb": {"name": "CBB", "href": "/cbb", "icon": "🏀"},
+    "mlb": {"name": "MLB", "href": "/mlb", "icon": "⚾"},
+    "nhl": {"name": "NHL", "href": "/nhl", "icon": "🏒"},
+    "mls": {"name": "MLS", "href": "/mls", "icon": "⚽"},
 }
 
 app.state.cache_bust = CACHE_BUST
@@ -986,8 +1017,102 @@ def _bounded(fn, timeout: float, *args, **kwargs):
         return pd.DataFrame()
 
 
+# Cross-league board: aggregate every live league's best-bets tape on one page.
+# Cached in-process for OVERVIEW_TTL so rapid reloads don't re-hit the feed per
+# league; the league slates already carry their own short-TTL caches.
+OVERVIEW_TTL = 120.0
+
+
+def _overview_board() -> dict:
+    import time as _t
+    _now = _t.time()
+    if (_now - getattr(app.state, "_overview_ts", 0.0) < OVERVIEW_TTL
+            and getattr(app.state, "_overview", None)):
+        return app.state._overview
+
+    _leagues = [
+        ("nfl", "NFL", "🏈", "/nfl", "edge", 6),
+        ("mlb", "MLB", "⚾", "/mlb", "hub", 0),
+        ("nba", "NBA", "🏀", "/nba", "hub", 1),
+        ("nhl", "NHL", "🏒", "/nhl", "hub", 2),
+        ("mls", "MLS", "⚽", "/mls", "hub", 3),
+        ("cfb", "CFB", "🏈", "/cfb", "hub", 4),
+        ("cbb", "CBB", "🏀", "/cbb", "hub", 5),
+    ]
+
+    plays: list = []
+    league_rows: list = []
+    for tag, name, icon, href, source, order in _leagues:
+        try:
+            if source == "edge":
+                slate = _current_slate() or {}
+                props = list(slate.get("props") or [])
+                # NFL props are PlayerProp objects (no is_playable); use the
+                # NFL-specific tape helper for that board.
+                best = _best_bets(slate, limit=40)
+            else:
+                slate, _e = _sport_slate(tag)
+                props, _e2 = _sport_props_hub(tag)
+                slate = slate or {}
+                if not isinstance(slate, dict):
+                    slate = {}
+                best = _sport_best_bets(slate, props)
+            if best is None:
+                best = []
+            _bk = {"ml": 0, "spr": 0, "tot": 0, "prop": 0}
+            for _q in best:
+                _bk[_qtype(_q)] = _bk.get(_qtype(_q), 0) + 1
+            league_rows.append({
+                "tag": tag, "name": name, "icon": icon, "href": href,
+                "order": order,
+                "plays": len(best), "games": len(slate.get("events") or []),
+                "top_edge": round(max((q.edge_pts() for q in best), default=0.0), 2),
+                "avg_edge": round((sum(q.edge_pts() for q in best) / len(best)) if best else 0.0, 1),
+                "mkt": _bk,
+                "quotes": best[:30],
+                "tile": best[:4],
+            })
+            for q in best[:8]:
+                plays.append({"tag": tag, "name": name, "icon": icon, "href": href, "q": q})
+        except Exception:
+            continue
+
+    plays.sort(key=lambda p: p["q"].edge_pts(), reverse=True)
+    top_plays = plays[:24]
+    n = len(top_plays)
+    avg = (sum(p["q"].edge_pts() for p in top_plays) / n) if n else 0.0
+    board = {
+        "plays": top_plays,
+        "leagues": league_rows,
+        "summary": {
+            "plays": n,
+            "leagues": len(league_rows),
+            "avg_edge": round(avg, 1),
+            "top_edge": round(top_plays[0]["q"].edge_pts(), 2) if top_plays else 0.0,
+            "top_play": top_plays[0] if top_plays else None,
+        },
+    }
+    app.state._overview = board
+    app.state._overview_ts = _now
+    return board
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    try:
+        board = _overview_board()
+    except Exception:
+        board = {"plays": [], "leagues": [], "summary": {
+            "plays": 0, "leagues": 0, "avg_edge": 0.0, "top_edge": 0.0, "top_play": None}}
+    return templates.TemplateResponse(request, "overview.html", {
+        **_ctx(request, "all", active_page="home"),
+        "odds": odds,
+        "board": board,
+    })
+
+
+@app.get("/nfl", response_class=HTMLResponse)
+def nfl_board(request: Request):
     ensure_data()
     season = _get_season()
     # schedule comes from nfldata.org which is flaky (drops TLS connections).
@@ -1178,7 +1303,7 @@ def home(request: Request):
         home_prop_counts = {"value": 0, "confirm": 0, "fade": 0}
 
     return templates.TemplateResponse(request, "home.html", {
-        **_ctx(request, "nfl", active_page="home"),
+        **_ctx(request, "nfl", active_page="nfl"),
         "odds": odds_mod,
         "upcoming": upcoming,
         "edge_spots": edge_spots,
@@ -2473,41 +2598,246 @@ def _trade_package_html(a: list[dict], b: list[dict], stat_mode: bool) -> str:
 def _trade_html(a: dict, b: dict, stat_mode: bool) -> str:
     return _trade_package_html([a], [b], stat_mode)
 
-@app.get("/nba", response_class=HTMLResponse)
-def nba_page(request: Request):
-    return templates.TemplateResponse(request, "sport_coming_soon.html", {
-        **_ctx(request, "nba"), "sport_name": "NBA", "sport_icon": "ðŸ€",
+def _sport_slate(tag: str, include_all: bool = False) -> tuple[dict, str]:
+    slate = {"events": [], "moneylines": [], "spreads": [], "totals": [], "props": [], "value_spots": [], "conferences": {}, "scoped": False, "fetched_at": ""}
+    if not odds.API_KEY:
+        return slate, "No API key set. Add ODDS_API_KEY to your environment."
+    try:
+        return odds.fetch_sport_slate(tag, include_all=include_all), ""
+    except odds.OddsError as e:
+        return slate, str(e)
+
+
+def _sport_props_hub(tag: str) -> tuple[list, str]:
+    if not odds.API_KEY:
+        return [], "No API key set. Add ODDS_API_KEY to your environment."
+    try:
+        return odds.fetch_sport_props(tag), ""
+    except odds.OddsError as e:
+        return [], str(e)
+
+
+def _sport_best_bets(slate: dict, props: list) -> list:
+    """Cross-market +EV tape ranked by true edge. Slate value spots carry the
+    main-market plays; playable props join the tape so one view reads the whole
+    day. Exact duplicate (event, market, side, line) rows collapse."""
+    rows = list(slate.get("value_spots") or [])
+    rows += [q for q in (props or []) if q.edge_pct and q.is_playable]
+    seen: set[tuple] = set()
+    out: list = []
+    for q in sorted(rows, key=lambda x: x.edge_pts(), reverse=True):
+        key = (q.event_id, q.market, (q.selection or "").casefold(), q.line)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(q)
+    return out[:40]
+
+
+def _sport_matchups(slate: dict, props: list) -> list:
+    """Per-game command cards: every market's rows plus the game's best play."""
+    by_game: dict[str, dict] = {}
+    for q in slate.get("moneylines") or []:
+        by_game.setdefault(q.game, {}).setdefault("ml", []).append(q)
+    for q in slate.get("spreads") or []:
+        by_game.setdefault(q.game, {}).setdefault("spr", []).append(q)
+    for q in slate.get("totals") or []:
+        by_game.setdefault(q.game, {}).setdefault("tot", []).append(q)
+    for q in props or []:
+        by_game.setdefault(q.game, {}).setdefault("prop", []).append(q)
+    out = []
+    for game, buckets in by_game.items():
+        rows = buckets.get("ml", []) + buckets.get("spr", []) + buckets.get("tot", [])
+        best = None
+        playable = [q for q in rows if q.is_playable]
+        if playable:
+            best = max(playable, key=lambda q: q.edge_pts())
+        covered = [k for k in ("ml", "spr", "tot") if buckets.get(k)]
+        out.append({
+            "game": game,
+            "ml": buckets.get("ml", []),
+            "spr": buckets.get("spr", []),
+            "tot": buckets.get("tot", []),
+            "props": buckets.get("prop", []),
+            "best": best,
+            "n_markets": len(covered),
+        })
+    out.sort(key=lambda m: ((m["game"] or "").casefold()))
+    return out
+
+
+SPORT_TABS = [("lines", "Lines"), ("best", "Best Bets"), ("props", "Props"), ("games", "Matchups"), ("edge", "Deep Edge")]
+
+
+def _sport_hub(request: Request, tag: str, tab: str = "lines", include_all: bool = False):
+    cfg = odds.SPORTS[tag]
+    if tab not in [k for k, _ in SPORT_TABS]:
+        tab = "lines"
+    slate, error = _sport_slate(tag, include_all)
+    props, props_error = _sport_props_hub(tag)
+    best_bets = _sport_best_bets(slate, props)
+    matchups = _sport_matchups(slate, props)
+    analytics = marketfeed.enrich(marketfeed._slate_quotes(slate) + list(props), tag)
+    total_lines = len(slate.get("moneylines") or []) + len(slate.get("spreads") or []) + len(slate.get("totals") or [])
+    market_names = dict(odds.DEFAULT_MARKET_NAMES)
+    market_names.update(cfg.get("market_names") or {})
+    avg_edge = round(sum(q.edge_pts() for q in best_bets) / len(best_bets), 1) if best_bets else 0.0
+    top_edge = round(max((q.edge_pts() for q in best_bets), default=0.0), 2)
+    prop_market_keys = list(cfg.get("prop_markets") or [])
+    prop_groups = sorted({q.market for q in props},
+                         key=lambda mk: prop_market_keys.index(mk) if mk in prop_market_keys else 99)
+    prop_groups_labeled = [
+        (mk, odds.PROP_LABELS.get(mk, mk.replace("player_", "").replace("_", " ").title()))
+        for mk in prop_groups]
+    prop_groups_group = {mk: [q for q in props if q.market == mk] for mk in prop_groups}
+    return templates.TemplateResponse(request, "sport_hub.html", {
+        **_ctx(request, tag),
+        "odds": odds,
+        "sport_cfg": cfg,
+        "slate": slate,
+        "odds_error": error,
+        "props": props,
+        "props_error": props_error,
+        "best_bets": best_bets,
+        "matchups": matchups,
+        "total_lines": total_lines,
+        "market_names": market_names,
+        "prop_labels": odds.PROP_LABELS,
+        "tabs": SPORT_TABS,
+        "active_tab": tab,
+        "scope_all": include_all,
+        "no_props": bool(not cfg.get("prop_markets")),
+        "avg_edge": avg_edge,
+        "top_edge": top_edge,
+        "best_markets": len({q.market for q in best_bets}),
+        "props_players": len({(q.player_name or "").casefold() for q in props}),
+        "props_markets": len({q.market for q in props}),
+        "top_prop_edge": round(max((q.edge_pts() for q in props), default=0.0), 2),
+        "prop_groups": prop_groups_labeled,
+        "prop_groups_group": prop_groups_group,
+        "playable_games": sum(1 for m in matchups if m.get("best")),
+        "analytics": analytics,
     })
 
+@app.get("/nba", response_class=HTMLResponse)
+def nba_page(request: Request):
+    return _sport_hub(request, "nba", "lines")
+
+@app.get("/nba/best", response_class=HTMLResponse)
+def nba_best(request: Request):
+    return _sport_hub(request, "nba", "best")
+
+@app.get("/nba/props", response_class=HTMLResponse)
+def nba_props(request: Request):
+    return _sport_hub(request, "nba", "props")
+
+@app.get("/nba/games", response_class=HTMLResponse)
+def nba_games(request: Request):
+    return _sport_hub(request, "nba", "games")
+
+@app.get("/nba/edge", response_class=HTMLResponse)
+def nba_edge(request: Request):
+    return _sport_hub(request, "nba", "edge")
+
 @app.get("/cfb", response_class=HTMLResponse)
-def cfb_page(request: Request):
-    return templates.TemplateResponse(request, "sport_coming_soon.html", {
-        **_ctx(request, "cfb"), "sport_name": "College Football", "sport_icon": "ðŸˆ",
-    })
+def cfb_page(request: Request, all: str = ""):
+    return _sport_hub(request, "cfb", "lines", include_all=all.strip().casefold() in ("1", "true", "yes", "on"))
+
+@app.get("/cfb/best", response_class=HTMLResponse)
+def cfb_best(request: Request):
+    return _sport_hub(request, "cfb", "best")
+
+@app.get("/cfb/props", response_class=HTMLResponse)
+def cfb_props(request: Request):
+    return _sport_hub(request, "cfb", "props")
+
+@app.get("/cfb/games", response_class=HTMLResponse)
+def cfb_games(request: Request):
+    return _sport_hub(request, "cfb", "games")
+
+@app.get("/cfb/edge", response_class=HTMLResponse)
+def cfb_edge(request: Request):
+    return _sport_hub(request, "cfb", "edge")
 
 @app.get("/cbb", response_class=HTMLResponse)
 def cbb_page(request: Request):
-    return templates.TemplateResponse(request, "sport_coming_soon.html", {
-        **_ctx(request, "cbb"), "sport_name": "College Basketball", "sport_icon": "ðŸ€",
-    })
+    return _sport_hub(request, "cbb", "lines")
+
+@app.get("/cbb/best", response_class=HTMLResponse)
+def cbb_best(request: Request):
+    return _sport_hub(request, "cbb", "best")
+
+@app.get("/cbb/props", response_class=HTMLResponse)
+def cbb_props(request: Request):
+    return _sport_hub(request, "cbb", "props")
+
+@app.get("/cbb/games", response_class=HTMLResponse)
+def cbb_games(request: Request):
+    return _sport_hub(request, "cbb", "games")
+
+@app.get("/cbb/edge", response_class=HTMLResponse)
+def cbb_edge(request: Request):
+    return _sport_hub(request, "cbb", "edge")
 
 @app.get("/mlb", response_class=HTMLResponse)
 def mlb_page(request: Request):
-    return templates.TemplateResponse(request, "sport_coming_soon.html", {
-        **_ctx(request, "mlb"), "sport_name": "MLB", "sport_icon": "âš¾",
-    })
+    return _sport_hub(request, "mlb", "lines")
+
+@app.get("/mlb/best", response_class=HTMLResponse)
+def mlb_best(request: Request):
+    return _sport_hub(request, "mlb", "best")
+
+@app.get("/mlb/props", response_class=HTMLResponse)
+def mlb_props(request: Request):
+    return _sport_hub(request, "mlb", "props")
+
+@app.get("/mlb/games", response_class=HTMLResponse)
+def mlb_games(request: Request):
+    return _sport_hub(request, "mlb", "games")
+
+@app.get("/mlb/edge", response_class=HTMLResponse)
+def mlb_edge(request: Request):
+    return _sport_hub(request, "mlb", "edge")
 
 @app.get("/nhl", response_class=HTMLResponse)
 def nhl_page(request: Request):
-    return templates.TemplateResponse(request, "sport_coming_soon.html", {
-        **_ctx(request, "nhl"), "sport_name": "NHL", "sport_icon": "ðŸ’",
-    })
+    return _sport_hub(request, "nhl", "lines")
+
+@app.get("/nhl/best", response_class=HTMLResponse)
+def nhl_best(request: Request):
+    return _sport_hub(request, "nhl", "best")
+
+@app.get("/nhl/props", response_class=HTMLResponse)
+def nhl_props(request: Request):
+    return _sport_hub(request, "nhl", "props")
+
+@app.get("/nhl/games", response_class=HTMLResponse)
+def nhl_games(request: Request):
+    return _sport_hub(request, "nhl", "games")
+
+@app.get("/nhl/edge", response_class=HTMLResponse)
+def nhl_edge(request: Request):
+    return _sport_hub(request, "nhl", "edge")
 
 @app.get("/mls", response_class=HTMLResponse)
 def mls_page(request: Request):
-    return templates.TemplateResponse(request, "sport_coming_soon.html", {
-        **_ctx(request, "mls"), "sport_name": "MLS", "sport_icon": "âš½",
-    })
+    return _sport_hub(request, "mls", "lines")
+
+@app.get("/mls/best", response_class=HTMLResponse)
+def mls_best(request: Request):
+    return _sport_hub(request, "mls", "best")
+
+@app.get("/mls/props", response_class=HTMLResponse)
+def mls_props(request: Request):
+    return _sport_hub(request, "mls", "props")
+
+@app.get("/mls/games", response_class=HTMLResponse)
+def mls_games(request: Request):
+    return _sport_hub(request, "mls", "games")
+
+@app.get("/mls/edge", response_class=HTMLResponse)
+def mls_edge(request: Request):
+    return _sport_hub(request, "mls", "edge")
 
 @app.get("/golf", response_class=HTMLResponse)
 def golf_page(request: Request):

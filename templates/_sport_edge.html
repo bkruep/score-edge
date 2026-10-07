@@ -1,0 +1,316 @@
+{% set em = analytics or {} %}
+{% set structs = em.structures or [] %}
+{% set n_usable = em.n_usable or 0 %}
+{% set n_issues = em.n_issues or 0 %}
+
+<!-- Stat strip -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Markets Analyzed</div>
+    <div class="text-2xl font-display font-bold text-white">{{ em.n_markets }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Coherent</div>
+    <div class="text-2xl font-display font-bold {% if n_usable %}text-emerald-400{% else %}text-white{% endif %}">{{ n_usable }} <span class="text-xs text-slate-500 font-mono">/ {{ em.n_markets }}</span></div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Avg Book Hold</div>
+    <div class="text-2xl font-display font-bold gradient-text">{{ "%.1f"|format(em.avg_vig or 0.0) }}<span class="text-xs text-slate-500">%</span></div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Feed Issues</div>
+    <div class="text-2xl font-display font-bold {% if n_issues %}text-amber-400{% else %}text-emerald-400{% endif %}">{{ n_issues }}</div>
+  </div>
+</div>
+
+<!-- Kelly portfolio -->
+<div class="glass-card rounded-xl overflow-hidden mb-6 glow-emerald">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">Kelly Portfolio <span class="text-slate-600 text-xs font-mono font-normal ml-1">({{ em.n_quotes }} quotes scanned)</span></h2>
+    <span class="text-xs text-slate-500 ml-auto font-mono">{{ em.portfolio_summary }}</span>
+  </div>
+  {% if em.portfolio and em.portfolio.legs %}
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Leg</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Price</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Fair</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Kelly</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Edge</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Stake</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">EV</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">To Win</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for leg in em.portfolio.legs %}
+        <tr class="hover:bg-brand/5 transition-colors">
+          <td class="px-4 py-2.5 text-sm text-white">{{ leg.label }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-white">{{ odds.odds_html(leg.price) }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-400">{{ "%.1f"|format(leg.fair_prob * 100) }}%</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-400">{{ "%.1f"|format(leg.kelly) }}%</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-emerald-400">+{{ "%.1f"|format(leg.edge) }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-white">${{ "%.2f"|format(leg.stake) }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-emerald-400">${{ "%.2f"|format(leg.stake * leg.ev / 100) }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-white">${{ "%.2f"|format(leg.to_win) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="px-5 py-3 border-t border-white/5 flex items-center gap-4 text-xs font-mono text-slate-400">
+    <span>${{ "%.2f"|format(em.portfolio.staked) }} staked</span>
+    <span>${{ "%.2f"|format(em.portfolio.to_win) }} to win</span>
+    <span>EV ${{ "%.2f"|format(em.portfolio.expected_profit) }}</span>
+    <span>ROI {{ "%.1f"|format(em.portfolio.roi) }}%</span>
+    <span>{{ em.portfolio.groups }} game-group{{ '' if em.portfolio.groups == 1 else 's' }}</span>
+  </div>
+  {% else %}
+  <div class="px-5 py-6 text-sm text-slate-500 max-w-2xl">
+    No positive-EV candidates right now. A composite best price across books can't beat the same books' consensus after de-vigging — the edge only materializes when one book prices a market cheaper than the field (mostly visible in multi-book props). This panel starts sizing the moment a real divergence shows up.
+  </div>
+  {% endif %}
+</div>
+
+<!-- Market structures -->
+<div class="glass-card rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">Market Structure</h2>
+    <span class="text-xs text-slate-500 ml-1">de-vig fair price · hold/vig per market · sidelined when incoherent</span>
+  </div>
+  {% if structs %}
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-sort>
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Market</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Line</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Sides</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Hold %</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Method</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Fair Breakdown</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for s in structs %}
+        <tr class="hover:bg-brand/5 transition-colors">
+          <td class="px-4 py-2.5 text-sm text-white">{{ s.event }}</td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">{{ market_names.get(s.market, s.market) }}{% if s.player %} · {{ s.player }}{% endif %}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300" data-v="{{ s.line }}">{{ s.line if s.line is not none else '—' }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-400" data-v="{{ s.n_outcomes }}">{{ s.n_outcomes }}-way</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if s.vig_pct > 6 %}text-amber-400{% else %}text-slate-400{% endif %}" data-v="{{ s.vig_pct }}">{% if s.usable %}{{ "%.1f"|format(s.vig_pct) }}{% else %}—{% endif %}</td>
+          <td class="px-4 py-2.5 text-center"><span class="pill bg-surface-3 text-slate-300 text-[9px]">{{ s.method }}</span></td>
+          <td class="px-4 py-2.5">
+            {% if s.usable %}
+            <div class="flex flex-wrap gap-1">
+              {% for i in range(s.n_outcomes) %}
+              {% set price = s.prices[i] if s.prices and i < s.prices|length else 0 %}
+              {% set fair = s.fair[i] if s.fair and i < s.fair|length else 0 %}
+              <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1.5 py-0.5 text-[9px] font-mono" title="{{ s.sides[i] }} @ {{ price }}">{{ s.sides[i] }} {{ "%.0f"|format(fair * 100) }}%</span>
+              {% endfor %}
+            </div>
+            {% else %}
+            <span class="text-[10px] font-mono text-slate-600">unusable · see Feed Integrity</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-center">
+            <span class="pill {% if s.usable %}bg-emerald-500/15 text-emerald-400 border-emerald-500/25{% else %}bg-amber-500/10 text-amber-400 border-amber-500/25{% endif %}">{{ "ok" if s.usable else "sidelined" }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="px-5 py-6 text-sm text-slate-500">No two-sided markets to de-vig right now — every side needs a sibling to devig against.</div>
+  {% endif %}
+</div>
+
+<!-- Sharp positioning -->
+<div class="glass-card rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">Sharp Positioning</h2>
+    <span class="text-xs text-slate-500 ml-1">books pricing farthest off the field · positive residual = fishier, negative = sharper</span>
+  </div>
+  {% if em.sharp_books %}
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Book</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Tier</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Price</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Residual</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Market</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for r in em.sharp_books %}
+        <tr class="hover:bg-brand/5 transition-colors">
+          <td class="px-4 py-2.5 text-sm text-white">{{ r.book }}</td>
+          <td class="px-4 py-2.5 text-center"><span class="pill {% if r.tier == 'sharp' %}bg-brand/15 text-brand border-brand/25{% else %}bg-slate-500/10 text-slate-300 border-white/10{% endif %} text-[9px]">{{ r.tier }}</span></td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-white">{{ r.price }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if r.residual_pts > 0 %}text-emerald-400{% else %}text-slate-400{% endif %}" data-v="{{ r.residual_pts }}">{{ r.residual_pts|string }} pts</td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">{{ r.game }}</td>
+          <td class="px-4 py-2.5 text-xs text-slate-500">{{ r.market }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="px-5 py-6 text-sm text-slate-500 max-w-2xl">
+    No multi-book contrast to show yet. The stream traces the best price per market, so residual-vs-field reads need several books pricing the same line — those appear first on props and games with deep books.
+  </div>
+  {% endif %}
+</div>
+
+<!-- Arbitrage -->
+<div class="glass-card rounded-xl overflow-hidden mb-6 {% if em.arbs %}glow-emerald{% endif %}">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">Live Arbitrage</h2>
+    <span class="text-xs text-slate-500 ml-1">mutually exclusive outcomes that sum below 100% implied</span>
+  </div>
+  {% if em.arbs %}
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Leg A</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Price</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Leg B</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Price</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Profit</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Stakes</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Payout</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for a in em.arbs %}
+        <tr class="hover:bg-brand/5 transition-colors">
+          <td class="px-4 py-2.5 text-sm text-white">{{ a.label_a }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-emerald-400">{{ odds.odds_html(a.price_a) }}</td>
+          <td class="px-4 py-2.5 text-sm text-white">{{ a.label_b }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-emerald-400">{{ odds.odds_html(a.price_b) }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-emerald-400" data-v="{{ a.profit_pct }}">+{{ "%.1f"|format(a.profit_pct) }}%</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-400">{{ "%.1f"|format(a.stake_a) }} / {{ "%.1f"|format(a.stake_b) }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">{{ "%.1f"|format(a.payout) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="px-5 py-6 text-sm text-slate-500">No real arbs right now — composite best-price boards rarely offer a locked profit at this scale.</div>
+  {% endif %}
+</div>
+
+<!-- Feed integrity -->
+{% if em.suspect_arbs or em.issues %}
+<div class="glass-card rounded-xl overflow-hidden mb-6 border-amber-500/20">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <div class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Feed Integrity</h2>
+    <span class="text-xs text-slate-500 ml-1">feed defects caught before they look like money</span>
+  </div>
+
+  {% if em.suspect_arbs %}
+  <div class="px-5 pt-4 pb-1 text-[10px] font-mono uppercase tracking-wider text-amber-400/80">Impossible "arbs" (lost spread signs / stale lines)</div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Leg A</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Leg B</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Claimed</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Why it's fake</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for a in em.suspect_arbs %}
+        <tr class="hover:bg-amber-500/5 transition-colors">
+          <td class="px-4 py-2.5 text-sm text-white">{{ a.label_a }} <span class="text-emerald-400 font-mono text-xs">{{ odds.odds_html(a.price_a) }}</span></td>
+          <td class="px-4 py-2.5 text-sm text-white">{{ a.label_b }} <span class="text-emerald-400 font-mono text-xs">{{ odds.odds_html(a.price_b) }}</span></td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-amber-400" data-v="{{ a.profit_pct }}">{{ "%.1f"|format(a.profit_pct) }}%</td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">{{ a.note }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if em.issues %}
+  <div class="px-5 pt-4 pb-1 text-[10px] font-mono uppercase tracking-wider text-amber-400/80">Consistency violations</div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Market</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Issue</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Severity</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Detail</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for c in em.issues %}
+        <tr class="hover:bg-amber-500/5 transition-colors">
+          <td class="px-4 py-2.5 text-sm text-white">{{ c.event }}</td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">{{ market_names.get(c.market, c.market) }}{% if c.line is not none %} <span class="text-slate-600 font-mono">{{ c.line }}</span>{% endif %}</td>
+          <td class="px-4 py-2.5 text-right text-xs font-mono text-amber-300">{{ c.issue }}</td>
+          <td class="px-4 py-2.5 text-right"><span class="pill {% if c.severity == 'high' %}bg-amber-500/15 text-amber-400 border-amber-500/25{% else %}bg-slate-500/10 text-slate-300 border-white/10{% endif %} text-[9px]">{{ c.severity }}</span></td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">{{ c.detail }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="glass-card rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Feed Integrity</h2>
+    <span class="text-xs text-slate-500 ml-1">every market de-vigs clean — no defects on this board</span>
+  </div>
+</div>
+{% endif %}
+
+<!-- Line movers -->
+{% if em.movers %}
+<div class="glass-card rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">Line Movers</h2>
+    <span class="text-xs text-slate-500 ml-1">biggest price travel in the tracked window</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table">
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Market</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Change</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Open → Now</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Panel</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for m in em.movers %}
+        <tr class="hover:bg-brand/5 transition-colors">
+          <td class="px-4 py-2.5 text-sm text-white">{{ m.label }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if m.movement.change > 0 %}text-emerald-400{% else %}text-amber-400{% endif %}" data-v="{{ m.movement.change }}">{{ m.movement.change|string }} pts</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-400">{{ m.movement.open_price }} → {{ m.movement.current_price }}</td>
+          <td class="px-4 py-2.5 text-xs text-slate-500">{{ m.game }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}

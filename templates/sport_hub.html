@@ -1,0 +1,618 @@
+{% extends "base.html" %}
+{% block title %}{{ sport_cfg.name }} {{ dict(tabs)[active_tab] }} — Best Odds + Edge | ScoreEdge{% endblock %}
+{% block meta_description %}Best {{ sport_cfg.name }} betting odds across sportsbooks — moneylines, spreads, totals, and player props with real edge detection.{% endblock %}
+{% block canonical %}/{{ active_sport }}{% if active_tab != 'lines' %}/{{ active_tab }}{% endif %}{% endblock %}
+{% block og_url %}/{{ active_sport }}{% if active_tab != 'lines' %}/{{ active_tab }}{% endif %}{% endblock %}
+
+{% macro edge_dial(q, size=34) %}
+{% set pts = q.edge_pts() %}
+{% set pct = [0, [pts / 3.0 * 100, 100]|min]|max %}
+{% set col = '#00e676' if q.is_playable else ('#fbbf24' if pts > 0 else '#64748b') %}
+<svg class="inline-block align-middle shrink-0" width="{{ size }}" height="{{ size }}" viewBox="0 0 34 34" title="True edge {{ '%.1f'|format(pts) }} pts">
+  <circle cx="17" cy="17" r="14" fill="none" stroke="rgba(148,163,184,0.15)" stroke-width="3.5"/>
+  <circle cx="17" cy="17" r="14" fill="none" stroke="{{ col }}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="{{ '%.0f'|format(pct) }} 100" transform="rotate(-90 17 17)"/>
+  <text x="17" y="20.5" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="8.5" fill="#e2e8f0">{{ '%.1f'|format(pts) }}</text>
+</svg>
+{% endmacro %}
+
+{% macro gap_bar(q, cap=3.0) %}
+{% set w = [0, [q.edge_pts() / cap * 100, 100]|min]|max %}
+<div class="w-16 h-[5px] rounded-full bg-white/5 overflow-hidden inline-block align-middle">
+  <div class="h-full rounded-full {{ 'bg-brand' if q.is_playable else 'bg-amber-400/70' }}" style="width:{{ '%.0f'|format(w) }}%"></div>
+</div>
+{% endmacro %}
+
+{% macro imp_chip(q, analytics=None) %}
+{% set sg = ((analytics.signals or {}).get(q|sigkey) or {}) if analytics else {} %}
+{% set fair = sg.fair_prob if sg.fair_prob is not none else none %}
+<span class="pill bg-slate-500/10 text-slate-400 border-white/10" title="Vig-free implied probability{% if fair %} · fair {{ "%.0f"|format(fair*100) }}% · kelly {{ "%.1f"|format(sg.kelly_pct or 0.0) }}%{% endif %}">{{ "%.0f"|format(odds.implied_prob(q.best_odds)) }}%{% if fair %}<span class="text-brand/80"> ↦ {{ "%.0f"|format(fair*100) }}%</span>{% endif %}</span>
+{% endmacro %}
+
+{% macro slip_btn(q) %}
+<button type="button" class="slip-btn" title="Track this play" data-slip='{{ q.slip_payload()|tojson }}'>+</button>
+{% endmacro %}
+
+{% block breadcrumb %}
+<div class="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-white/5 pb-3">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">{{ sport_cfg.icon }} {{ sport_cfg.name|upper }} <span class="text-slate-600 text-xs font-mono ml-1">/ {{ dict(tabs)[active_tab]|upper }}</span></h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">
+      {% if active_tab == 'lines' %}MONEYLINE · SPREAD · TOTAL — BEST PRICE ACROSS BOOKS, EDGE = BEST BEATS CONSENSUS
+      {% elif active_tab == 'best' %}CROSS-MARKET +EV TAPE — VALUE SPOTS + PLAYABLE PROPS, RANKED BY TRUE EDGE
+      {% elif active_tab == 'props' %}PLAYER PROPS — RAW LINES + EDGE, BEST PRICE VS BOOK CONSENSUS
+      {% elif active_tab == 'games' %}PER-GAME COMMAND CARDS — EVERY MARKET SNAPSHOT + TOP PLAY
+      {% elif active_tab == 'edge' %}MARKET FORENSICS — DE-VIG FAIR PRICE, HOLD/VIG, SHARP POSITIONING, ARB + FEED-INTEGRITY CHECK{% endif %}
+    </p>
+  </div>
+  <div class="text-right">
+    <span class="pill bg-brand/15 text-brand border-brand/25">LIVE</span>
+    <div class="text-[10px] font-mono text-slate-600 mt-1">{{ slate.events|length }} games · {{ total_lines }} lines</div>
+  </div>
+</div>
+
+{% include "_sport_tabs.html" %}
+
+{% if active_sport == 'cfb' and active_tab == 'lines' %}
+<div class="mb-3 -mt-1 flex items-center gap-2 flex-wrap">
+  {% if scope_all %}
+  <span class="pill bg-surface-3 text-slate-300">all games (incl. FCS)</span>
+  <a href="/cfb" class="pill bg-brand/10 text-brand border-brand/25 hover:bg-brand/20 transition-colors">Filter to Power-4 + Group of 5</a>
+  {% else %}
+  <span class="pill bg-emerald-500/15 text-emerald-400 border-emerald-500/25">Power-4 + Group of 5 only</span>
+  <span class="text-[10px] font-mono text-slate-600">ACC · Big Ten · Big 12 · SEC · AAC · C-USA · MAC · MW · Sun Belt</span>
+  <a href="/cfb?all=1" class="pill bg-surface-3 text-slate-400 hover:bg-surface-2 transition-colors">show all games</a>
+  {% endif %}
+</div>
+<div class="mb-5 -mt-1 flex items-center gap-1.5 flex-wrap" id="conf-bar">
+  <span class="text-[10px] font-mono uppercase tracking-wider text-slate-600 mr-1">Conf</span>
+  <button type="button" data-conf="" class="conf-chip chip chip-on">All</button>
+  <button type="button" data-conf="ACC" class="conf-chip chip">ACC</button>
+  <button type="button" data-conf="B1G" class="conf-chip chip">B1G</button>
+  <button type="button" data-conf="B12" class="conf-chip chip">B12</button>
+  <button type="button" data-conf="SEC" class="conf-chip chip">SEC</button>
+  <button type="button" data-conf="G5" class="conf-chip chip">G5</button>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if odds_error %}
+<div class="glass-card rounded-xl p-4 mb-6 flex items-center gap-3 border-amber-500/20">
+  <svg class="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+  <div>
+    <div class="text-sm font-medium text-white">Odds unavailable</div>
+    <div class="text-xs text-slate-400">{{ odds_error }}</div>
+  </div>
+</div>
+{% endif %}
+{% if active_tab in ('best', 'props', 'games') and props_error %}
+<div class="glass-card rounded-xl p-4 mb-6 flex items-center gap-3 border-amber-500/20">
+  <svg class="w-5 h-5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+  <div>
+    <div class="text-sm font-medium text-white">Props unavailable</div>
+    <div class="text-xs text-slate-400">{{ props_error }}</div>
+  </div>
+</div>
+{% endif %}
+
+{% if active_tab == 'lines' %}
+
+<!-- Stat strip -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Games</div>
+    <div class="text-2xl font-display font-bold text-white">{{ slate.events|length }} <span class="text-xs text-slate-500 font-mono">matchups</span></div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Lines</div>
+    <div class="text-2xl font-display font-bold gradient-text">{{ total_lines }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Value Spots</div>
+    <div class="text-2xl font-display font-bold {% if slate.value_spots %}text-emerald-400{% else %}text-white{% endif %}">{{ slate.value_spots|length }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Updated</div>
+    <div class="text-sm font-mono font-bold text-slate-300 mt-1">{{ slate.fetched_at|truncate(12, True, '') }}</div>
+  </div>
+</div>
+
+{% if slate.value_spots %}
+<div class="glass-card conf-section rounded-xl overflow-hidden mb-6 glow-emerald" id="value" style="scroll-margin-top: 88px;">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Value Spots</h2>
+    <span class="text-xs text-slate-500 ml-1">true edge in win-prob points · best price vs book consensus</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-sort>
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Market</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Bet</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Best</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Imp</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400" data-k>Edge</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in slate.value_spots[:14] %}
+        <tr class="conf-row hover:bg-brand/5 transition-colors" data-conf="{{ slate.conferences.get(q.game, '') }}">
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.game }}{% if slate.conferences.get(q.game) %}<span class="ml-1 pill conf-pill {% if slate.conferences[q.game] == 'G5' %}bg-slate-500/20 text-slate-300{% else %}bg-brand/10 text-brand{% endif %}" data-conf="{{ slate.conferences[q.game] }}" style="cursor:pointer">{{ slate.conferences[q.game] }}</span>{% endif %}</td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">{{ market_names.get(q.market, q.market) }}</td>
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.selection }}{% if q.line is not none %} <span class="text-slate-500 text-xs">{{ q.line }}</span>{% endif %}</td>
+          <td class="px-4 py-2.5 text-right">
+            <div class="text-sm font-mono text-emerald-400" data-v="{{ q.best_odds }}">{{ odds.odds_html(q.best_odds) }}</div>
+            <div class="mt-1 flex flex-wrap gap-1 justify-end max-w-[150px] ml-auto">
+              {% for bk in q.book_ladder(3) %}
+              <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1.5 py-0.5 text-[8px] font-mono leading-none {% if bk.book == q.best_book %}text-brand border-brand/30{% endif %}" title="{{ bk.book }}">{{ bk.book }} {{ bk.am }}</span>
+              {% endfor %}
+            </div>
+          </td>
+          <td class="px-4 py-2.5 text-right">{{ imp_chip(q, analytics) }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-400" data-v="{{ q.consensus_odds }}">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-right">
+            <div class="flex items-center justify-end gap-2" data-v="{{ q.edge_pts() }}">
+              {{ gap_bar(q) }}{{ edge_dial(q, 30) }}
+            </div>
+          </td>
+          <td class="px-4 py-2.5 text-center">{{ slip_btn(q) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if slate.moneylines %}
+<div class="glass-card conf-section rounded-xl overflow-hidden mb-6" id="lines" style="scroll-margin-top: 88px;">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">{{ market_names.get('moneyline', 'Moneyline') }}</h2>
+    <span class="text-xs text-slate-500 ml-1">best-price across books · playable rows highlighted</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-sort>
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Pick</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Best</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Book</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Imp</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400" data-k>Edge</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in slate.moneylines %}
+        <tr class="conf-row hover:bg-brand/5 transition-colors" data-conf="{{ slate.conferences.get(q.game, '') }}">
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.selection }}{% if slate.conferences.get(q.game) %}<span class="ml-1 pill conf-pill {% if slate.conferences[q.game] == 'G5' %}bg-slate-500/20 text-slate-300{% else %}bg-brand/10 text-brand{% endif %}" data-conf="{{ slate.conferences[q.game] }}" style="cursor:pointer">{{ slate.conferences[q.game] }}</span>{% endif %} <span class="text-slate-600 text-xs">· {{ q.game }}</span></td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}" data-v="{{ q.best_odds }}">{{ odds.odds_html(q.best_odds) }}</td>
+          <td class="px-4 py-2.5"><span class="pill bg-surface-3 text-slate-300">{{ q.best_book }}</span></td>
+          <td class="px-4 py-2.5 text-right">{{ imp_chip(q, analytics) }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-500" data-v="{{ q.consensus_odds }}">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-right"><div class="flex items-center justify-end gap-2" data-v="{{ q.edge_pts() }}">{{ gap_bar(q) }}{{ edge_dial(q, 30) }}</div></td>
+          <td class="px-4 py-2.5 text-center">{{ slip_btn(q) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if slate.spreads %}
+<div class="glass-card conf-section rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">{{ market_names.get('point_spread', 'Spread') }}</h2>
+    <span class="text-xs text-slate-500 ml-1">best-value side per game · real edge only</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-sort>
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Pick</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Line</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Best</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Book</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400" data-k>Edge</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in slate.spreads %}
+        <tr class="conf-row hover:bg-brand/5 transition-colors" data-conf="{{ slate.conferences.get(q.game, '') }}">
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.selection }}{% if slate.conferences.get(q.game) %}<span class="ml-1 pill conf-pill {% if slate.conferences[q.game] == 'G5' %}bg-slate-500/20 text-slate-300{% else %}bg-brand/10 text-brand{% endif %}" data-conf="{{ slate.conferences[q.game] }}" style="cursor:pointer">{{ slate.conferences[q.game] }}</span>{% endif %} <span class="text-slate-600 text-xs">· {{ q.game }}</span></td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300" data-v="{{ q.line }}">{% if q.line is not none %}{{ q.line }}{% else %}—{% endif %}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}" data-v="{{ q.best_odds }}">{{ odds.odds_html(q.best_odds) }}</td>
+          <td class="px-4 py-2.5">
+            <span class="pill bg-surface-3 text-slate-300">{{ q.best_book }}</span>
+            {% if q.book_ladder(3) %}
+            <div class="mt-1 flex flex-wrap gap-1 max-w-[150px]">
+              {% for bk in q.book_ladder(3) %}
+              <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1.5 py-0.5 text-[8px] font-mono leading-none {% if bk.book == q.best_book %}text-brand border-brand/30{% endif %}" title="{{ bk.book }}">{{ bk.book }} {{ bk.am }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-500" data-v="{{ q.consensus_odds }}">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-right"><div class="flex items-center justify-end gap-2" data-v="{{ q.edge_pts() }}">{{ gap_bar(q) }}{{ edge_dial(q, 30) }}</div></td>
+          <td class="px-4 py-2.5 text-center">{{ slip_btn(q) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if slate.totals %}
+<div class="glass-card conf-section rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">{{ market_names.get('total_points', 'Total') }}</h2>
+    <span class="text-xs text-slate-500 ml-1">best price across books · stronger side only</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-sort>
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Side</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Line</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Best</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Consensus</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400" data-k>Edge</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in slate.totals %}
+        <tr class="conf-row hover:bg-brand/5 transition-colors" data-conf="{{ slate.conferences.get(q.game, '') }}">
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.game }}{% if slate.conferences.get(q.game) %}<span class="ml-1 pill conf-pill {% if slate.conferences[q.game] == 'G5' %}bg-slate-500/20 text-slate-300{% else %}bg-brand/10 text-brand{% endif %}" data-conf="{{ slate.conferences[q.game] }}" style="cursor:pointer">{{ slate.conferences[q.game] }}</span>{% endif %}</td>
+          <td class="px-4 py-2.5 text-xs {% if q.selection|lower == 'over' %}text-emerald-400{% else %}text-slate-300{% endif %}">{{ q.selection }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300" data-v="{{ q.line }}">{% if q.line is not none %}{{ q.line }}{% else %}—{% endif %}</td>
+          <td class="px-4 py-2.5 text-right">
+            <div class="text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}" data-v="{{ q.best_odds }}">{{ q.best_odds }}</div>
+            {% if q.book_ladder(3) %}
+            <div class="mt-1 flex flex-wrap gap-1 justify-end max-w-[140px] ml-auto">
+              {% for bk in q.book_ladder(3) %}
+              <span class="bg-white/5 text-slate-400 border border-white/10 rounded px-1.5 py-0.5 text-[8px] font-mono leading-none {% if bk.book == q.best_book %}text-brand border-brand/30{% endif %}" title="{{ bk.book }}">{{ bk.book }} {{ bk.am }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-500" data-v="{{ q.consensus_odds }}">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-right"><div class="flex items-center justify-end gap-2" data-v="{{ q.edge_pts() }}">{{ gap_bar(q) }}{{ edge_dial(q, 30) }}</div></td>
+          <td class="px-4 py-2.5 text-center">{{ slip_btn(q) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if not (slate.moneylines or slate.spreads or slate.totals or slate.value_spots) and not odds_error %}
+<div class="glass-card rounded-xl p-10 text-center">
+  <div class="text-3xl mb-3">{{ sport_cfg.icon }}</div>
+  <div class="text-sm font-medium text-white mb-1">No {{ sport_cfg.name }} lines right now</div>
+  <div class="text-xs text-slate-500 max-w-md mx-auto">
+    The live feed currently has no {{ sport_cfg.name }} lines posted.
+    {% if active_sport == 'cbb' %}The men's college basketball season hasn't started yet — lines appear here automatically once the book opens.{% endif %}
+    This board refreshes directly from the feed, so check back after the market posts.
+  </div>
+</div>
+{% endif %}
+
+{% elif active_tab == 'best' %}
+
+<!-- Stat strip -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Plays</div>
+    <div class="text-2xl font-display font-bold text-white">{{ best_bets|length }} <span class="text-xs text-slate-500 font-mono">ranked</span></div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Avg Edge</div>
+    <div class="text-2xl font-display font-bold gradient-text">+{{ "%.1f"|format(avg_edge) }} <span class="text-xs text-slate-500 font-mono">pts</span></div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Top Edge</div>
+    <div class="text-2xl font-display font-bold text-emerald-400">+{{ "%.2f"|format(top_edge) }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Markets</div>
+    <div class="text-2xl font-display font-bold text-white">{{ best_markets }}
+      <span class="text-xs text-slate-500 font-mono">covered</span>
+    </div>
+  </div>
+</div>
+
+{% if best_bets %}
+<div class="glass-card rounded-xl overflow-hidden mb-6 glow-emerald">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Best-Bets Tape</h2>
+    <span class="text-xs text-slate-500 ml-1">every edge worth taking today — sorted by true edge</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-sort>
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Game</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Market</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Pick</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Best</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Cons</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400" data-k>Edge</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in best_bets %}
+        <tr class="hover:bg-brand/5 transition-colors">
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.game }}</td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">{{ market_names.get(q.market, prop_labels.get(q.market, q.market)) }}</td>
+          <td class="px-4 py-2.5 text-sm text-white">
+            {% if q.player_name %}<span class="text-brand/80 font-medium">{{ q.player_name }}</span> · {% endif %}
+            {{ q.selection }}{% if q.line is not none %} <span class="text-slate-500 text-xs">{{ q.line }}</span>{% endif %}<span class="text-slate-600 text-xs"> · {{ q.best_book }}</span>
+          </td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}" data-v="{{ q.best_odds }}">{{ odds.odds_html(q.best_odds) }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-500" data-v="{{ q.consensus_odds }}">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-right"><div class="flex items-center justify-end gap-2" data-v="{{ q.edge_pts() }}">{{ gap_bar(q) }}{{ edge_dial(q, 34) }}</div></td>
+          <td class="px-4 py-2.5 text-center">{{ slip_btn(q) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif not odds_error %}
+<div class="glass-card rounded-xl p-10 text-center">
+  <div class="text-3xl mb-3">🎯</div>
+  <div class="text-sm font-medium text-white mb-1">No value plays right now</div>
+  <div class="text-xs text-slate-500 max-w-md mx-auto">Nothing currently clears the edge bar. This tape repopulates the moment a line moves against consensus — check the Lines tab for the full board.</div>
+</div>
+{% endif %}
+
+{% elif active_tab == 'props' %}
+
+<!-- Stat strip -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Props</div>
+    <div class="text-2xl font-display font-bold text-white">{{ props|length }} <span class="text-xs text-slate-500 font-mono">rows</span></div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Players</div>
+    <div class="text-2xl font-display font-bold gradient-text">{{ props_players }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Markets</div>
+    <div class="text-2xl font-display font-bold text-white">{{ props_markets }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Top Edge</div>
+    <div class="text-2xl font-display font-bold text-emerald-400">+{{ "%.2f"|format(top_prop_edge) }}</div>
+  </div>
+</div>
+
+{% if no_props %}
+<div class="glass-card rounded-xl p-10 text-center">
+  <div class="text-3xl mb-3">{{ sport_cfg.icon }}</div>
+  <div class="text-sm font-medium text-white mb-1">Player props aren't live for {{ sport_cfg.name }} yet</div>
+  <div class="text-xs text-slate-500 max-w-md mx-auto">This sport's feed doesn't post player markets yet — main-market lines live on the Lines tab, and props will unlock here automatically once the feed covers them.</div>
+</div>
+{% elif props %}
+{% for key, label in prop_groups %}
+<div class="glass-card rounded-xl overflow-hidden mb-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">{{ label }}</h2>
+    <span class="text-xs text-slate-500 ml-1">{{ prop_groups_group[key]|length }} rows · best price vs consensus</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full stat-table" data-sort>
+      <thead>
+        <tr class="border-b border-white/5">
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Player</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Bet</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400" data-k>Best</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-slate-400">Book</th>
+          <th class="px-4 py-3 text-right text-xs font-semibold text-slate-400">Cons</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400" data-k>Edge</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-slate-400">Slip</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for q in prop_groups_group[key] %}
+        <tr class="hover:bg-brand/5 transition-colors">
+          <td class="px-4 py-2.5 text-sm text-white">{{ q.player_name }} <span class="text-slate-600 text-xs">· {{ q.game }}</span></td>
+          <td class="px-4 py-2.5 text-xs {% if q.selection|lower == 'over' %}text-emerald-400{% else %}text-slate-300{% endif %}">{{ q.selection }} {{ q.line }}</td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}" data-v="{{ q.best_odds }}">{{ odds.odds_html(q.best_odds) }}</td>
+          <td class="px-4 py-2.5"><span class="pill bg-surface-3 text-slate-300">{{ q.best_book }}</span></td>
+          <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-500" data-v="{{ q.consensus_odds }}">{{ q.consensus_odds }}</td>
+          <td class="px-4 py-2.5 text-right"><div class="flex items-center justify-end gap-2" data-v="{{ q.edge_pts() }}">{{ gap_bar(q, 2.0) }}{{ edge_dial(q, 30) }}</div></td>
+          <td class="px-4 py-2.5 text-center">{{ slip_btn(q) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+{% elif not props_error %}
+<div class="glass-card rounded-xl p-10 text-center">
+  <div class="text-3xl mb-3">🎲</div>
+  <div class="text-sm font-medium text-white mb-1">No props posted yet</div>
+  <div class="text-xs text-slate-500 max-w-md mx-auto">The book hasn't posted player markets for today's slate. Check back after the feed goes live — this tab fills automatically.</div>
+</div>
+{% endif %}
+
+{% elif active_tab == 'games' %}
+
+<!-- Stat strip -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Matchups</div>
+    <div class="text-2xl font-display font-bold text-white">{{ matchups|length }} <span class="text-xs text-slate-500 font-mono">cards</span></div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Markets Live</div>
+    <div class="text-2xl font-display font-bold gradient-text">{{ total_lines }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">With Plays</div>
+    <div class="text-2xl font-display font-bold {% if playable_games %}text-emerald-400{% else %}text-white{% endif %}">{{ playable_games }}</div>
+  </div>
+  <div class="glass-card rounded-xl p-4">
+    <div class="text-xs text-slate-500 mb-1">Updated</div>
+    <div class="text-sm font-mono font-bold text-slate-300 mt-1">{{ slate.fetched_at|truncate(12, True, '') }}</div>
+  </div>
+</div>
+
+{% if matchups %}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  {% for m in matchups %}
+  <div class="glass-card rounded-xl p-4 flex flex-col gap-3 {% if m.best %}glow-emerald{% endif %}">
+    <div class="flex items-center justify-between gap-2">
+      <div class="text-sm font-medium text-white">{{ m.game }}</div>
+      <div class="flex items-center gap-1.5 flex-wrap justify-end">
+        <span class="pill bg-surface-3 text-slate-300 text-[9px]">{{ m.n_markets }} markets</span>
+        {% if m.props|length %}<a href="/{{ active_sport }}/props#{{ m.game|replace(' ', '-') }}" class="pill bg-surface-3 text-slate-300 text-[9px] hover:text-brand transition-colors">{{ m.props|length }} props</a>{% endif %}
+        {% if m.best %}<span class="pill bg-emerald-500/20 text-emerald-400 text-[9px]">TOP PLAY +{{ "%.1f"|format(m.best.edge_pts()) }}</span>{% endif %}
+      </div>
+    </div>
+
+    {% for q in m.ml %}
+    <div class="flex items-center justify-between gap-2 py-1 border-b border-white/5 last:border-0">
+      <div class="text-sm {% if q.is_playable %}text-emerald-300 font-medium{% else %}text-slate-200{% endif %}">{{ q.selection }}</div>
+      <div class="flex items-center gap-2">
+        {{ imp_chip(q, analytics) }}
+        <span class="pill bg-surface-3 text-slate-300 text-[9px]">{{ q.best_book }}</span>
+        <span class="text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</span>
+        {{ slip_btn(q) }}
+      </div>
+    </div>
+    {% endfor %}
+
+    {% for q in m.spr %}
+    <div class="flex items-center justify-between gap-2 py-1 border-b border-white/5 last:border-0">
+      <div class="text-sm {% if q.is_playable %}text-emerald-300 font-medium{% else %}text-slate-200{% endif %}">{{ q.selection }} <span class="text-slate-500 text-xs">{{ q.line }}</span></div>
+      <div class="flex items-center gap-2">
+        {{ imp_chip(q, analytics) }}
+        <span class="pill bg-surface-3 text-slate-300 text-[9px]">{{ q.best_book }}</span>
+        <span class="text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ odds.odds_html(q.best_odds) }}</span>
+        {{ slip_btn(q) }}
+      </div>
+    </div>
+    {% endfor %}
+
+    {% for q in m.tot %}
+    <div class="flex items-center justify-between gap-2 py-1 border-b border-white/5 last:border-0">
+      <div class="text-sm {% if q.is_playable %}text-emerald-300 font-medium{% else %}text-slate-200{% endif %}">{{ q.selection }} <span class="text-slate-500 text-xs">O/U {{ q.line }}</span></div>
+      <div class="flex items-center gap-2">
+        {{ imp_chip(q, analytics) }}
+        <span class="pill bg-surface-3 text-slate-300 text-[9px]">{{ q.best_book }}</span>
+        <span class="text-sm font-mono {% if q.is_playable %}text-emerald-400{% else %}text-white{% endif %}">{{ q.best_odds }}</span>
+        {{ slip_btn(q) }}
+      </div>
+    </div>
+    {% endfor %}
+
+    {% if m.props %}
+    <div class="flex flex-wrap gap-1.5 pt-1 border-t border-white/10">
+      <span class="text-[9px] font-mono uppercase tracking-wider text-slate-600 mr-1 self-center">Props</span>
+      {% for q in m.props[:6] %}
+      <a href="/{{ active_sport }}/props" class="pill bg-white/5 text-slate-300 hover:text-brand transition-colors text-[9px]" title="{{ q.player_name }} · {{ q.selection }} {{ q.line }} · {{ odds.odds_html(q.best_odds) }}">{{ q.player_name }} {{ q.market|replace('player_', '')|replace('_', ' ') }} {{ q.selection|lower }} {{ q.line }}</a>
+      {% endfor %}
+      {% if m.props|length > 6 %}<span class="text-[9px] font-mono text-slate-500 self-center">+{{ m.props|length - 6 }} more</span>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% elif not odds_error %}
+<div class="glass-card rounded-xl p-10 text-center">
+  <div class="text-3xl mb-3">📊</div>
+  <div class="text-sm font-medium text-white mb-1">No matchups currently posted</div>
+  <div class="text-xs text-slate-500 max-w-md mx-auto">Cards appear here automatically as the feed opens games for {{ sport_cfg.name }}.</div>
+</div>
+{% endif %}
+
+{% elif active_tab == 'edge' %}
+{% include "_sport_edge.html" %}
+
+{% endif %}
+
+{% if active_sport == 'cfb' and active_tab == 'lines' and not scope_all %}
+<script>
+(function () {
+  var rows = Array.prototype.slice.call(document.querySelectorAll('tr.conf-row'));
+  var chips = Array.prototype.slice.call(document.querySelectorAll('button.conf-chip'));
+  var sections = Array.prototype.slice.call(document.querySelectorAll('.conf-section'));
+  var active = '';
+  function apply(conf) {
+    active = conf;
+    rows.forEach(function (r) {
+      r.style.display = (!conf || r.getAttribute('data-conf') === conf) ? '' : 'none';
+    });
+    chips.forEach(function (c) {
+      c.classList.toggle('chip-on', c.getAttribute('data-conf') === active);
+    });
+    sections.forEach(function (s) {
+      var anyVisible = Array.prototype.some.call(s.querySelectorAll('tr.conf-row'), function (r) {
+        return r.style.display !== 'none';
+      });
+      s.style.display = anyVisible ? '' : 'none';
+    });
+  }
+  document.addEventListener('click', function (e) {
+    if (e.target && e.target.closest && e.target.closest('.slip-btn')) return;
+    var t = e.target && e.target.closest ? e.target.closest('[data-conf]') : null;
+    if (t) apply(t.getAttribute('data-conf') || '');
+  });
+  apply('');
+})();
+</script>
+{% endif %}
+
+<script>
+(function () {
+  function initSort(tbl) {
+    var ths = [].slice.call(tbl.querySelectorAll('th[data-k]'));
+    if (!ths.length) return;
+    var tbody = tbl.tBodies[0];
+    ths.forEach(function (th) {
+      th.classList.add('cursor-pointer', 'hover:text-white');
+      th.title = 'sort';
+      th.style.userSelect = 'none';
+      th.addEventListener('click', function () {
+        var dir = tbl.getAttribute('data-dir') === th.getAttribute('data-k') ? -1 : 1;
+        tbl.setAttribute('data-dir', th.getAttribute('data-k'));
+        var i = th.cellIndex;
+        var rows = [].slice.call(tbody.rows);
+        rows.sort(function (a, b) {
+          var cv = a.cells[i];
+          var dv = cv.getAttribute('data-v');
+          var x = dv != null ? dv : cv.textContent.trim();
+          var c2 = b.cells[i];
+          var d2 = c2.getAttribute('data-v');
+          var y = d2 != null ? d2 : c2.textContent.trim();
+          if (x === y) return 0;
+          var xn = parseFloat(x), yn = parseFloat(y);
+          if (!isNaN(xn) && !isNaN(yn)) return (xn - yn) * dir;
+          return String(x).localeCompare(String(y)) * dir;
+        });
+        rows.forEach(function (r) { tbody.appendChild(r); });
+      });
+    });
+  }
+  document.querySelectorAll('table[data-sort]').forEach(initSort);
+})();
+</script>
+{% endblock %}

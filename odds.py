@@ -1,13 +1,27 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 import json
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 import requests
+
+# Make .env authoritative before reading API keys. The app is sometimes
+# launched from a shell that already exports ODDS_API_KEY="" (or a stale
+# value); without an explicit override, python-dotenv will not replace it and
+# SharpAPI rejects every call with "missing_api_key". Load the file next to
+# this module with override=True so this repo's .env always wins.
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
+                 override=True)
+except Exception:
+    pass
 
 API_KEY = os.getenv("ODDS_API_KEY", "").strip()
 
@@ -79,7 +93,458 @@ import pickle
 import threading
 
 _DISK_CACHE_FILE = os.path.join(os.path.dirname(__file__), "odds_cache.pkl")
-_DISK_KEYS = ("slate_", "bets_active_", "props_", "line_", "bets_slate_")
+_DISK_KEYS = ("slate_", "bets_active_", "props_", "line_", "bets_slate_", "sport_slate_", "league_odds_")
+
+GAME_MARKETS = ["moneyline", "point_spread", "total_points"]
+COLLEGE_GAME_MARKETS = GAME_MARKETS
+
+# Display labels for the canonical market grouping, overrideable per league so
+# MLB shows "Run Line"/"Total Runs" while the generic default stays Spread/Total.
+DEFAULT_MARKET_NAMES = {"moneyline": "Moneyline", "point_spread": "Spread", "total_points": "Total"}
+
+# Prop market display labels (typography-safe, used across the prop board).
+PROP_LABELS = {
+    "player_home_runs": "Home Runs",
+    "player_hits": "Hits",
+    "player_total_bases": "Total Bases",
+    "player_rbis": "RBIs",
+    "player_hits_+_runs_+_rbis": "H+R+RBIs",
+    "player_runs": "Runs",
+    "player_singles": "Singles",
+    "player_doubles": "Doubles",
+    "player_triples": "Triples",
+    "player_strikeouts": "Strikeouts",
+    "player_stolen_bases": "Stolen Bases",
+    "player_walks": "Walks",
+    "player_fantasy_score": "Fantasy Score",
+    "player_points": "Points",
+    "player_rebounds": "Rebounds",
+    "player_assists": "Assists",
+    "player_made_threes": "Threes",
+    "player_blocks": "Blocks",
+    "player_points_+_rebounds": "Points + Rebounds",
+    "player_points_+_assists": "Points + Assists",
+    "player_rebounds_+_assists": "Rebounds + Assists",
+    "player_points_+_rebounds_+_assists": "Pts + Reb + Ast",
+    "player_double_double": "Double Double",
+    "player_triple_double": "Triple Double",
+    "player_goals": "Goals",
+    "player_shots": "Shots",
+    "player_shots_on_goal": "Shots on Goal",
+    "player_plus_minus": "Plus/Minus",
+    "player_power_play_points": "Power-Play Points",
+    "player_blocked_shots": "Blocked Shots",
+    "player_minutes_played": "Minutes",
+    "player_faceoffs_won": "Faceoffs Won",
+    "player_saves": "Saves",
+    "player_passing_yards": "Passing Yards",
+    "player_rushing_yards": "Rushing Yards",
+    "player_receptions": "Receptions",
+    "player_rushing_attempts": "Rush Attempts",
+    "player_passing_attempts": "Pass Attempts",
+    "player_longest_reception": "Longest Reception",
+    "player_longest_rush": "Longest Rush",
+}
+
+# League registry: every board route is a row here.
+#   markets   the provider's exact market types for that league (defaults to
+#             GAME_MARKETS). For MLB that is run_line + total_runs; NHL is
+#             puck_line + total_goals; NBA already uses point_spread/total_points.
+#   aliases   normalize sport-specific market types onto the canonical grouping
+#             the board tables understand (moneyline / point_spread / total_points).
+#   collapse_bets  True = college best-bets boards: one row per game, best
+#             value side ranked by edge. Absent = per-team rows like the NFL board.
+SPORTS = {
+    "cfb": {"sport": "football", "league": "ncaaf", "name": "College Football", "icon": "🏈",
+            "college": True, "scoped": True, "collapse_bets": True},
+    "cbb": {"sport": "basketball", "league": "ncaab", "name": "College Basketball", "icon": "🏀",
+            "college": True, "collapse_bets": True},
+    "mlb": {"sport": "baseball", "league": "mlb", "name": "Major League Baseball", "icon": "⚾",
+            "markets": ["moneyline", "run_line", "total_runs"],
+            "aliases": {"run_line": "point_spread", "total_runs": "total_points"},
+            "market_names": {"moneyline": "Moneyline", "point_spread": "Run Line", "total_points": "Total Runs"},
+            "prop_markets": ["player_home_runs", "player_hits", "player_total_bases", "player_rbis",
+                             "player_runs", "player_singles", "player_doubles", "player_strikeouts",
+                             "player_walks", "player_stolen_bases"]},
+    "nba": {"sport": "basketball", "league": "nba", "name": "NBA", "icon": "🏀",
+            "markets": ["moneyline", "point_spread", "total_points"],
+            "market_names": {"moneyline": "Moneyline", "point_spread": "Spread", "total_points": "Total"},
+            "prop_markets": ["player_points", "player_rebounds", "player_assists",
+                             "player_made_threes", "player_points_+_rebounds",
+                             "player_points_+_assists", "player_rebounds_+_assists",
+                             "player_points_+_rebounds_+_assists", "player_fantasy_score"]},
+    "nhl": {"sport": "hockey", "league": "nhl", "name": "NHL", "icon": "🏒",
+            "markets": ["moneyline", "puck_line", "total_goals"],
+            "aliases": {"puck_line": "point_spread", "total_goals": "total_points"},
+            "market_names": {"moneyline": "Moneyline", "point_spread": "Puck Line", "total_points": "Total Goals"},
+            "prop_markets": ["player_goals", "player_assists", "player_points",
+                             "player_shots_on_goal", "player_shots", "player_plus_minus"]},
+    # Soccer moneyline carries a third "draw" outcome. The board's two-sided
+    # arbitrage and complement math assume home/away, so MLS quotes get the
+    # draw collapsed into a single best-price side per game the same way
+    # college boards collapse their boards (collapse_bets).
+    "mls": {"sport": "soccer", "league": "mls", "name": "MLS", "icon": "⚽",
+            "markets": ["moneyline"],
+            "market_names": {"moneyline": "Moneyline"},
+            "collapse_bets": True,
+            "prop_markets": ["player_shots_on_target", "player_shots", "player_goals",
+                             "player_assists", "player_cards"]},
+}
+COLLEGE_SPORTS = {t: SPORTS[t] for t in ("cfb", "cbb")}
+
+# "Suggestible" band for value spots. Ratio edge (%) explodes on longshots: a
+# +8000/-5620 mismatch reads as "+41% edge" while buying only ~0.5 points of
+# real win probability. Restrict suggestions to lines priced like a real play
+# (-500..+300) and rank them by true edge in points of implied probability.
+VALUE_ODDS_MIN = -500
+VALUE_ODDS_MAX = 300
+VALUE_MIN_PTS = 1.0
+
+# ---- CFB board scoping: allow only Power-4 + Group-of-5 games -------------
+# SharpAPI's CFB feed carries team names but no conference metadata, and it
+# posts every FBS + FCS game (64+ matchups on a normal Saturday). To keep the
+# board on real, bettable games only, map every allowed FBS school to its
+# conference grouping (ACC / B1G / B12 / SEC for the Power-4, "G5" for AAC,
+# C-USA, MAC, Mountain West, Sun Belt + the 2026 Pac-12 raid teams). Any team
+# absent from this map (FCS schools, independents like Notre Dame) makes the
+# whole game out of scope. Keys are normalized (lowercase, punctuation ->
+# spaces; "Texas A&M" a&m -> "a m").
+_FB_P4 = {"ACC", "B1G", "B12", "SEC"}
+
+# Group of 5, tagged as G5. MW+2026-Pac-12 flux teams are kept under G5 so the
+# board doesn't drop Boise/CSU/Fresno/SDSU/Utah State over the realignment.
+_FB_MAP: dict[str, str] = {
+    # ACC
+    "boston college": "ACC", "california": "ACC", "cal": "ACC", "clemson": "ACC",
+    "duke": "ACC", "florida state": "ACC", "georgia tech": "ACC", "louisville": "ACC",
+    "miami florida": "ACC", "miami": "ACC", "north carolina": "ACC", "nc state": "ACC",
+    "north carolina state": "ACC", "pittsburgh": "ACC", "pitt": "ACC", "smu": "ACC",
+    "stanford": "ACC", "syracuse": "ACC", "virginia": "ACC", "virginia tech": "ACC",
+    "wake forest": "ACC",
+    # Big Ten
+    "illinois": "B1G", "indiana": "B1G", "iowa": "B1G", "maryland": "B1G",
+    "michigan": "B1G", "michigan state": "B1G", "minnesota": "B1G", "nebraska": "B1G",
+    "northwestern": "B1G", "ohio state": "B1G", "oregon": "B1G", "penn state": "B1G",
+    "purdue": "B1G", "rutgers": "B1G", "ucla": "B1G", "usc": "B1G",
+    "southern california": "B1G", "washington": "B1G", "wisconsin": "B1G",
+    # Big 12
+    "arizona": "B12", "arizona state": "B12", "baylor": "B12", "byu": "B12",
+    "cincinnati": "B12", "colorado": "B12", "houston": "B12", "iowa state": "B12",
+    "kansas": "B12", "kansas state": "B12", "oklahoma state": "B12", "tcu": "B12",
+    "texas tech": "B12", "ucf": "B12", "central florida": "B12", "utah": "B12",
+    "west virginia": "B12",
+    # SEC
+    "alabama": "SEC", "arkansas": "SEC", "auburn": "SEC", "florida": "SEC",
+    "georgia": "SEC", "kentucky": "SEC", "lsu": "SEC", "mississippi": "SEC",
+    "ole miss": "SEC", "mississippi state": "SEC", "missouri": "SEC", "oklahoma": "SEC",
+    "south carolina": "SEC", "tennessee": "SEC", "texas a m": "SEC", "texas": "SEC",
+    "texas a&m": "SEC", "vanderbilt": "SEC",
+    # Group of 5 --- AAC
+    "army": "G5", "navy": "G5", "charlotte": "G5", "east carolina": "G5",
+    "florida atlantic": "G5", "fau": "G5", "memphis": "G5", "north texas": "G5",
+    "rice": "G5", "south florida": "G5", "usf": "G5", "temple": "G5", "tulane": "G5",
+    "tulsa": "G5", "uab": "G5", "alabama birmingham": "G5", "utsa": "G5",
+    # Group of 5 --- C-USA
+    "delaware": "G5", "florida international": "G5", "fiu": "G5",
+    "jacksonville state": "G5", "kennesaw state": "G5", "liberty": "G5",
+    "louisiana tech": "G5", "middle tennessee": "G5", "mtsu": "G5",
+    "sam houston": "G5", "sam houston state": "G5", "western kentucky": "G5",
+    "wku": "G5",
+    # Group of 5 --- MAC
+    "akron": "G5", "ball state": "G5", "bowling green": "G5", "buffalo": "G5",
+    "central michigan": "G5", "eastern michigan": "G5", "kent state": "G5",
+    "massachusetts": "G5", "umass": "G5", "miami ohio": "G5", "northern illinois": "G5",
+    "ohio": "G5", "toledo": "G5", "western michigan": "G5",
+    # Group of 5 --- Mountain West / 2026 Pac-12 raid (kept as G5)
+    "air force": "G5", "boise state": "G5", "colorado state": "G5", "fresno state": "G5",
+    "hawaii": "G5", "nevada": "G5", "new mexico state": "G5", "new mexico": "G5",
+    "san diego state": "G5", "san jose state": "G5", "unlv": "G5", "utah state": "G5",
+    "wyoming": "G5",
+    # Group of 5 --- Sun Belt
+    "appalachian state": "G5", "app state": "G5", "arkansas state": "G5",
+    "coastal carolina": "G5", "georgia southern": "G5", "georgia state": "G5",
+    "james madison": "G5", "jmu": "G5", "louisiana": "G5", "marshall": "G5",
+    "old dominion": "G5", "odu": "G5", "south alabama": "G5", "southern miss": "G5",
+    "southern mississippi": "G5", "texas state": "G5", "troy": "G5",
+    "ul monroe": "G5", "louisiana monroe": "G5", "ulm": "G5",
+    # Abbr/nickname aliases the feeds post alongside full names ("KANSAS ST",
+    # "DEL", "ALA", "(11) Texas Tech"). Longest-prefix match resolves them to
+    # the same school as the full name.
+    "kansas st": "kansas state", "mississippi st": "mississippi state",
+    "florida st": "florida state", "michigan st": "michigan state",
+    "ohio st": "ohio state", "oklahoma st": "oklahoma state",
+    "texas st": "texas state", "nc st": "north carolina state",
+    "sam houston st": "sam houston state", "akr": "akron", "del": "delaware",
+    "ala": "alabama", "ill": "illinois", "ark": "arkansas",
+    "bama": "alabama", "miami fl": "miami florida",
+    "san diego st": "san diego state", "san jose st": "san jose state",
+    "fresno st": "fresno state", "colorado st": "colorado state",
+    "boise st": "boise state", "utah st": "utah state",
+    "washington st": "washington state", "kent st": "kent state",
+    "ball st": "ball state", "app st": "appalachian state",
+}
+
+# FCS (or low-division) schools that share a Power-4/G5 prefix and would
+# otherwise false-match ("Tennessee State" -> "Tennessee", "North Carolina
+# Central" -> "North Carolina", "Missouri State" -> "Missouri", ...). Blocking
+# them first keeps every member of this list out of the board.
+_FB_BLOCK = (
+    "tennessee state", "texas southern", "texas a m commerce", "texas a&m commerce",
+    "alabama a m", "alabama a&m", "alabama state", "indiana state", "florida a m",
+    "florida a&m", "florida gulf coast", "jackson state", "south carolina state",
+    "north carolina central", "north carolina a t", "north carolina a&t",
+    "houston christian", "houston baptist", "missouri state", "delaware state",
+)
+
+_FB_SORTED = sorted(_FB_MAP.items(), key=lambda kv: len(kv[0]), reverse=True)
+
+# Display names for aliases that don't title-case cleanly ("texas a m",
+# "ucf", "app state", ...). Default fallback is key.title().
+_FB_DISPLAY = {
+    "texas a m": "Texas A&M", "texas a&m": "Texas A&M",
+    "california": "Cal", "cal": "Cal",
+    "miami florida": "Miami (FL)", "miami": "Miami (FL)",
+    "alabama birmingham": "UAB", "uab": "UAB",
+    "central florida": "UCF", "ucf": "UCF",
+    "south florida": "USF", "usf": "USF",
+    "florida atlantic": "FAU", "fau": "FAU",
+    "florida international": "FIU", "fiu": "FIU",
+    "middle tennessee": "MTSU", "mtsu": "MTSU",
+    "western kentucky": "WKU", "wku": "WKU",
+    "louisiana monroe": "ULM", "ul monroe": "ULM", "ulm": "ULM",
+    "north carolina state": "NC State", "nc state": "NC State", "nc st": "NC State",
+    "appalachian state": "App State", "app state": "App State",
+    "app st": "App State",
+    "southern miss": "Southern Miss", "southern mississippi": "Southern Miss",
+    "pittsburgh": "Pitt", "pitt": "Pitt",
+    "mississippi": "Ole Miss", "ole miss": "Ole Miss",
+    "sam houston": "Sam Houston", "sam houston state": "Sam Houston",
+    "sam houston st": "Sam Houston",
+    "southern california": "USC", "usc": "USC",
+    "james madison": "JMU", "jmu": "JMU",
+    "unlv": "UNLV", "utsa": "UTSA", "utep": "UTEP", "lsu": "LSU",
+    "byu": "BYU", "tcu": "TCU", "ucla": "UCLA", "akron": "Akron",
+    "san diego st": "San Diego State", "san jose st": "San Jose State",
+    "fresno st": "Fresno State", "colorado st": "Colorado State",
+    "boise st": "Boise State", "utah st": "Utah State",
+    "washington st": "Washington State", "kent st": "Kent State",
+    "ball st": "Ball State",
+}
+
+
+def _norm_team(name_raw: str) -> str:
+    """Identity key for a team label: accents folded, punctuation dropped,
+    ranking prefix removed ("(11) Texas Tech" -> "texas tech").
+
+    Apostrophes and periods must vanish without leaving a space, or "St. John's"
+    and "St. Louis" normalize to "st john s" / "st louis" and stop matching
+    their alias tables. Accents are folded to ASCII rather than dropped, so
+    "Montréal" stays "montreal" instead of fragmenting into "montr al".
+    """
+    text = unicodedata.normalize("NFKD", (name_raw or "").lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"['`.&]", "", text)          # join: st johns, st louis
+    text = re.sub(r"[^a-z0-9]+", " ", text).strip()
+    if not text:
+        return ""
+    toks = text.split()
+    while toks and toks[0].isdigit():
+        toks.pop(0)
+    return " ".join(toks)
+
+
+def _canonical_college_team(selection: str) -> str:
+    """Map any SharpAPI college label (full name, mascot variant, \"st\"/abbr,
+    ranked prefix) to one canonical school name so per-team rows dedupe."""
+    norm = _norm_team(selection)
+    if not norm:
+        return ""
+    for b in _FB_BLOCK:
+        if norm.startswith(b):
+            return selection.strip() or norm
+    for alias, _ in _FB_SORTED:
+        if norm.startswith(alias):
+            return _FB_DISPLAY.get(alias, alias.title())
+    return selection.strip() or norm
+
+
+# --- Pro team nickname maps ------------------------------------------------
+# Canonical display name -> set of provider aliases (full names, official
+# nicknames, city codes, common variants). Matching is longest-prefix against
+# the normalized label so longer aliases ("los angeles dodgers") win over
+# shorter ones ("dodgers"). A league without a map falls back to _pro_team.
+_MLB_TEAM_ALIASES = {
+    "New York Yankees": {"new york yankees", "ny yankees", "yankees", "nyy"},
+    "Boston Red Sox": {"boston red sox", "red sox", "bos"},
+    "Baltimore Orioles": {"baltimore orioles", "orioles", "bal"},
+    "Tampa Bay Rays": {"tampa bay rays", "tampa rays", "tb rays", "rays", "tb"},
+    "Toronto Blue Jays": {"toronto blue jays", "blue jays", "jays", "tor"},
+    "Chicago White Sox": {"chicago white sox", "white sox", "cws"},
+    "Cleveland Guardians": {"cleveland guardians", "guardians", "cle"},
+    "Detroit Tigers": {"detroit tigers", "tigers", "det"},
+    "Kansas City Royals": {"kansas city royals", "kc royals", "royals", "kc"},
+    "Minnesota Twins": {"minnesota twins", "twins", "min"},
+    "Houston Astros": {"houston astros", "astros", "hou"},
+    "Los Angeles Angels": {"los angeles angels", "la angels", "angels", "laa"},
+    "Oakland Athletics": {"oakland athletics", "athletics", "as", "oak"},
+    "Seattle Mariners": {"seattle mariners", "mariners", "sea"},
+    "Texas Rangers": {"texas rangers", "texas", "rangers", "tex"},
+    "Atlanta Braves": {"atlanta braves", "atl braves", "atla braves", "braves", "atl"},
+    "Miami Marlins": {"miami marlins", "marlins", "mia"},
+    "New York Mets": {"new york mets", "ny mets", "mets", "nym"},
+    "Philadelphia Phillies": {"philadelphia phillies", "phillies", "philly", "phi"},
+    "Washington Nationals": {"washington nationals", "nationals", "nats", "was"},
+    "Chicago Cubs": {"chicago cubs", "cubs", "chc"},
+    "Cincinnati Reds": {"cincinnati reds", "reds", "cin"},
+    "Milwaukee Brewers": {"milwaukee brewers", "mil brewers", "brewers", "mil", "mke"},
+    "Pittsburgh Pirates": {"pittsburgh pirates", "pirates", "pit"},
+    "St. Louis Cardinals": {"st louis cardinals", "cardinals", "stl"},
+    "Arizona Diamondbacks": {"arizona diamondbacks", "diamondbacks", "d backs", "dbacks", "snakes", "ari"},
+    "Colorado Rockies": {"colorado rockies", "rockies", "col"},
+    "Los Angeles Dodgers": {"los angeles dodgers", "la dodgers", "dodgers", "lad"},
+    "San Diego Padres": {"san diego padres", "sd padres", "padres", "sd"},
+    "San Francisco Giants": {"san francisco giants", "sf giants", "giants", "sf"},
+}
+_MLB_SORTED = sorted(
+    ((alias, display) for display, aliases in _MLB_TEAM_ALIASES.items() for alias in aliases),
+    key=lambda pair: len(pair[0]), reverse=True)
+
+
+def _canonical_pro_mlb(selection: str) -> str:
+    """Map any SharpAPI MLB label ("LA Dodgers", "ATL Braves", "Brewers",
+    full name) onto the canonical team name so per-team rows dedupe."""
+    norm = _norm_team(selection)
+    if not norm:
+        return ""
+    for alias, display in _MLB_SORTED:
+        if norm.startswith(alias):
+            return display
+    return selection.strip() or norm
+
+
+def _pro_team(selection: str) -> str:
+    """Conservative identity key kept as the fallback pro canonicalizer for
+    leagues that have no team map yet (returns the label unchanged after
+    whitespace collapse so no rows are thrown together accidentally)."""
+    return " ".join((selection or "").split())
+
+
+def _canonical_pro_mls(selection: str) -> str:
+    """Map any SharpAPI MLS label onto one canonical club.
+
+    Soccer clubs break a naive "last word" identity badly, because both halves
+    of the name are load-bearing: the feed posts "Inter Miami" and "Inter Miami
+    CF" (same club), "Sporting KC" and "Sporting Kansas City" (same club), and
+    "Columbus" for "Columbus Crew". Without this map a single club splits into
+    two outcomes, a three-way market reads as four, and the devigged overround
+    balloons to 14%.
+    """
+    norm = _norm_team(selection)
+    if not norm:
+        return ""
+    for alias, display in _MLS_SORTED:
+        if norm == alias or norm.startswith(alias + " "):
+            return display
+    return selection.strip() or norm
+
+
+# Club name -> every label the feed is known to use for it. Club suffixes
+# ("FC", "CF", "SC") are dropped during normalization, so "Inter Miami CF" and
+# "Inter Miami" collide on purpose.
+_MLS_TEAM_ALIASES = {
+    "Atlanta United": {"atlanta united", "atl utd", "atlanta utd"},
+    "Austin FC": {"austin fc", "austin"},
+    "CF Montreal": {"cf montreal", "montreal", "cf montreal"},
+    "Charlotte FC": {"charlotte fc", "charlotte"},
+    "Chicago Fire": {"chicago fire", "chi fire"},
+    "Colorado Rapids": {"colorado rapids", "col rapids", "colorado"},
+    "Columbus Crew": {"columbus crew", "columbus", "clb"},
+    "D.C. United": {"dc united", "d c united", "dc utd", "dc"},
+    "FC Cincinnati": {"fc cincinnati", "cincinnati", "cin"},
+    "FC Dallas": {"fc dallas", "dallas"},
+    "Houston Dynamo": {"houston dynamo", "hou dynamo", "houston"},
+    "Inter Miami": {"inter miami", "mia", "int miami", "miami fc", "miami"},
+    "Kansas City Current": {"kansas city current", "kc current"},
+    "LA Galaxy": {"la galaxy", "lag"},
+    "Los Angeles FC": {"los angeles fc", "lafc"},
+    "Minnesota United": {"minnesota united", "mn united", "min united"},
+    "Nashville SC": {"nashville sc", "nashville"},
+    "New England Revolution": {"new england revolution", "ne revolution", "new england"},
+    "New York Red Bulls": {"new york red bulls", "ny red bulls", "ny rb"},
+    "New York City FC": {"new york city fc", "nycfc", "ny city fc"},
+    "Orlando City": {"orlando city", "orlando"},
+    "Philadelphia Union": {"philadelphia union", "philadelphia", "phi union"},
+    "Portland Timbers": {"portland timbers", "por timbers", "portland"},
+    "Real Salt Lake": {"real salt lake", "rs l", "salt lake"},
+    "San Diego FC": {"san diego fc", "sd fc"},
+    "San Jose Earthquakes": {"san jose earthquakes", "sj earthquakes", "quakes"},
+    "Seattle Sounders": {"seattle sounders", "sea sounders", "sounders"},
+    "Sporting Kansas City": {"sporting kansas city", "sporting kc", "skc", "kansas city"},
+    "St. Louis City": {"st louis city", "stl city"},
+    "Toronto FC": {"toronto fc", "toronto", "tfc"},
+    "Vancouver Whitecaps": {"vancouver whitecaps", "van whitecaps", "whitecaps"},
+}
+_MLS_SORTED = sorted(
+    ((alias, display) for display, aliases in _MLS_TEAM_ALIASES.items() for alias in aliases),
+    key=lambda pair: len(pair[0]), reverse=True)
+
+
+_PRO_CANON = {"mlb": _canonical_pro_mlb, "mls": _canonical_pro_mls}
+
+
+def _canonical_game(label_raw: str) -> str:
+    """One canonical \"Away @ Home\" label per event. SharpAPI varies the feed
+    per market (\"Texas Longhorns @ Tennessee Volunteers\" vs \"Texas @
+    Tennessee\"), which makes the same game look like two rows; both teams'
+    quotes are resolved to the same canonical school names so a game renders
+    once across every market."""
+    parts = [p for p in (label_raw or "").split("@")]
+    if len(parts) == 2:
+        away = _canonical_college_team(parts[0])
+        home = _canonical_college_team(parts[1])
+        if away and home:
+            return f"{away} @ {home}"
+    return label_raw.strip() if label_raw else ""
+
+
+def _team_grouping(name_raw: str) -> str | None:
+    """Conference grouping for one team string, or None if out of scope."""
+    norm = _norm_team(name_raw)
+    if not norm:
+        return None
+    for b in _FB_BLOCK:
+        if norm.startswith(b):
+            return None
+    for alias, grouping in _FB_SORTED:
+        if norm.startswith(alias):
+            return grouping
+    return None
+
+
+def _game_grouping(label_raw: str) -> str | None:
+    """Grouping label for a full \"Away @ Home\" game, or None if out of scope
+    (either side is an FCS school or an independent)."""
+    parts = [p.strip() for p in (label_raw or "").split("@")]
+    if len(parts) != 2:
+        return None
+    g1 = _team_grouping(parts[0])
+    g2 = _team_grouping(parts[1])
+    if g1 is None or g2 is None:
+        return None
+    for g in (g1, g2):
+        if g in _FB_P4:
+            return g
+    return "G5"
+
+def edge_pts(best_american: int, consensus_american: int) -> float:
+    """True betting value: points of implied probability the best price buys
+    over consensus. Longshot-invariant (a +8000/+5620 gap is ~0.5 pts, not
+    41%), so it ranks favorites and underdogs on the same scale."""
+    if not best_american or not consensus_american:
+        return 0.0
+    p_best = 1.0 / american_to_decimal(best_american)
+    p_cons = 1.0 / american_to_decimal(consensus_american)
+    return (p_cons - p_best) * 100.0
 _disk_lock = threading.Lock()
 
 
@@ -158,6 +623,13 @@ class BetQuote:
     player_name: str | None = None
     book_odds: dict[str, int] | None = None
     book_edges: dict[str, float] | None = None
+    sport: str = ""
+    league: str = ""
+    # The feed's own "this is the line the market is on" flag. Alt lines are
+    # posted with both teams carrying the same sign and no main-line flag, so
+    # without this the dedupe can pick a nonsense pair whose two sides are both
+    # heavy favourites and derive a 36% overround from it.
+    is_main_line: bool = False
 
     def book_ladder(self, top: int = 4) -> list[dict]:
         """Top books by price for this quote: [{book, am, edge}] best first."""
@@ -175,6 +647,19 @@ class BetQuote:
         """Best price meaningfully beats consensus (real value spot)."""
         return self.edge_pct >= 1.5
 
+    def edge_pts(self) -> float:
+        """True betting value in points of implied probability (longshot-invariant)."""
+        return edge_pts(self.best_odds, self.consensus_odds)
+
+    @property
+    def is_playable(self) -> bool:
+        """Sane suggestion: priced in the real-play band with genuine points edge."""
+        if not self.best_odds:
+            return False
+        if not (VALUE_ODDS_MIN <= self.best_odds <= VALUE_ODDS_MAX):
+            return False
+        return self.edge_pts() >= VALUE_MIN_PTS
+
     def slip_payload(self) -> dict:
         """Compact payload the tracked-slip drawer locks: m=market tag,
         g=game, s=selection, l=line, a=american price, b=book, e=edge %,
@@ -186,6 +671,7 @@ class BetQuote:
             "l": self.line, "a": self.best_odds, "b": self.best_book,
             "e": round(self.edge_pct, 2) if self.edge_pct is not None else None,
             "p": self.player_name or "",
+            "sport": self.sport, "league": self.league,
         }
 
 
@@ -247,6 +733,13 @@ def odds_html(american: int) -> str:
     if american > 0:
         return f"+{american}"
     return str(american)
+
+
+def implied_prob(american: int) -> float:
+    """Vig-free implied probability of an american price, as a percentage."""
+    if not american:
+        return 0.0
+    return 100.0 / american_to_decimal(american)
 
 
 def matches_team(selection: str, team_name: str) -> bool:
@@ -419,6 +912,7 @@ def _parse_best_odds_rows(payload: Any, labels: dict[str, str]) -> list[BetQuote
             player_name=str(entry.get("player_name") or "").strip() or None,
             book_odds=book_odds,
             book_edges=book_edges,
+            is_main_line=bool(entry.get("is_main_line")),
         ))
     return quotes
 
@@ -456,7 +950,8 @@ def fetch_best_odds(event_ids: list[str], markets: str, labels: dict[str, str],
     return quotes
 
 
-def _dedupe_side_quotes(quotes: list[BetQuote], *, side_by_team: bool) -> list[BetQuote]:
+def _dedupe_side_quotes(quotes: list[BetQuote], *, side_by_team: bool,
+                        canonicalizer=None) -> list[BetQuote]:
     """Collapse per-team/per-side duplicates into one best row per game.
 
     SharpAPI posts one row per team (or per over/under side) using both the full
@@ -464,31 +959,62 @@ def _dedupe_side_quotes(quotes: list[BetQuote], *, side_by_team: bool) -> list[B
     For moneyline/spreads (side_by_team=True) keep one row per canonical team;
     for totals keep one row per side (Over/Under). Only the main line for the
     game is kept, preferring the line closest to consensus over a stale moved one.
+
+    canonicalizer maps a provider team label to its canonical name; defaults to
+    the NFL canonicalizer for football week slates (college boards pass their
+    own school canonicalizer).
     """
     from collections import defaultdict
+    from dataclasses import replace
+    if canonicalizer is None:
+        canonicalizer = _canonical_team
 
     # (event, canonical side) -> list of quotes; the main line for the game is the
     # one with the smallest |edge| (closest to consensus market).
     by_side: dict[tuple[str, str], list[BetQuote]] = defaultdict(list)
     for q in quotes:
-        team = _canonical_team(q.selection) if side_by_team else (q.selection or "").strip().casefold()
+        team = canonicalizer(q.selection) if side_by_team else (q.selection or "").strip().casefold()
         if side_by_team and not team:
             continue
         by_side[(q.event_id, team)].append(q)
 
     result: list[BetQuote] = []
+    # The main line is a property of the market, not of each side: home and away
+    # must be quoted on the same line or the pair is incoherent. Resolve it once
+    # per event (the flagged line with the most sides behind it), then hold every
+    # side of that event to it.
+    event_line: dict[str, float] = {}
+    flagged_sides: dict[tuple[str, float], set[str]] = {}
+    for q in quotes:
+        if not getattr(q, "is_main_line", False) or q.line is None:
+            continue
+        key = (q.event_id, round(float(q.line), 2))
+        flagged_sides.setdefault(key, set()).add(
+            (canonicalizer(q.selection) if side_by_team else (q.selection or "").casefold()))
+    for (evt, line), sides in flagged_sides.items():
+        if evt not in event_line or len(sides) > len(flagged_sides.get(
+                (evt, event_line[evt]), set())):
+            event_line[evt] = line
+
     for (evt, side), group in by_side.items():
-        group.sort(key=lambda x: (abs(x.edge_pct), x.best_odds), reverse=False)
-        chosen = group[0]  # main line
+        want = event_line.get(evt)
+        on_line = [x for x in group
+                   if want is not None and x.line is not None
+                   and round(float(x.line), 2) == want]
+        if on_line:
+            pool = on_line
+        else:
+            # No flagged row for this side: fall back to the flagged main line's
+            # mirror for spreads, else closest-to-consensus on any line.
+            pool = [x for x in group if x.is_main_line] or group
+        pool.sort(key=lambda x: (abs(x.edge_pct), x.best_odds), reverse=False)
+        chosen = pool[0]  # main line
         # Surface the canonical team name instead of the provider alias.
-        canonical = _canonical_team(side) if side_by_team else side
+        canonical = canonicalizer(side) if side_by_team else side
         if side_by_team and canonical and canonical.casefold() != chosen.selection.casefold():
-            chosen = BetQuote(
-                chosen.event_id, chosen.game, canonical, chosen.market,
-                chosen.best_odds, chosen.consensus_odds, chosen.best_book,
-                chosen.edge_pct, chosen.line, chosen.player_name,
-                chosen.book_odds, chosen.book_edges,
-            )
+            # dataclasses.replace (not a positional rebuild) so sport/league and
+            # any future fields survive the rename.
+            chosen = replace(chosen, selection=canonical)
         result.append(chosen)
     return result
 
@@ -613,8 +1139,346 @@ def build_value_spots(moneylines: list[BetQuote], spreads: list[BetQuote],
     )
 
 
-def _line_steam_key(q) -> tuple:
-    return (q.event_id, q.market, (q.selection or "").casefold())
+def _fetch_league_best_odds(sport: str, league: str,
+                            markets: str = ",".join(COLLEGE_GAME_MARKETS),
+                            max_rows: int = 900) -> list[BetQuote]:
+    """Page the full best-odds board for a league (no event filter).
+
+    The NFL path pre-filters by event ids from the events feed; college leagues
+    have no canonical team map to validate against, so page every row SharpAPI
+    returns for the league's main markets and keep the ones that carry lines.
+    Game labels come straight from each row's event_name.
+    """
+    cache_key = f"league_odds_{league}_{markets}"
+    cached = _cached(cache_key)
+    if cached is not None:
+        return list(cached)
+
+    session = requests.Session()
+    quotes: list[BetQuote] = []
+    offset = 0
+    while True:
+        payload = _request_json(session, SHARPAPI_BEST_ODDS_URL, {
+            "sport": sport, "league": league, "market": markets,
+            "limit": 200, "offset": offset,
+        }, timeout=25)
+        page = _parse_best_odds_rows(payload, {})
+        quotes.extend(page)
+        pagination = payload.get("pagination") or {}
+        next_offset = pagination.get("next_offset")
+        if not pagination.get("has_more") or len(quotes) >= max_rows or not next_offset:
+            break
+        offset = int(next_offset)
+        time.sleep(0.15)
+
+    quotes = quotes[:max_rows]
+    _cache_set(cache_key, quotes)
+    return quotes
+
+
+def fetch_sport_slate(tag: str, include_all: bool = False) -> dict:
+    """Best moneyline/spread/total odds for any registry league (no props yet).
+
+    Same board shape as fetch_edge_slate (moneylines/spreads/totals/value_spots)
+    so the bets-board markup and slip drawer work unchanged. Totals keep only the
+    stronger side per game. Sport-specific market types (run_line, puck_line,
+    total_goals, total_runs) are aliased onto moneyline/point_spread/total_points
+    and every quote is stamped with its sport/league for the cross-sport board.
+
+    CFB scopes to Power-4 + Group-of-5 games unless include_all=True; other
+    leagues stay unscoped.
+    """
+    cfg = SPORTS.get(tag)
+    if cfg is None:
+        raise OddsError(f"Unknown sport tag: {tag}")
+
+    cache_key = f"sport_slate_{tag}_all" if include_all else f"sport_slate_{tag}"
+    cached = _cached(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        quotes = _fetch_league_best_odds(
+            cfg["sport"], cfg["league"],
+            markets=",".join(cfg.get("markets") or GAME_MARKETS))
+    except OddsError:
+        stale = _last_good_slate(cache_key)
+        if stale is not None:
+            _cache_set(cache_key, stale)
+            return stale
+        raise
+
+    # Normalize provider-specific market types onto the canonical grouping and
+    # stamp sport/league on every quote (survives dataclasses.replace; powers
+    # the later cross-sport daily best-bets board).
+    from dataclasses import replace
+    aliases = cfg.get("aliases") or {}
+    quotes = [
+        replace(q, market=aliases.get(q.market, q.market),
+                sport=cfg["sport"], league=cfg["league"])
+        for q in quotes
+    ]
+
+    # Unify game labels so the same matchup shows identically across every
+    # market/row (providers vary the team naming per market).
+    if cfg.get("college"):
+        game_labels: dict[str, str] = {}
+        for q in quotes:
+            if q.event_id and q.event_id not in game_labels:
+                game_labels[q.event_id] = _canonical_game(q.game)
+        canoned: list[BetQuote] = []
+        for q in quotes:
+            canon_label = game_labels.get(q.event_id)
+            canoned.append(replace(q, game=canon_label) if canon_label else q)
+        quotes = canoned
+
+    # Scope the board: only keep games where BOTH teams are in an allowed
+    # conference. cfb uses the P4+G5 map; other leagues carry no conference map.
+    conferences: dict[str, str] = {}
+    if cfg.get("scoped") and not include_all:
+        for q in quotes:
+            if q.game and q.game not in conferences:
+                conferences[q.game] = _game_grouping(q.game)
+        quotes = [q for q in quotes if conferences.get(q.game)]
+
+    # Per-team rows collapse across the provider's label variants (full name,
+    # mascot, "st"/abbr, ranked prefix) so each school is one row per game.
+    # Unmapped schools fall back to their raw label, so nothing disappears.
+    board_canon = _canonical_college_team if cfg.get("college") else (_PRO_CANON.get(tag) or _pro_team)
+    moneylines = _dedupe_side_quotes([q for q in quotes if q.market == "moneyline"], side_by_team=True, canonicalizer=board_canon)
+    spreads = _dedupe_side_quotes([q for q in quotes if q.market == "point_spread"], side_by_team=True, canonicalizer=board_canon)
+    totals = _dedupe_side_quotes([q for q in quotes if q.market == "total_points"], side_by_team=False)
+
+    totals_by_game: dict[str, BetQuote] = {}
+    for q in totals:
+        cur = totals_by_game.get(q.event_id)
+        if cur is None or q.edge_pts() > cur.edge_pts():
+            totals_by_game[q.event_id] = q
+    totals = list(totals_by_game.values())
+
+    # Value spots on true edge (points of implied probability), restricted to
+    # lines in the real-play band (-500..+300) so the board never "suggests"
+    # fantasy longshots like a +8000 moneyline underdog.
+    playables = [q for q in (moneylines + spreads) if q.is_playable]
+    playables += [q for q in totals if q.is_playable]
+    playables.sort(key=lambda q: q.edge_pts(), reverse=True)
+    value_spots = playables
+
+    # Snapshot every side *before* any per-game collapsing below. The board UI
+    # wants one best row per game, but the analytics engine needs complete
+    # markets — all three soccer outcomes, both sides of a spread — because a
+    # lone side has nothing to devig against.
+    all_sides = list(moneylines) + list(spreads) + list(totals)
+
+    if cfg.get("collapse_bets"):
+        # Moneyline best bets: one row per game — the single best-value side
+        # only (real play), ranked by edge. No per-team double rows.
+        best_ml_by_game: dict[str, BetQuote] = {}
+        for q in moneylines:
+            if not q.is_playable:
+                continue
+            cur = best_ml_by_game.get(q.game)
+            if cur is None or q.edge_pts() > cur.edge_pts():
+                best_ml_by_game[q.game] = q
+        moneylines = sorted(best_ml_by_game.values(), key=lambda q: q.edge_pts(), reverse=True)
+
+        # Spread best bets: one row per game — the single best-value side
+        # (real play), ranked by edge. No per-team double rows.
+        best_sp_by_game: dict[str, BetQuote] = {}
+        for q in spreads:
+            if not q.is_playable:
+                continue
+            cur = best_sp_by_game.get(q.game)
+            if cur is None or q.edge_pts() > cur.edge_pts():
+                best_sp_by_game[q.game] = q
+        spreads = sorted(best_sp_by_game.values(), key=lambda q: q.edge_pts(), reverse=True)
+
+        # Value Plays: one row per game (best edge play only) so a matchup
+        # never repeats for ML + Spread + Total.
+        best_play_by_game: dict[str, BetQuote] = {}
+        for q in value_spots:
+            cur = best_play_by_game.get(q.game)
+            if cur is None or q.edge_pts() > cur.edge_pts():
+                best_play_by_game[q.game] = q
+        value_spots = sorted(best_play_by_game.values(), key=lambda q: q.edge_pts(), reverse=True)[:12]
+
+    game_rows: dict[str, str] = {}
+    for q in moneylines + spreads + totals:
+        game_rows[q.event_id] = q.game
+    events = [{"event_id": eid, "label": label}
+              for eid, label in sorted(game_rows.items(), key=lambda kv: (kv[1] or "").casefold())]
+
+    slate = {
+        "events": events,
+        "moneylines": moneylines,
+        "spreads": spreads,
+        "totals": totals,
+        "all_sides": all_sides,
+        "props": [],
+        "value_spots": value_spots,
+        "conferences": conferences,
+        "scoped": bool(tag == "cfb" and not include_all),
+        "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    }
+    # Only cache slates that carried lines; a pre-season league legitimately
+    # returns zero rows until its season starts, and caching that would blank
+    # the board for the whole TTL window.
+    if moneylines or spreads or totals:
+        _cache_set(cache_key, slate)
+    else:
+        stale = _last_good_slate(cache_key)
+        if stale is not None:
+            return stale
+    return slate
+
+
+def _fetch_league_props_quotes(sport: str, league: str, markets: str,
+                               max_rows: int = 1200, request_delay: float = 0.25) -> list[BetQuote]:
+    """Aggregate per-book player props into best-price BetQuotes.
+
+    /odds/best strips player identity for some sports (baseball), so this pages
+    the raw /odds endpoint (which carries player_name/stat_category) filtered to
+    main lines, then groups by (event, player, market, side, line): best price =
+    max decimal, consensus = mean decimal, edge = best vs consensus.
+    """
+    session = requests.Session()
+    raw_rows: list[dict] = []
+    offset = 0
+    while True:
+        payload = _request_json(session, f"{SHARPAPI_BASE_URL}/odds", {
+            "sport": sport, "league": league, "market": markets,
+            "is_main_line": "true", "limit": 200, "offset": offset,
+        }, timeout=25)
+        rows = payload.get("data") or []
+        raw_rows.extend(rows)
+        pagination = payload.get("pagination") or {}
+        next_offset = pagination.get("next_offset")
+        if not pagination.get("has_more") or len(raw_rows) >= max_rows or not next_offset:
+            break
+        offset = int(next_offset)
+        time.sleep(request_delay)
+
+    groups: dict[tuple, dict] = {}
+    for row in raw_rows[:max_rows]:
+        player = str(row.get("player_name") or "").strip()
+        market = str(row.get("market_type") or "").strip().casefold()
+        if not player or not market:
+            continue
+        try:
+            american = int(row.get("odds_american"))
+        except (TypeError, ValueError):
+            continue
+        if not american:
+            continue
+        decimal = american_to_decimal(american)
+        line = None
+        try:
+            if row.get("line") is not None and row.get("line") != "":
+                line = float(row.get("line"))
+        except (TypeError, ValueError):
+            line = None
+        if line is None:
+            continue
+        event_id = str(row.get("event_id") or "").strip()
+        side = str(row.get("selection_type") or row.get("selection") or "").strip()
+        key = (event_id, player.casefold(), market, str(side).casefold(), float(line))
+        g = groups.setdefault(key, {
+            "event_id": event_id,
+            "game": str(row.get("event_name") or "").strip(),
+            "player": player, "market": market, "side": side, "line": line,
+            "best": 0.0, "best_am": 0, "best_book": "", "book_odds": {}, "decimals": [],
+        })
+        if decimal > g["best"]:
+            g["best"] = decimal
+            g["best_am"] = american
+            g["best_book"] = str(row.get("sportsbook") or "").strip()
+        book_name = str(row.get("sportsbook") or "").strip()
+        if book_name:
+            g["book_odds"][book_name] = american
+        if not g["game"]:
+            g["game"] = str(row.get("event_name") or "").strip()
+        g["decimals"].append(decimal)
+
+    quotes: list[BetQuote] = []
+    for g in groups.values():
+        if not g["decimals"]:
+            continue
+        consensus = sum(g["decimals"]) / len(g["decimals"])
+        edge = (g["best"] / consensus - 1.0) * 100.0 if consensus else 0.0
+        cons_am = decimal_to_american(consensus) if consensus else g["best_am"]
+        quotes.append(BetQuote(
+            event_id=g["event_id"], game=g["game"], selection=g["side"] or "Over",
+            market=g["market"], best_odds=g["best_am"], consensus_odds=cons_am,
+            best_book=g["best_book"], edge_pct=round(edge, 2), line=g["line"],
+            player_name=g["player"], book_odds=(g["book_odds"] or None),
+            book_edges=None, sport=sport, league=league))
+    return quotes
+
+
+def _sport_game_labels(tag: str) -> dict[str, str]:
+    """event_id -> matchup label for a registry league, from the cached slate.
+
+    The raw player-prop feed skips event names for some sports (baseball), so
+    props fall back to the main-market slate's canonical labels. Only consults
+    the in-memory/disk slate cache — never triggers a fresh fetch.
+    """
+    slate = _cached(f"sport_slate_{tag}") or _cached(f"sport_slate_{tag}_all")
+    if not slate:
+        return {}
+    return {e.get("event_id"): e.get("label") for e in (slate.get("events") or [])
+            if e.get("event_id") and e.get("label")}
+
+
+def fetch_sport_props(tag: str) -> list:
+    """Player-prop best odds for a registry league (raw + edge, no model layer).
+
+    Consumes the league's configured prop market types (e.g. MLB home runs,
+    hits, total bases, RBIs) and stamps sport/league on every quote; rows are
+    grouped per (event, player, market, side, line) with the best price vs
+    consensus edge. Returns [] for leagues with no prop_markets configured.
+    """
+    cfg = SPORTS.get(tag)
+    if cfg is None:
+        raise OddsError(f"Unknown sport tag: {tag}")
+    prop_markets = cfg.get("prop_markets") or []
+    if not prop_markets:
+        return []
+
+    cache_key = f"sport_props_{tag}"
+    cached = _cached(cache_key)
+    if cached is not None:
+        return list(cached)
+
+    try:
+        props = _fetch_league_props_quotes(
+            cfg["sport"], cfg["league"], ",".join(prop_markets))
+    except OddsError:
+        stale = _last_good_slate(cache_key)
+        if stale is not None:
+            _cache_set(cache_key, stale)
+            return list(stale)
+        raise
+
+    # The raw prop feed can omit event names (baseball). Backfill each quote's
+    # game from the slate's canonical matchup labels so rows stay aligned and
+    # the prop is findable by game.
+    game_labels = _sport_game_labels(tag)
+    if game_labels:
+        from dataclasses import replace
+        props = [
+            replace(q, game=game_labels.get(q.event_id, q.game)) if not getattr(q, "game", "") else q
+            for q in props
+        ]
+
+    props.sort(key=lambda q: (q.market, (q.player_name or "").casefold(), q.line or 0))
+    if props:
+        _cache_set(cache_key, props)
+    else:
+        stale = _last_good_slate(cache_key)
+        if stale is not None:
+            _cache_set(cache_key, stale)
+            return list(stale)
+    return props
 
 
 def _load_line_hist() -> dict:
@@ -627,6 +1491,16 @@ def _load_line_hist() -> dict:
         return {}
     _, val = entry
     return val if isinstance(val, dict) else {}
+
+
+def _line_steam_key(q: BetQuote) -> tuple:
+    """Stable identity for one main-line series: (event, market, side).
+
+    Deliberately excludes the price and the line itself — those are exactly what
+    the series tracks. Side is casefolded so a label casing change between
+    fetches cannot fork one series into two.
+    """
+    return (q.event_id, q.market, (q.selection or "").strip().casefold())
 
 
 def record_line_history(quotes: list[BetQuote]) -> None:
