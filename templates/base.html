@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
+  <script>(function(){try{var a=localStorage.getItem('scoreedge_accent_v1');if(a&&a!=='brand')document.documentElement.setAttribute('data-accent',a);}catch(e){}})();</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}ScoreEdge — NFL Sports Betting & Analytics{% endblock %}</title>
@@ -595,6 +596,37 @@
     .ht-row em { font-style: normal; color: #64748b; font-family: 'JetBrains Mono', monospace; font-size: .62rem; }
     .ht-pr { font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: #00e676; }
 
+    /* ---- THEME ACCENT SWITCHER ---- */
+    :root { --acc: #00e676; }
+    [data-accent="cyan"] { --acc: #38bdf8; }
+    [data-accent="violet"] { --acc: #a78bfa; }
+    [data-accent="rose"] { --acc: #fb7185; }
+    .text-brand, .text-brand-light { color: var(--acc) !important; }
+    .text-brand\/80 { color: color-mix(in srgb, var(--acc) 80%, transparent) !important; }
+    .bg-brand { background-color: var(--acc) !important; }
+    .bg-brand\/5 { background-color: color-mix(in srgb, var(--acc) 5%, transparent) !important; }
+    .bg-brand\/10 { background-color: color-mix(in srgb, var(--acc) 10%, transparent) !important; }
+    .bg-brand\/15 { background-color: color-mix(in srgb, var(--acc) 15%, transparent) !important; }
+    .bg-brand\/20 { background-color: color-mix(in srgb, var(--acc) 20%, transparent) !important; }
+    .bg-brand\/60 { background-color: color-mix(in srgb, var(--acc) 60%, transparent) !important; }
+    .bg-brand\/\[0\.04\] { background-color: color-mix(in srgb, var(--acc) 4%, transparent) !important; }
+    .bg-brand\/\[0\.05\] { background-color: color-mix(in srgb, var(--acc) 5%, transparent) !important; }
+    .bg-brand\/\[0\.07\] { background-color: color-mix(in srgb, var(--acc) 7%, transparent) !important; }
+    .border-brand { border-color: var(--acc) !important; }
+    .border-brand\/15 { border-color: color-mix(in srgb, var(--acc) 15%, transparent) !important; }
+    .border-brand\/20 { border-color: color-mix(in srgb, var(--acc) 20%, transparent) !important; }
+    .border-brand\/25 { border-color: color-mix(in srgb, var(--acc) 25%, transparent) !important; }
+    .border-brand\/30 { border-color: color-mix(in srgb, var(--acc) 30%, transparent) !important; }
+    .border-brand\/40 { border-color: color-mix(in srgb, var(--acc) 40%, transparent) !important; }
+    .border-brand\/50 { border-color: color-mix(in srgb, var(--acc) 50%, transparent) !important; }
+    .border-brand\/60 { border-color: color-mix(in srgb, var(--acc) 60%, transparent) !important; }
+    .ring-brand\/50 { --tw-ring-color: color-mix(in srgb, var(--acc) 50%, transparent) !important; }
+    .gradient-text { background: linear-gradient(92deg, color-mix(in srgb, var(--acc) 62%, #ffffff 6%) 0%, var(--acc) 55%, #38bdf8 120%) !important; -webkit-background-clip: text !important; background-clip: text !important; color: transparent !important; }
+    .accent-dot { width: 18px; height: 18px; border-radius: 9999px; cursor: pointer; border: 2px solid rgba(148,163,184,0.3); transition: transform .15s ease, border-color .15s ease; box-shadow: inset 0 0 6px rgba(0,0,0,0.35); }
+    .accent-dot:hover { transform: scale(1.15); }
+    .accent-dot.on { border-color: #fff; box-shadow: inset 0 0 6px rgba(0,0,0,0.35), 0 0 10px var(--acc); }
+    .cmdk-act { color: #a7f3d0; }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: .01ms !important; animation-iteration-count: 1 !important;
@@ -632,6 +664,17 @@
       <span>Search</span>
       <kbd>⌘K</kbd>
     </button>
+
+    <div class="px-3 mt-3 flex-none">
+      <div class="side-group">Theme</div>
+      <div class="flex items-center gap-2 mt-1.5">
+        <button type="button" class="accent-dot" data-accent-v="brand" style="background:#00e676" title="Default green" aria-label="Default green accent"></button>
+        <button type="button" class="accent-dot" data-accent-v="cyan" style="background:#38bdf8" title="Cyan" aria-label="Cyan accent"></button>
+        <button type="button" class="accent-dot" data-accent-v="violet" style="background:#a78bfa" title="Violet" aria-label="Violet accent"></button>
+        <button type="button" class="accent-dot" data-accent-v="rose" style="background:#fb7185" title="Rose" aria-label="Rose accent"></button>
+        <span class="text-[9px] font-mono text-slate-600 ml-auto">ACCENT</span>
+      </div>
+    </div>
 
 <nav class="flex-1 overflow-y-auto px-3 py-2 side-scroll">
       {% set active = active_page|default('') %}
@@ -1479,10 +1522,43 @@
       { g: 'Pages', items: [
         { t: 'About', h: '/about', i: 'ℹ️' }, { t: 'Contact', h: '/contact', i: '✉️' },
         { t: 'Privacy', h: '/privacy', i: '🔒' }, { t: 'Terms', h: '/terms', i: '📜' }
+      ] },
+      { g: 'Actions', items: [
+        { t: 'Clear tracked slip', act: 'clearSlip', i: '🗑️' },
+        { t: 'Accent — cyan', act: 'accent:cyan', i: '🎨' },
+        { t: 'Accent — violet', act: 'accent:violet', i: '🎨' },
+        { t: 'Accent — rose', act: 'accent:rose', i: '🎨' },
+        { t: 'Reset accent', act: 'accent:brand', i: '🎨' }
       ] }
     ];
     var flat = [];
-    groups.forEach(function (grp) { grp.items.forEach(function (it) { flat.push({ g: grp.g, t: it.t, h: it.h, i: it.i }); }); });
+    groups.forEach(function (grp) { grp.items.forEach(function (it) { flat.push({ g: grp.g, t: it.t, h: it.h, i: it.i, act: it.act || '' }); }); });
+
+    var REC_KEY = 'scoreedge_cmdk_rec_v1', recents = [];
+    try { recents = JSON.parse(localStorage.getItem(REC_KEY) || '[]') || []; } catch (e) { recents = []; }
+    function remember(it) {
+      recents = recents.filter(function (r) { return r.h !== it.h || r.t !== it.t; });
+      recents.unshift({ h: it.h, t: it.t, g: it.g, i: it.i });
+      recents = recents.slice(0, 8);
+      try { localStorage.setItem(REC_KEY, JSON.stringify(recents)); } catch (e) {}
+    }
+    function score(q, s) {
+      if (!q) return 0;
+      var i = 0, sc = 0, prev = -2;
+      for (var j = 0; j < s.length && i < q.length; j++) {
+        var c = s.charAt(j).toLowerCase();
+        if (c === q.charAt(i)) {
+          i++;
+          sc += 2 + (j === 0 ? 3 : 0) + (prev === j - 1 ? 4 : 0) + (/[\s\-/.]/.test(s.charAt(j - 1) || '') ? 2 : 0);
+          prev = j;
+        }
+      }
+      return i === q.length ? sc : -1;
+    }
+    function runAction(a) {
+      if (a === 'clearSlip') { if (window.SlipLedger) window.SlipLedger.clearAll(); }
+      else if (a.indexOf('accent:') === 0) { if (window.ApplyAccent) window.ApplyAccent(a.split(':')[1]); }
+    }
 
     var root = document.getElementById('cmdk');
     if (!root) return;
@@ -1510,12 +1586,18 @@
           list.appendChild(gh);
           lastG = it.g;
         }
-        var row = document.createElement('a');
-        row.className = 'cmdk-item' + (idx === active ? ' active' : '');
-        row.href = it.h;
+        var row = it.act ? document.createElement('div') : document.createElement('a');
+        row.className = 'cmdk-item ' + (it.act ? 'cmdk-act ' : '') + (idx === active ? 'active' : '');
         row.setAttribute('role', 'option');
         row.setAttribute('data-idx', idx);
-        row.innerHTML = '<span class="cmdk-ico">' + it.i + '</span><span>' + it.t + '</span><span class="cmdk-hint">' + it.h + '</span>';
+        if (it.h) {
+          row.href = it.h;
+          row.addEventListener('click', function () { remember(it); });
+        } else {
+          row.setAttribute('data-act', it.act);
+          row.addEventListener('click', function () { runAction(it.act); close(); });
+        }
+        row.innerHTML = '<span class="cmdk-ico">' + it.i + '</span><span>' + it.t + '</span><span class="cmdk-hint">' + (it.act ? 'action' : it.h) + '</span>';
         list.appendChild(row);
       });
     }
@@ -1527,14 +1609,29 @@
       var el = rows[active];
       if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
     }
-    function filter(term) {
+    function buildView(term) {
       term = (term || '').trim().toLowerCase();
-      view = !term ? flat.slice() : flat.filter(function (it) {
-        return it.t.toLowerCase().indexOf(term) >= 0 || it.h.indexOf(term) >= 0 || it.g.toLowerCase().indexOf(term) >= 0;
+      var list = [];
+      if (!term) {
+        if (recents.length) {
+          var keys = {};
+          flat.forEach(function (f) { keys[f.h + '|' + f.t] = 1; });
+          var rv = recents.filter(function (r) { return keys[r.h + '|' + r.t]; }).slice(0, 6);
+          if (rv.length) list = rv.map(function (r) { return { g: 'Recent', t: r.t, h: r.h, i: r.i, act: '' }; });
+        }
+        return list.concat(flat);
+      }
+      var hits = [];
+      flat.forEach(function (f) {
+        var sc = score(term, f.t);
+        if (sc < 0) sc = score(term, f.g);
+        if (sc < 0 && term.length > 1) sc = score(term, f.h);
+        if (sc >= 0) hits.push({ f: f, sc: sc });
       });
-      active = 0;
-      render();
+      hits.sort(function (a, b) { return (b.sc - a.sc) || a.f.t.localeCompare(b.f.t); });
+      return hits.map(function (h) { return h.f; });
     }
+    function filter(term) { view = buildView(term); active = 0; render(); }
     function open() {
       lastFocus = document.activeElement;
       root.hidden = false;
@@ -1556,7 +1653,12 @@
     input.addEventListener('keydown', function (e) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
-      else if (e.key === 'Enter') { var it = view[active]; if (it) window.location.href = it.h; }
+      else if (e.key === 'Enter') {
+        var it = view[active];
+        if (!it) return;
+        if (it.act) { runAction(it.act); close(); }
+        else if (it.h) { remember(it); window.location.href = it.h; }
+      }
       else if (e.key === 'Escape') { close(); }
     });
     list.addEventListener('mouseover', function (e) {
@@ -1769,6 +1871,34 @@
         tip.classList.add('show');
       });
       el.addEventListener('mouseleave', function () { tip.classList.remove('show'); });
+    });
+  })();
+</script>
+
+<script>
+  /* ---- THEME ACCENT ---- */
+  (function () {
+    var KEY = 'scoreedge_accent_v1';
+    function apply(v) {
+      var el = document.documentElement;
+      if (v && v !== 'brand') el.setAttribute('data-accent', v);
+      else el.removeAttribute('data-accent');
+    }
+    window.ApplyAccent = function (v) {
+      try { localStorage.setItem(KEY, v); } catch (e) {}
+      apply(v);
+      var init = v || 'brand';
+      Array.prototype.forEach.call(document.querySelectorAll('.accent-dot'), function (d) {
+        d.classList.toggle('on', (d.getAttribute('data-accent-v') || 'brand') === init);
+      });
+      if (window.Toast) window.Toast(v === 'brand' ? 'Accent reset to default' : 'Accent set — ' + v, 'ok');
+    };
+    var cur = null;
+    try { cur = localStorage.getItem(KEY); } catch (e) {}
+    var init = cur || 'brand';
+    Array.prototype.forEach.call(document.querySelectorAll('.accent-dot'), function (d) {
+      d.addEventListener('click', function () { window.ApplyAccent(d.getAttribute('data-accent-v')); });
+      d.classList.toggle('on', (d.getAttribute('data-accent-v') || 'brand') === init);
     });
   })();
 </script>
