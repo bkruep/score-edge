@@ -137,12 +137,15 @@
 </div>
 
 <!-- League tab bar -->
-<div class="glass-card rounded-xl p-2 mb-5 scan-line rv">
-  <div class="flex items-center gap-1.5 flex-wrap">
-    <button type="button" class="dash-tab chip chip-on" data-tab="all">🌐 All <span class="tab-count">{{ board.summary.plays }}</span></button>
-    {% for lg in board.leagues|sort(attribute='order') %}
-    <button type="button" class="dash-tab chip" data-tab="{{ lg.tag }}">{{ lg.icon }} {{ lg.name }} <span class="tab-count">{{ lg.plays }}</span></button>
-    {% endfor %}
+<div class="glass-card rounded-xl p-2 mb-5 scan-line rv league-tabs">
+  <div class="relative">
+    <span class="tab-pill" aria-hidden="true"></span>
+    <div class="flex items-center gap-1.5 flex-wrap relative z-10" id="league-tabbar">
+      <button type="button" class="dash-tab chip chip-on" data-tab="all">🌐 All <span class="tab-count">{{ board.summary.plays }}</span></button>
+      {% for lg in board.leagues|sort(attribute='order') %}
+      <button type="button" class="dash-tab chip" data-tab="{{ lg.tag }}">{{ lg.icon }} {{ lg.name }} <span class="tab-count">{{ lg.plays }}</span></button>
+      {% endfor %}
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -353,6 +356,17 @@
     });
   }
 
+  var pill = document.querySelector('.league-tabs .tab-pill');
+  function movePill(btn) {
+    if (!pill || !btn) return;
+    var wrap = pill.parentElement, wr = wrap.getBoundingClientRect(), br = btn.getBoundingClientRect();
+    pill.style.left = (br.left - wr.left) + 'px';
+    pill.style.top = (br.top - wr.top) + 'px';
+    pill.style.width = br.width + 'px';
+    pill.style.height = br.height + 'px';
+    pill.style.opacity = '1';
+  }
+
   function switchTab(name) {
     document.querySelectorAll('[data-pane]').forEach(function (p) {
       p.style.display = (p.getAttribute('data-pane') === name) ? '' : 'none';
@@ -360,7 +374,7 @@
     setPc('.dash-tab', null);
     var btns = document.querySelectorAll('.dash-tab');
     for (var i = 0; i < btns.length; i++) {
-      if (btns[i].getAttribute('data-tab') === name) { btns[i].classList.add('chip-on'); activeBlank = name; break; }
+      if (btns[i].getAttribute('data-tab') === name) { btns[i].classList.add('chip-on'); activeBlank = name; movePill(btns[i]); break; }
     }
     apply();
   }
@@ -689,6 +703,12 @@
   });
 
   switchTab('all');
+  window.addEventListener('load', function () { movePill(document.querySelector('.dash-tab.chip-on')); });
+  var _rz;
+  window.addEventListener('resize', function () {
+    clearTimeout(_rz);
+    _rz = setTimeout(function () { movePill(document.querySelector('.dash-tab.chip-on')); }, 120);
+  });
 })();
 </script>
 {% endblock %}

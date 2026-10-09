@@ -180,11 +180,29 @@
     @keyframes pulseGlow { 0%, 100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
     /* sport command hub — segmented tab bar */
     .tabbar { border-bottom: 1px solid rgba(255,255,255,0.06); }
-    .tab { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; border-bottom: 2px solid transparent; white-space: nowrap; transition: all .15s ease; cursor: pointer; margin-bottom: -1px; }
+    .tab { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; border-bottom: 2px solid transparent; white-space: nowrap; transition: all .15s ease; cursor: pointer; margin-bottom: -1px; }
     .tab:hover { color: #e2e8f0; background: rgba(0,230,118,0.04); }
     .tab-on { color: #00e676; border-bottom-color: #00e676; text-shadow: 0 0 12px rgba(0,230,118,0.35); }
     .tab-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9999px; font-size: 0.55rem; line-height: 1; background: rgba(148,163,184,0.12); color: #94a3b8; transform: translateY(-1px); }
     .tab-on .tab-count { background: rgba(0,230,118,0.15); color: #00e676; }
+    /* neon trace underline — a current sweeps across the active tab on load */
+    .tab-on::after {
+      content: ''; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px;
+      background: linear-gradient(90deg, transparent, #00e676 42%, #d1fae5 50%, #00e676 58%, transparent);
+      background-size: 220% 100%; box-shadow: 0 0 10px rgba(0,230,118,0.55);
+      animation: tabTrace .8s cubic-bezier(.22,1,.36,1) both, tabGlow 2.8s ease-in-out .8s infinite;
+    }
+    @keyframes tabTrace { from { background-position: 135% 0; opacity: 0; transform: scaleX(.55); } to { background-position: 50% 0; opacity: 1; transform: scaleX(1); } }
+    @keyframes tabGlow { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
+    .tab-on .tab-count { animation: countPop .4s cubic-bezier(.34,1.56,.64,1) both .15s; }
+    @keyframes countPop { from { transform: translateY(-1px) scale(.5); opacity: 0; } to { transform: translateY(-1px) scale(1); opacity: 1; } }
+
+    /* Sticky league-tab bar with a sliding pill highlight */
+    .league-tabs.scan-line { position: sticky; top: 0; z-index: 30; background: rgba(9,13,23,0.92); backdrop-filter: blur(12px); box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+    @media (min-width: 1024px) { .league-tabs { top: .5rem; } }
+    .league-tabs .tab-pill { position: absolute; z-index: 0; border-radius: 9999px; background: rgba(0,230,118,0.14); border: 1px solid rgba(0,230,118,0.5); box-shadow: 0 0 14px rgba(0,230,118,0.35), inset 0 0 8px rgba(0,230,118,0.12); opacity: 0; pointer-events: none; transition: left .34s cubic-bezier(.34,1.4,.64,1), top .34s cubic-bezier(.34,1.4,.64,1), width .34s cubic-bezier(.34,1.4,.64,1), height .34s cubic-bezier(.34,1.4,.64,1), opacity .2s ease; }
+    .league-tabs .dash-tab { position: relative; z-index: 1; }
+    .league-tabs .dash-tab.chip-on { background: transparent; border-color: transparent; }
     /* tracked slip — global LEDGER drawer */
     .slip-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(0,230,118,0.35); background: rgba(0,230,118,0.08); color: #00e676; cursor: pointer; transition: all .14s ease; font-size: 0.95rem; line-height: 1; }
     .slip-btn:hover { background: rgba(0,230,118,0.22); box-shadow: 0 0 12px rgba(0,230,118,0.35); }
@@ -1182,6 +1200,26 @@
     loop();
     return { stop: function () { dead = true; if (raf) { cancelAnimationFrame(raf); raf = null; } } };
   };
+</script>
+<script>
+  /* Count-up for tab counters (.tab-count[data-tc]) */
+  (function () {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.querySelectorAll('[data-tc]').forEach(function (el) {
+      var target = parseFloat(el.getAttribute('data-tc'));
+      if (isNaN(target)) return;
+      var t0 = null, dur = 700;
+      el.textContent = '0';
+      function step(ts) {
+        if (!t0) t0 = ts;
+        var p = Math.min((ts - t0) / dur, 1);
+        var e = 1 - Math.pow(1 - p, 3);
+        el.textContent = p < 1 ? Math.round(target * e) : target;
+        if (p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  })();
 </script>
 {% block scripts %}{% endblock %}
 </body>

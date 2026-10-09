@@ -5,11 +5,11 @@
        class="tab {% if active_tab == key %}tab-on{% endif %}"
        {% if key != 'lines' and odds_error %}aria-disabled="true"{% endif %}>
       {{ name }}
-      {% if key == 'lines' %}<span class="tab-count">{{ total_lines }}</span>
-      {% elif key == 'best' %}<span class="tab-count">{{ best_bets|length }}</span>
-      {% elif key == 'props' %}<span class="tab-count">{{ props|length }}</span>
-      {% elif key == 'games' %}<span class="tab-count">{{ matchups|length }}</span>
-      {% elif key == 'edge' %}<span class="tab-count">{{ analytics.n_markets }}</span>
+      {% if key == 'lines' %}<span class="tab-count" data-tc="{{ total_lines }}">{{ total_lines }}</span>
+      {% elif key == 'best' %}<span class="tab-count" data-tc="{{ best_bets|length }}">{{ best_bets|length }}</span>
+      {% elif key == 'props' %}<span class="tab-count" data-tc="{{ props|length }}">{{ props|length }}</span>
+      {% elif key == 'games' %}<span class="tab-count" data-tc="{{ matchups|length }}">{{ matchups|length }}</span>
+      {% elif key == 'edge' %}<span class="tab-count" data-tc="{{ analytics.n_markets }}">{{ analytics.n_markets }}</span>
       {% endif %}
     </a>
     {% endfor %}
