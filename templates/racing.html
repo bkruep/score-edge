@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Horse Racing Value Finder | ScoreEdge{% endblock %}
+{% block meta_description %}Horse racing value finder: FormFav race form, model win probabilities and live bookmaker prices, ranked by model-vs-market edge. International coverage (AUS/NZ/HK/GB).{% endblock %}
+{% block canonical %}/racing{% endblock %}
+{% block og_url %}/racing{% endblock %}
+
+{% block breadcrumb %}
+<div class="mb-5 border-b border-white/5 pb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">HORSE RACING <span class="gradient-text">VALUE</span> FINDER</h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">MODEL WIN PROB vs DE-VIGGED BOOK PRICES &middot; INTERNATIONAL (AUS / NZ / HK / GB)</p>
+    <div class="flex flex-wrap items-center gap-1.5 mt-2">
+      {% for key, label in race_codes %}
+      <a href="/racing?date={{ date }}&race_code={{ key }}" class="chip {% if key == race_code %}chip-on{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  <form method="get" action="/racing" class="flex items-center gap-2">
+    <input type="hidden" name="race_code" value="{{ race_code }}">
+    <input type="date" name="date" value="{{ date }}" class="bg-surface-2 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-brand/40">
+    <button class="chip chip-on" type="submit">Go</button>
+    <a href="/racing?race_code={{ race_code }}&date={{ today }}" class="chip">Today</a>
+  </form>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if not key_set %}
+<div class="glass-card rounded-xl p-5 mb-6 border-amber-500/20">
+  <div class="text-sm font-medium text-white mb-1">Connect your FormFav API key</div>
+  <div class="text-xs text-slate-400 leading-relaxed max-w-2xl">
+    Racing odds aren't on our sports odds feed, so this tool uses FormFav's race data. The free tier gives race
+    form (1,000 requests/day); the <span class="text-white">model win probabilities</span> need a Pro key and the
+    <span class="text-white">live bookmaker prices</span> need Premium. Get a free key at
+    <span class="text-brand">formfav.com/get-api-key</span>, paste it below. Stored server-side only, in this
+    app's local settings file.
+  </div>
+  <div class="text-[10px] font-mono text-amber-300/80 mt-2">Note: FormFav covers international racing only — US tracks are not included.</div>
+  <div class="flex items-center gap-2 mt-3">
+    <input id="ff-key" type="password" placeholder="FormFav API key (fk_…)" class="bg-surface-2 border border-white/10 rounded px-3 py-2 text-xs font-mono text-white w-80 focus:border-brand/60 outline-none">
+    <button id="ff-key-save" class="chip chip-on">Save key</button>
+    <span id="ff-key-msg" class="text-[10px] font-mono text-slate-500"></span>
+  </div>
+</div>
+{% else %}
+
+{% if board.error and board.error not in ('no_meetings', 'no_races') %}
+<div class="glass-card rounded-xl p-4 mb-6 border-red-500/30">
+  <div class="text-sm font-medium text-red-300 mb-1">Couldn't build the board</div>
+  <div class="text-xs text-slate-400">{{ board.error }}</div>
+</div>
+{% endif %}
+
+{% if board.ok %}
+<div class="glass-card rounded-xl p-4 mb-5 border-brand/15 flex items-center gap-3 flex-wrap">
+  <span class="text-sm text-white font-medium">{{ board.date }}</span>
+  <span class="text-[10px] font-mono text-slate-500 uppercase">{{ race_code }}</span>
+  <span class="pill {% if board.tier == 'pro+premium' %}bg-emerald-500/15 text-emerald-300{% else %}bg-surface-3 text-slate-400{% endif %}">{{ board.tier }}</span>
+  <span class="text-[10px] font-mono text-slate-500">model {{ 'on' if board.model_available else 'off' }} &middot; prices {{ 'on' if board.market_available else 'off' }}</span>
+  <div class="flex-1"></div>
+  <span class="text-[10px] font-mono text-slate-600">{{ board.fetched_at }}</span>
+</div>
+
+{% if board.meetings %}
+<div class="flex flex-wrap items-center gap-1.5 mb-5">
+  <span class="text-[10px] font-mono text-slate-600 uppercase mr-1">Meeting</span>
+  {% for m in board.meetings %}
+  <a href="/racing?date={{ board.date }}&race_code={{ race_code }}&track={{ m.slug }}" class="chip {% if m.slug == board.active_track %}chip-on{% endif %}">{{ m.name }}{% if m.country %} <span class="text-slate-500">{{ m.country }}</span>{% endif %} <span class="text-slate-600">{{ m.race_n }}</span></a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if board.tier == 'free' and not board.model_available %}
+<div class="glass-card rounded-xl p-4 mb-5 border-amber-500/20">
+  <div class="text-xs text-slate-400 leading-relaxed">
+    <span class="text-amber-300">Form-only on the free tier.</span> The runner tables below show the card and
+    each runner's form, but the model probabilities (Pro) and live bookmaker prices (Premium) needed for an edge
+    aren't on this key — so no edge is printed. Add a paid FormFav key to unlock the value ranking.
+  </div>
+</div>
+{% endif %}
+
+{% for race in board.races %}
+<div class="glass-card rounded-xl overflow-hidden mb-5">
+  <div class="px-4 py-3 border-b border-white/5 flex items-center gap-2 flex-wrap">
+    <span class="text-sm font-semibold text-white">{{ race.number|string }}. {{ race.name or 'Race' }}</span>
+    {% if race.distance %}<span class="text-[10px] font-mono text-slate-500">{{ race.distance }}</span>{% endif %}
+    <span class="text-[10px] font-mono text-slate-500">{{ race.startTime }}</span>
+    <div class="flex-1"></div>
+    {% if not race.model_ok %}<span class="pill bg-surface-3 text-slate-500 text-[9px]">no model</span>{% endif %}
+    {% if not race.market_ok %}<span class="pill bg-surface-3 text-slate-500 text-[9px]">no prices</span>{% endif %}
+  </div>
+  {% if race.runners %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-surface-2"><tr class="text-left text-[10px] font-mono uppercase tracking-wider text-slate-500">
+        <th class="px-3 py-2">#</th>
+        <th class="px-3 py-2">Runner</th>
+        <th class="px-3 py-2">Jockey / Trainer</th>
+        <th class="px-3 py-2">Form</th>
+        <th class="px-3 py-2 text-right">Model win</th>
+        <th class="px-3 py-2 text-right">Best</th>
+        <th class="px-3 py-2 text-right">Fair</th>
+        <th class="px-3 py-2 text-right">Edge</th>
+        <th class="px-3 py-2">Verdict</th>
+      </tr></thead>
+      <tbody>
+        {% for r in race.runners %}
+        <tr class="border-t border-white/5 {% if r.verdict == 'VALUE' %}bg-emerald-500/[0.05]{% endif %}">
+          <td class="px-3 py-2 font-mono text-xs text-slate-500">{{ r.number if r.number is not none else '—' }}</td>
+          <td class="px-3 py-2 text-white text-xs font-medium">{{ r.name }}</td>
+          <td class="px-3 py-2 text-[10px] text-slate-400">{{ r.jockey }}{% if r.trainer %}<span class="text-slate-600"> · {{ r.trainer }}</span>{% endif %}</td>
+          <td class="px-3 py-2 font-mono text-[10px] text-slate-500">{{ r.form or '—' }}</td>
+          <td class="px-3 py-2 text-right font-mono text-brand">{% if r.model is not none %}{{ "%.1f"|format(r.model) }}%{% else %}<span class="text-slate-600">—</span>{% endif %}</td>
+          <td class="px-3 py-2 text-right font-mono text-white">{% if r.best_dec %}{{ "%.2f"|format(r.best_dec) }} <span class="text-[10px] text-slate-500">{{ r.best_book }}</span>{% else %}<span class="text-slate-600">—</span>{% endif %}</td>
+          <td class="px-3 py-2 text-right font-mono text-slate-300">{% if r.fair is not none %}{{ "%.1f"|format(r.fair) }}%{% else %}<span class="text-slate-600">—</span>{% endif %}</td>
+          <td class="px-3 py-2 text-right font-mono {% if r.edge_pts is not none and r.edge_pts > 0 %}text-emerald-300{% elif r.edge_pts is not none and r.edge_pts < -2 %}text-amber-300{% else %}text-slate-400{% endif %}">{% if r.edge_pts is not none %}{{ "%+.1f"|format(r.edge_pts) }}{% else %}<span class="text-slate-600">—</span>{% endif %}</td>
+          <td class="px-3 py-2"><span class="pill {% if r.verdict == 'VALUE' %}bg-emerald-500/15 text-emerald-300{% elif r.verdict == 'AVOID' %}bg-amber-500/15 text-amber-300{% else %}bg-surface-3 text-slate-400{% endif %}">{{ r.verdict }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="px-4 py-5 text-xs text-slate-500">No runners returned for this race{% if race.form_error %} — {{ race.form_error }}{% endif %}.</div>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="glass-card rounded-xl p-4 border-white/5">
+  <div class="text-xs text-slate-400 leading-relaxed">
+    <span class="text-amber-300">Estimates, not guarantees.</span> "Fair" is the Shin de-vigged consensus across
+    the bookmakers' own win prices; "Model" is FormFav's independent win probability. Edge is model minus fair in
+    percentage points; "VALUE" means at least {{ _VALUE_PT if _VALUE_PT is defined else 2.0 }} points of edge.
+    Two differences of opinion — not a certainty. FormFav covers international racing only.
+  </div>
+</div>
+{% else %}
+<div class="glass-card rounded-xl p-10 text-center">
+  <div class="text-3xl mb-3">🏇</div>
+  {% if board.error == 'no_meetings' %}
+  <div class="text-sm font-medium text-white mb-1">No meetings on {{ board.date }}</div>
+  <div class="text-xs text-slate-500 max-w-md mx-auto">Pick another date or race type above — FormFav accepts dates within 7 days either way.</div>
+  {% elif board.error == 'no_races' %}
+  <div class="text-sm font-medium text-white mb-1">No card returned for this meeting</div>
+  <div class="text-xs text-slate-500 max-w-md mx-auto">Try another meeting or race type above.</div>
+  {% else %}
+  <div class="text-sm font-medium text-white mb-1">Nothing to show</div>
+  <div class="text-xs text-slate-500 max-w-md mx-auto">{{ board.error }}</div>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+
+<script>
+(function () {
+  var save = document.getElementById('ff-key-save');
+  if (!save) return;
+  save.addEventListener('click', function () {
+    var v = (document.getElementById('ff-key').value || '').trim();
+    var msg = document.getElementById('ff-key-msg');
+    if (!v) { msg.textContent = 'paste a key first'; return; }
+    fetch('/racing/key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: v }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { msg.textContent = d.set ? 'saved — reloading…' : 'not saved'; if (d.set) setTimeout(function () { location.reload(); }, 600); })
+      .catch(function () { msg.textContent = 'request failed'; });
+  });
+})();
+</script>
+{% endblock %}

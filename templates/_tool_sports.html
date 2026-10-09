@@ -1,0 +1,8 @@
+{# Toolbox sport selector — expects active_sport + tool_sports in context. #}
+{% if tool_sports %}
+<div class="flex flex-wrap items-center gap-1.5 mt-2">
+  {% for s in tool_sports %}
+  <a href="?sport={{ s }}" class="chip {% if s == active_sport %}chip-on{% endif %}">{{ s|upper }}</a>
+  {% endfor %}
+</div>
+{% endif %}

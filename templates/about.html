@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}About — ScoreEdge{% endblock %}
+{% block meta_description %}About ScoreEdge: an edge-first betting analytics dashboard that de-viggs real sportsbook prices and surfaces value across NFL, NBA, MLB, NHL, college sports, MLS, golf and horse racing.{% endblock %}
+{% block canonical %}/about{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 border-b border-white/5 pb-3">
+  <h1 class="text-xl font-display font-bold text-white tracking-tight">ABOUT SCOREEDGE</h1>
+  <p class="text-xs text-slate-500 mt-0.5 font-mono">EDGE-FIRST BETTING &amp; FANTASY ANALYTICS</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="glass-card rounded-xl p-6 mb-5 max-w-3xl leading-relaxed text-sm text-slate-300 space-y-4">
+  <p>ScoreEdge turns the raw sportsbook market into a clean read. For every game and player prop we pull prices from the major US books, remove the vig with a Shin de-vig, and rank the spots where one book's price genuinely beats the consensus &mdash; the "edge" in points of implied probability, not a noisy ratio that explodes on longshots.</p>
+  <p>The dashboard, per-sport boards, parlay builder, Best Bets Today, DFS optimizer and the player hunts (Touchdown, Goal and Home Run) all run on the same idea: show what the market is actually saying, label every estimate honestly, and never invent a number we don't have.</p>
+  <p class="text-slate-400"><span class="text-white font-medium">What ScoreEdge is not.</span> It is not betting advice, a guarantee, or a tout service. Probabilities are estimates derived from third-party data; edges are a difference of opinion, not a promise. Bet only what you can afford to lose, and only where it is legal.</p>
+</div>
+
+<div class="glass-card rounded-xl p-6 mb-5 max-w-3xl">
+  <h2 class="font-display font-semibold text-white text-sm mb-3">Where the data comes from</h2>
+  <ul class="text-sm text-slate-300 space-y-2">
+    <li><span class="text-white">Odds &amp; lines</span> &mdash; real sportsbook prices (NFL, NBA, MLB, NHL, college football/basketball, MLS), de-vigged in-house.</li>
+    <li><span class="text-white">NFL player stats</span> &mdash; nflverse / Sleeper feeds for the stat-driven boards.</li>
+    <li><span class="text-white">Golf</span> &mdash; DataGolf finish-position model and top-20 market prices (bring your own API key).</li>
+    <li><span class="text-white">Horse racing</span> &mdash; FormFav race form and (on higher tiers) bookmaker prices and model win probabilities (bring your own API key).</li>
+    <li><span class="text-white">NHL / MLB hunts</span> &mdash; the leagues' public stats APIs, combined with park and weather context.</li>
+  </ul>
+</div>
+
+<div class="glass-card rounded-xl p-6 max-w-3xl text-sm text-slate-400">
+  <p>Questions, corrections or a data issue? See the <a href="/contact" class="text-brand hover:underline">contact page</a>. Read the <a href="/privacy" class="text-brand hover:underline">Privacy Policy</a> and <a href="/terms" class="text-brand hover:underline">Terms of Service</a>.</p>
+</div>
+{% endblock %}

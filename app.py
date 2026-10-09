@@ -24,6 +24,11 @@ import draft
 import dfs
 import td_promo
 import journal
+import toolbox
+import golf
+import hockey
+import baseball
+import racing
 
 app = FastAPI(title="ScoreEdge")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -2088,6 +2093,65 @@ def prop_radar_page(request: Request):
     })
 
 
+# ---------------------------------------------------------------------------
+# Toolbox — the secondary tools: parlay fair odds, Best Bets Today, the two
+# player hunts (NHL goals / MLB home runs), golf top-20 and horse racing.
+# Each is a thin route over existing data; all math lives in the tool modules.
+# ---------------------------------------------------------------------------
+
+# Every tool page offers the same sport selector: the NFL board plus each
+# registry league with a live fetch path.
+TOOL_SPORTS = ("nfl", "nba", "mlb", "nhl", "cfb", "cbb", "mls")
+
+
+def _tool_slate(sport: str = "nfl") -> dict:
+    """Never throw for a tool page: return an empty-but-typed slate on failure.
+
+    The NFL path uses the full edge slate (value spots + PlayerProps); every
+    other sport uses the registry fetcher with that league's prop markets.
+    """
+    if sport not in TOOL_SPORTS:
+        sport = "nfl"
+    try:
+        if not odds.API_KEY:
+            return {}
+        if sport == "nfl":
+            return _current_slate()
+        slate = dict(odds.fetch_sport_slate(sport) or {})
+        try:
+            slate["props"] = odds.fetch_sport_props(sport) or []
+        except Exception:
+            slate["props"] = []
+        slate["sport"] = sport
+        return slate
+    except Exception:
+        return {}
+
+
+@app.get("/parlay", response_class=HTMLResponse)
+def parlay_page(request: Request, game: str = "", sport: str = "nfl", n: int = 10):
+    """Same-game parlay fair-odds checker: ONE best bet per player (highest-edge
+    market) with its de-vigged fair price, capped at `n` players per game; the
+    browser builder compounds fair vs book odds and flags correlated legs.
+    Kickers and novelty "longest" markets are excluded; sports with no prop
+    markets (CFB/CBB) fall back to game-line legs."""
+    ensure_data()
+    slate = _tool_slate(sport)
+    per_game = max(1, min(int(n or 10), 25))
+    legs = toolbox.parlay_legs(slate, game, per_game=per_game)
+    games = sorted({r["game"] for r in legs}, key=str.casefold)
+    return templates.TemplateResponse(request, "parlay.html", {
+        **_ctx(request, sport, active_page="parlay"),
+        "legs": legs,
+        "games": games,
+        "active_game": game,
+        "tool_sports": TOOL_SPORTS,
+        "per_game": per_game,
+        "slate_size": len(slate.get("props") or []),
+        "api_key_set": bool(odds.API_KEY),
+    })
+
+
 @app.get("/api/slate", response_class=JSONResponse)
 def api_slate(request: Request, refresh: int = 0, force: int = 0):
     """JSON payload for the dashboard deck; lets the home page auto-refresh its
@@ -2361,40 +2425,148 @@ def waivers_page(request: Request):
     })
 
 @app.get("/dfs", response_class=HTMLResponse)
-def dfs_page(request: Request):
+def dfs_page(request: Request, sport: str = "nfl", n: str = "1",
+             stack: str = "", back: str = "",
+             ds: str = "", gs: str = "", fade: str = "", cap: str = "",
+             style: str = ""):
+    sport = (sport or "").strip().lower()
+    if sport not in dfs.ROSTERS:
+        sport = "nfl"
+    try:
+        n = int(n or 1)
+    except (TypeError, ValueError):
+        n = 1
+    n = max(1, min(n, dfs.MAX_LINEUPS))
+    # Research construction rules (Milly Maker 2021-2025 winner study).
+    # Defaults come from dfs.ROSTERS[sport]['rules']; the query params only
+    # override when explicitly set to 0/1.
+    rules = dict(dfs.ROSTERS[sport].get("rules") or {})
+    if str(stack).strip() in ("0", "1"):
+        rules["qb_stack"] = str(stack).strip() == "1"
+    if str(back).strip() in ("0", "1"):
+        rules["bring_back"] = str(back).strip() == "1"
+    if str(ds).strip() in ("0", "1"):
+        rules["double_stack"] = str(ds).strip() == "1"
+    if str(gs).strip() in ("0", "1"):
+        rules["game_stack"] = str(gs).strip() == "1"
+    if str(fade).strip() in ("0", "1"):
+        rules["fade_chalk"] = str(fade).strip() == "1"
+    cap_i = int(cap) if str(cap).strip().isdigit() else 0
+    rules["chalk_cap"] = cap_i if 0 <= cap_i <= 5 else 0
+    style_s = str(style).strip().lower()
+    rules["style"] = style_s if style_s in ("stars", "balanced") else "balanced"
+    cfg = dfs.ROSTERS[sport]
+    label = cfg["label"]
     error = ""
     note = ""
     slate = {"players": [], "slate_name": "", "start_time": "", "fetched_at": ""}
+    lineups = []
     lineup = None
+    res_min_diff = 0
+    res_rules = {}
+    res_relaxed = ""
     src = dfs.data_source()
+
+    def _build(players):
+        # Multi-lineup solve: n lineups under the pairwise overlap rule plus
+        # whichever research construction rules are enabled.
+        nonlocal lineups, lineup, res_min_diff, res_rules, res_relaxed
+        res = dfs.build_lineups(players, sport, n, rules)
+        lineups = res.get("lineups") or []
+        lineup = lineups[0] if lineups else None
+        res_min_diff = int(res.get("min_diff") or 0)
+        res_rules = res.get("rules_applied") or {}
+        res_relaxed = res.get("relaxed") or ""
+        if res.get("error") and not lineups:
+            return res["error"]
+        return res.get("error") or ""
+
     if src == "dk":
         # PREFER live DraftKings pricing ONLY when it genuinely works (paid
         # provider reachable + licensed account-scoped). Any failure — and any
         # env that names dk but 403s — falls straight through to our clearly
         # labeled projection pricing rather than showing an empty error card.
         try:
-            slate = dfs.fetch_slate()
-            lineup = dfs.build_lineup(slate["players"])
+            slate = dfs.fetch_slate(sport)
+            build_err = _build(slate.get("players") or [])
+            if build_err:
+                note = build_err
+                if not lineups:
+                    slate = {"players": [], "slate_name": "", "start_time": "",
+                             "fetched_at": ""}
         except Exception as e:
-            note = (f"DK feed unavailable ({e.__class__.__name__}); using projection "
-                    f"pricing instead.")
+            detail = str(e).strip() or e.__class__.__name__
+            note = detail if sport != "nfl" else (
+                f"{detail} — falling back to our own projection pricing.")
+            slate = {"players": [], "slate_name": "", "start_time": "", "fetched_at": ""}
+            lineups, lineup = [], None
     # Projection pricing is the honest default: price our own slate off the
     # same live-fantasy chain every other tab already uses (clearly labeled
-    # projection pricing; NOT official DraftKings pricing).
-    if src != "dk" or not slate.get("players"):
+    # projection pricing; NOT official DraftKings pricing). Only NFL has that
+    # chain wired — the other sports need the DK feed.
+    if sport == "nfl" and not slate.get("players"):
         try:
             live = _filter_fantasy(_normalize_stats(data.load_player_stats(_get_season())))
-            slate, note = dfs.projection_slate(live.to_dict("records"), None)
-            if slate.get("players"):
-                lineup = dfs.build_lineup(slate["players"])
+            sl, pnote = dfs.projection_slate(live.to_dict("records"), None)
+            if sl.get("players"):
+                slate = sl
+                build_err = _build(slate.get("players") or [])
+                if build_err and not lineups:
+                    error = build_err
+                note = f"{note} {pnote}".strip() if note else pnote
+            else:
+                error = pnote or f"Could not build a projection-priced {label} slate"
         except Exception as e:
             error = f"Could not build projection slate: {e}"
+    if not error and not (slate.get("players") and lineup):
+        if src != "dk":
+            error = (f"DFS live data is off — set DFS_DATA_SOURCE=dk to pull the "
+                     f"{label} slate from DraftKings.")
+        else:
+            error = (f"Could not load the {label} main slate from DraftKings"
+                     + (f": {note}" if note else "."))
+    q_swaps = (dfs.suggest_q_swaps(lineups, slate.get("players") or [], sport, rules)
+               if lineups else {})
+    contest = dfs.fetch_contest_info(sport) if sport == "nfl" else {}
+    weather = (dfs.weather_notes(
+                    sorted({r.get("game_id") or "" for lu in lineups
+                            for r in lu.get("lineup") or []}),
+                    {str(p.get("game_id") or ""): str(p.get("game") or "")
+                     for p in (slate.get("players") or [])},
+                    slate.get("weather_flags") or {})
+               if (lineups and sport == "nfl") else [])
+    portfolio = dfs.portfolio_view(lineups) if len(lineups) > 1 else {}
     return templates.TemplateResponse(request, "dfs.html", {
-        **_ctx(request, "nfl", active_page="dfs"),
+        **_ctx(request, sport, active_page="dfs"),
         "slate": slate,
         "lineup": lineup,
+        "lineups": lineups,
         "error": error,
         "note": note,
+        "dfs_sport": sport,
+        "dfs_n": n,
+        "dfs_n_options": [k for k in (1, 2, 3, 5, 10) if k <= dfs.MAX_LINEUPS],
+        "dfs_min_diff": res_min_diff,
+        "dfs_rules": res_rules,
+        "dfs_rules_wanted": rules,
+        "dfs_relaxed": res_relaxed,
+        "dfs_stack": "1" if rules.get("qb_stack") else "0",
+        "dfs_back": "1" if rules.get("bring_back") else "0",
+        "dfs_ds": "1" if rules.get("double_stack") else "0",
+        "dfs_gs": "1" if rules.get("game_stack") else "0",
+        "dfs_fade": "1" if rules.get("fade_chalk") else "0",
+        "dfs_cap": str(int(rules.get("chalk_cap") or 0)),
+        "dfs_style": rules.get("style") or "balanced",
+        "dfs_has_rules": bool(dfs.ROSTERS[sport].get("rules")),
+        "dfs_q_swaps": q_swaps,
+        "dfs_contest": contest,
+        "dfs_weather": weather,
+        "dfs_portfolio": portfolio,
+        "dfs_excluded": slate.get("excluded") or {},
+        "dfs_excluded_note": slate.get("excluded_note") or "",
+        "dfs_sports": [{"key": k, "label": dfs.ROSTERS[k]["label"],
+                        "icon": dfs.ROSTERS[k]["icon"]} for k in dfs.DFS_SPORTS],
+        "roster": cfg,
     })
 
 @app.get("/api/player-search", response_class=HTMLResponse)
@@ -2971,10 +3143,135 @@ def mls_edge(request: Request):
     return _sport_hub(request, "mls", "edge")
 
 @app.get("/golf", response_class=HTMLResponse)
-def golf_page(request: Request):
-    return templates.TemplateResponse(request, "sport_coming_soon.html", {
-        **_ctx(request, "golf"), "sport_name": "Golf", "sport_icon": "â›³",
+def golf_page(request: Request, tour: str = "pga", event: str = "", force: int = 0):
+    """Golf Top-20 best bets: DataGolf's model P(top 20) ranked against the
+    Shin de-vigged consensus of books' own top-20 prices for the tournament."""
+    ensure_data()
+    data = golf.fetch_top20(tour, event, force=force)
+    return templates.TemplateResponse(request, "golf.html", {
+        **_ctx(request, "golf", active_page="golf"),
+        "golf": data,
+        "tours": golf.TOURS,
+        "active_tour": tour,
+        "active_event": event,
+        "key_set": bool(golf.get_key()),
     })
+
+
+@app.get("/api/golf", response_class=JSONResponse)
+def api_golf(tour: str = "pga", event: str = "", force: int = 0):
+    """Poll endpoint for the golf page (10-minute server cache, force=1 busts)."""
+    return JSONResponse(golf.fetch_top20(tour, event, force=force))
+
+
+@app.post("/golf/key", response_class=JSONResponse)
+async def golf_key(payload: dict):
+    """Save the DataGolf API key locally (server-side settings file only)."""
+    saved = golf.set_key(str(payload.get("key") or ""))
+    return JSONResponse({"ok": True, "set": bool(saved)})
+
+
+@app.get("/goal-hunt", response_class=HTMLResponse)
+def goal_hunt_page(request: Request, date: str = "", force: int = 0):
+    """NHL Goal Hunt: stats-based anytime-goal projections for tonight's skaters."""
+    ensure_data()
+    data = hockey.build_board(date, force=force)
+    return templates.TemplateResponse(request, "goal_hunt.html", {
+        **_ctx(request, "nhl", active_page="goal_hunt"),
+        "hunt": data,
+        "today": hockey._today(),
+    })
+
+
+@app.get("/api/goal-hunt", response_class=JSONResponse)
+def api_goal_hunt(date: str = "", force: int = 0):
+    return JSONResponse(hockey.build_board(date, force=force))
+
+
+@app.get("/homerun-hunt", response_class=HTMLResponse)
+def homerun_hunt_page(request: Request, date: str = "", force: int = 0):
+    """MLB Home Run Hunt: stats-based home-run projections for today's hitters."""
+    ensure_data()
+    data = baseball.build_board(date, force=force)
+    return templates.TemplateResponse(request, "homerun_hunt.html", {
+        **_ctx(request, "mlb", active_page="homerun_hunt"),
+        "hunt": data,
+        "today": baseball._today(),
+    })
+
+
+@app.get("/api/homerun-hunt", response_class=JSONResponse)
+def api_homerun_hunt(date: str = "", force: int = 0):
+    return JSONResponse(baseball.build_board(date, force=force))
+
+
+@app.get("/racing", response_class=HTMLResponse)
+def racing_page(request: Request, date: str = "", race_code: str = "gallops",
+                track: str = "", timezone: str = "", force: int = 0):
+    """Horse Racing Value Finder: FormFav form, model and book prices."""
+    ensure_data()
+    data = racing.build_board(date, race_code, track, timezone, force=force)
+    return templates.TemplateResponse(request, "racing.html", {
+        **_ctx(request, "nfl", active_page="racing"),
+        "board": data,
+        "race_codes": racing.RACE_CODES,
+        "date": data.get("date") or racing._today(),
+        "race_code": data.get("race_code") or "gallops",
+        "today": racing._today(),
+        "key_set": bool(data.get("key_set")),
+    })
+
+
+@app.get("/api/racing", response_class=JSONResponse)
+def api_racing(date: str = "", race_code: str = "gallops", track: str = "",
+               timezone: str = "", force: int = 0):
+    return JSONResponse(racing.build_board(date, race_code, track, timezone, force=force))
+
+
+@app.post("/racing/key", response_class=JSONResponse)
+async def racing_key(payload: dict):
+    """Save the FormFav API key locally (server-side settings file only)."""
+    saved = racing.set_key(str(payload.get("key") or ""))
+    return JSONResponse({"ok": True, "set": bool(saved)})
+
+
+@app.get("/best-bets", response_class=HTMLResponse)
+def best_bets_page(request: Request):
+    try:
+        board = _overview_board()
+    except Exception:
+        board = {"plays": [], "leagues": [], "summary": {
+            "plays": 0, "leagues": 0, "avg_edge": 0.0, "top_edge": 0.0, "top_play": None}}
+    return templates.TemplateResponse(request, "best_bets.html", {
+        **_ctx(request, "nfl", active_page="best_bets"),
+        "odds": odds,
+        "board": board,
+    })
+
+
+@app.get("/about", response_class=HTMLResponse)
+def about_page(request: Request):
+    return templates.TemplateResponse(request, "about.html",
+                                      {**_ctx(request, "nfl"), "active_page": "about"})
+
+
+@app.get("/contact", response_class=HTMLResponse)
+def contact_page(request: Request):
+    return templates.TemplateResponse(request, "contact.html",
+                                      {**_ctx(request, "nfl"), "active_page": "contact"})
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_page(request: Request):
+    return templates.TemplateResponse(request, "privacy.html",
+                                      {**_ctx(request, "nfl"), "active_page": "privacy"})
+
+
+@app.get("/terms", response_class=HTMLResponse)
+def terms_page(request: Request):
+    return templates.TemplateResponse(request, "terms.html",
+                                      {**_ctx(request, "nfl"), "active_page": "terms"})
+
 
 @app.get("/odds", response_class=HTMLResponse)
 def odds_redirect(request: Request):
@@ -2988,7 +3285,9 @@ def robots_txt():
 @app.get("/sitemap.xml")
 def sitemap_xml():
     base = "https://scoreedge.onrender.com"
-    pages = ["", "/bets", "/nba", "/cfb", "/cbb", "/mlb", "/nhl", "/mls", "/golf"]
+    pages = ["", "/bets", "/nba", "/cfb", "/cbb", "/mlb", "/nhl", "/mls", "/golf",
+             "/best-bets", "/goal-hunt", "/homerun-hunt", "/racing",
+             "/about", "/contact", "/privacy", "/terms"]
     urls = "\n".join(f'  <url><loc>{base}{p}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>' for p in pages)
     xml = f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{urls}\n</urlset>'
     return PlainTextResponse(xml, media_type="application/xml")

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Contact — ScoreEdge{% endblock %}
+{% block meta_description %}Contact ScoreEdge for questions, corrections, data issues or feedback.{% endblock %}
+{% block canonical %}/contact{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 border-b border-white/5 pb-3">
+  <h1 class="text-xl font-display font-bold text-white tracking-tight">CONTACT</h1>
+  <p class="text-xs text-slate-500 mt-0.5 font-mono">QUESTIONS &middot; CORRECTIONS &middot; DATA ISSUES</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="glass-card rounded-xl p-6 max-w-2xl">
+  <p class="text-sm text-slate-300 leading-relaxed mb-4">Found a bug, a wrong line, a stat that looks off, or have feedback on a tool? Reach out &mdash; the fastest replies are on social.</p>
+  <div class="grid gap-2.5">
+    <a href="https://twitter.com/BryanKruep" target="_blank" rel="noopener" class="glass-card rounded-lg px-4 py-3 flex items-center justify-between hover:border-brand/40 transition-colors">
+      <span class="text-sm text-white">X / Twitter</span>
+      <span class="text-xs font-mono text-slate-500">@BryanKruep</span>
+    </a>
+    <a href="https://reddit.com/user/Material_Sand_4487" target="_blank" rel="noopener" class="glass-card rounded-lg px-4 py-3 flex items-center justify-between hover:border-brand/40 transition-colors">
+      <span class="text-sm text-white">Reddit</span>
+      <span class="text-xs font-mono text-slate-500">u/Material_Sand_4487</span>
+    </a>
+  </div>
+  <p class="text-xs text-slate-500 mt-5 leading-relaxed">For data-provider or rights-holder requests, please include the specific page and the item in question so it can be looked up quickly.</p>
+</div>
+{% endblock %}

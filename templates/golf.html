@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Golf Top 20 Best Bets — Model vs Market | ScoreEdge{% endblock %}
+{% block meta_description %}Rank golfers by model-vs-market value on the top-20 market for the current tournament: DataGolf model P(top 20) against the de-vigged consensus of books' top-20 prices. Powered by ScoreEdge.{% endblock %}
+{% block canonical %}/golf{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-white/5 pb-3">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">GOLF TOP 20 — BEST BETS</h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">MODEL P(TOP 20) vs DE-VIGGED BOOK CONSENSUS &middot; RANKED BY EDGE &middot; ONE TOURNAMENT</p>
+    <div class="flex flex-wrap items-center gap-1.5 mt-2">
+      {% for key, label in tours %}
+      <a href="/golf?tour={{ key }}" class="chip {% if key == active_tour %}chip-on{% endif %}">{{ label }}</a>
+      {% endfor %}
+      <span class="w-px h-4 bg-white/10 mx-1"></span>
+      <a href="/golf?tour={{ active_tour }}&force=1" class="chip" title="Re-fetch from DataGolf now">Refresh</a>
+    </div>
+  </div>
+  <div class="text-right">
+    {% if golf.ok %}
+    <div class="text-[10px] font-mono text-slate-600">{{ golf.field }} GOLFERS · {{ golf.books|length }} BOOKS · {{ golf.value_n }} VALUE</div>
+    <div class="text-[10px] font-mono text-slate-600 mt-0.5">{{ golf.fetched_at }}</div>
+    {% else %}
+    <div class="text-[10px] font-mono text-slate-600">DATA GOLF API</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+
+{% if not key_set %}
+<div class="glass-card rounded-xl p-5 mb-6 border-amber-500/20">
+  <div class="text-sm font-medium text-white mb-1">Connect your DataGolf API key</div>
+  <div class="text-xs text-slate-400 leading-relaxed max-w-2xl">
+    The top-20 market doesn't exist on our odds feed, so this tool uses DataGolf's finish-position data —
+    the model's P(top 20) next to the books' own top-20 prices. Subscribe at
+    <span class="text-brand">datagolf.com/api-access</span> (Scratch tier), paste the key below.
+    It's stored server-side only, in this app's local settings file.
+  </div>
+  <div class="flex items-center gap-2 mt-3">
+    <input id="dg-key" type="password" placeholder="DataGolf API key" class="bg-surface-2 border border-white/10 rounded px-3 py-2 text-xs font-mono text-white w-72 focus:border-brand/60 outline-none">
+    <button id="dg-key-save" class="chip chip-on">Save key</button>
+    <span id="dg-key-msg" class="text-[10px] font-mono text-slate-500"></span>
+  </div>
+</div>
+{% else %}
+
+{% if golf.error %}
+<div class="glass-card rounded-xl p-4 mb-6 border-red-500/30">
+  <div class="text-sm font-medium text-red-300 mb-1">Couldn't build the board</div>
+  <div class="text-xs text-slate-400">
+    {% if golf.error == 'no_rows' %}
+      The response parsed but carried no top-20 rows (off-week or shape change).
+      {% if golf.parse_keys %}<span class="font-mono text-slate-500"> top-level keys: {{ golf.parse_keys|join(', ') }}</span>{% endif %}
+    {% else %}
+      {{ golf.error }}
+    {% endif %}
+  </div>
+  <a href="/golf?tour={{ active_tour }}&force=1" class="chip mt-3 inline-flex">Retry</a>
+</div>
+{% endif %}
+
+{% if golf.ok %}
+<div class="glass-card rounded-xl p-4 mb-5 border-brand/15">
+  <div class="flex flex-wrap items-center gap-3">
+    <span class="font-display font-semibold text-white text-sm">{{ golf.event or (active_tour|upper ~ ' tournament') }}</span>
+    <span class="text-[10px] font-mono text-slate-500">{{ golf.field }} GOLFERS · {{ golf.books|length }} BOOKS PRICED · MODEL = DATAGOLF · MARKET FAIR = SHIN DE-VIGGED</span>
+  </div>
+</div>
+
+<div class="glass-card rounded-xl overflow-hidden">
+  <div class="px-4 py-3 border-b border-white/5 flex items-center gap-2">
+    <h2 class="font-display font-semibold text-white text-sm">Best bets — Top 20</h2>
+    <span class="text-[10px] font-mono text-slate-500">edge = model P(top 20) − market fair P(top 20), in points · estimate, not a guarantee</span>
+  </div>
+  <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-surface-2"><tr class="text-left text-[10px] font-mono uppercase tracking-wider text-slate-500">
+    <th class="px-4 py-2">#</th>
+    <th class="px-3 py-2">Golfer</th>
+    <th class="px-3 py-2 text-right">Model P(top 20)</th>
+    <th class="px-3 py-2 text-right">Market fair</th>
+    <th class="px-3 py-2 text-right">Best top-20 odds</th>
+    <th class="px-3 py-2 text-right">Books</th>
+    <th class="px-3 py-2 text-right">Edge (pts)</th>
+    <th class="px-3 py-2">Verdict</th>
+  </tr></thead><tbody>
+    {% for r in golf.rows[:40] %}
+    <tr class="border-t border-white/5 {% if r.verdict == 'VALUE' %}bg-emerald-500/[0.05]{% endif %}">
+      <td class="px-4 py-2.5 font-mono text-xs text-slate-500">{{ loop.index }}</td>
+      <td class="px-3 py-2.5 text-white text-xs font-medium">{{ r.player }}</td>
+      <td class="px-3 py-2.5 text-right font-mono text-brand">{{ "%.1f"|format(r.model_pct) }}%</td>
+      <td class="px-3 py-2.5 text-right font-mono text-slate-300">{{ "%.1f"|format(r.fair_pct) }}%</td>
+      <td class="px-3 py-2.5 text-right font-mono text-white">{{ r.best_am > 0 and '+' ~ r.best_am or r.best_am }} <span class="text-[10px] text-slate-500">{{ r.best_book }}</span></td>
+      <td class="px-3 py-2.5 text-right font-mono text-xs text-slate-500">{{ r.n_books }}</td>
+      <td class="px-3 py-2.5 text-right font-mono {% if r.edge_pts > 0 %}text-emerald-300{% elif r.edge_pts < -2 %}text-amber-300{% else %}text-slate-400{% endif %}">{{ "%+.1f"|format(r.edge_pts) }}</td>
+      <td class="px-3 py-2.5"><span class="pill {% if r.verdict == 'VALUE' %}bg-emerald-500/15 text-emerald-300{% elif r.verdict == 'AVOID' %}bg-amber-500/15 text-amber-300{% else %}bg-surface-3 text-slate-400{% endif %}">{{ r.verdict }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody></table></div>
+</div>
+
+<div class="glass-card rounded-xl p-4 mt-5 border-white/5">
+  <div class="text-xs text-slate-400 leading-relaxed">
+    <span class="text-amber-300">Estimates, not guarantees.</span> Model P(top 20) is DataGolf's pre-tournament model;
+    market fair is the Shin de-vigged consensus across the books' own top-20 prices (best price shown per golfer).
+    "VALUE" means the model puts a golfer at least 2.0 points above the market fair — a difference of opinion,
+    not a certainty. Prices move and fields change; check the refresh timestamp above.
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+<script>
+(function () {
+  var save = document.getElementById('dg-key-save');
+  if (!save) return;
+  save.addEventListener('click', function () {
+    var v = (document.getElementById('dg-key').value || '').trim();
+    var msg = document.getElementById('dg-key-msg');
+    if (!v) { msg.textContent = 'paste a key first'; return; }
+    fetch('/golf/key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: v }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { msg.textContent = d.set ? 'saved — reloading…' : 'not saved'; if (d.set) setTimeout(function () { location.reload(); }, 600); })
+      .catch(function () { msg.textContent = 'request failed'; });
+  });
+})();
+</script>
+{% endblock %}

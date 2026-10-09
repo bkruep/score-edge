@@ -499,7 +499,7 @@
 <nav class="flex-1 overflow-y-auto px-3 py-2 side-scroll">
       {% set active = active_page|default('') %}
       {% set hub = ['mlb','nba','nhl','mls','cfb','cbb'] %}
-      {% set lab = ['edge_deck','line_lab','value_lab','prop_radar','dfs'] %}
+      {% set lab = ['dfs'] %}
       {% set leagues = [('nfl','NFL','🏈'),('mlb','MLB','⚾'),('nba','NBA','🏀'),('nhl','NHL','🏒'),('mls','MLS','⚽'),('cfb','CFB','🏈'),('cbb','CBB','🏀'),('golf','Golf','⛳')] %}
       {% set live_sports = ['nfl','cfb','cbb','mlb','nba','nhl','mls'] %}
 
@@ -520,49 +520,13 @@
         <span>Live Dashboard</span>
       </a>
       {% elif active_sport in hub and active not in lab %}
-      <div class="side-group">{{ (active_sport|upper) }} Board</div>
-      <a href="/{{ active_sport }}" class="side-link {% if active_tab|default('') == 'lines' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125v-15.75z"/></svg>
-        <span>Lines</span>
-      </a>
-      <a href="/{{ active_sport }}/best" class="side-link {% if active_tab|default('') == 'best' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        <span>Best Bets</span>
-        <span class="live-dot ml-auto"></span>
-      </a>
-      <a href="/{{ active_sport }}/props" class="side-link {% if active_tab|default('') == 'props' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
-        <span>Props</span>
-      </a>
-      <a href="/{{ active_sport }}/games" class="side-link {% if active_tab|default('') == 'games' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18zm0-5a4 4 0 100-8 4 4 0 000 8z"/></svg>
-        <span>Matchups</span>
-      </a>
-      <a href="/{{ active_sport }}/edge" class="side-link {% if active_tab|default('') == 'edge' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2.25l8.66 5v10l-8.66 5-8.66-5v-10L12 2.25zM12 7.5l6 3.46v6.93L12 20.88l-6-3.46V10.96l6-3.46z"/></svg>
-        <span>Deep Edge</span>
-      </a>
+      {# per-sport board tabs folded into the deck — /{sport} is the single destination #}
       <div class="side-group">Command</div>
       <a href="/" class="side-link">
         <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>
         <span>Dashboard</span>
       </a>
       {% else %}
-      <div class="side-group">NFL Board</div>
-      <a href="/bets" class="side-link {% if active == 'bets' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125v-15.75z"/></svg>
-        <span>Live Lines</span>
-        <span class="live-dot ml-auto"></span>
-      </a>
-      <a href="/props" class="side-link {% if active == 'props' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>
-        <span>Player Props</span>
-        <span class="ml-auto text-[10px] font-mono text-slate-600">+EV</span>
-      </a>
-      <a href="/touchdown" class="side-link {% if active == 'td' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        <span>Touchdown Hunt</span>
-      </a>
       <div class="side-group">Command</div>
       <a href="/" class="side-link {% if active == 'home' %}active{% endif %}">
         <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>
@@ -572,30 +536,38 @@
 
       {% block sidebar_live %}{% endblock %}
 
-      {% if active != 'home' %}
-      <div class="side-group">Bet Lab</div>
-      <a href="/edge-deck" class="side-link {% if active == 'edge_deck' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 2.25l8.66 5v10l-8.66 5-8.66-5v-10L12 2.25zM12 7.5l6 3.46v6.93L12 20.88l-6-3.46V10.96l6-3.46z"/></svg>
-        <span>Edge Deck</span>
-      </a>
-      <a href="/line-lab" class="side-link {% if active == 'line_lab' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L8.31 12l2.5 2.5 6.75-6.75 2.44 2.44L21.75 9l-1.06-1.06-2.44 2.44-6.75-6.75L9 6.19 2.25 12.94l-1.5-1.5"/></svg>
-        <span>Line Lab</span>
-      </a>
-      <a href="/value-lab" class="side-link {% if active == 'value_lab' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v3.375c0 .621-.504 1.125-1.125 1.125h-2.25A1.125 1.125 0 013 16.5v-3.375zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125v-11.25zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125v-15.75z"/></svg>
-        <span>Value Scatter Lab</span>
-      </a>
-      <a href="/prop-radar" class="side-link {% if active == 'prop_radar' %}active{% endif %}">
-        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18zm0-5a4 4 0 100-8 4 4 0 000 8z"/></svg>
-        <span>Prop Radar</span>
-      </a>
-      {% endif %}
-
       <div class="side-group">Tools</div>
+      <a href="/touchdown" class="side-link {% if active == 'td' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <span>Touchdown Hunt</span>
+      </a>
       <a href="/dfs" class="side-link {% if active == 'dfs' %}active{% endif %}">
         <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625v3.375"/></svg>
         <span>DFS Optimizer</span>
+      </a>
+      <a href="/parlay" class="side-link {% if active == 'parlay' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 8h6m-6 4h6m-6 4h3m-9-7l2.5 2.5L13 5M13 19h6m-3-3V9"/></svg>
+        <span>Parlay Builder</span>
+      </a>
+      <a href="/best-bets" class="side-link {% if active == 'best_bets' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/></svg>
+        <span>Best Bets Today</span>
+      </a>
+      <a href="/goal-hunt" class="side-link {% if active == 'goal_hunt' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 15a3 3 0 100-6 3 3 0 000 6zM12 3v3m0 12v3M3 12h3m12 0h3"/></svg>
+        <span>Goal Hunt</span>
+      </a>
+      <a href="/homerun-hunt" class="side-link {% if active == 'homerun_hunt' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z"/></svg>
+        <span>Home Run Hunt</span>
+      </a>
+      <a href="/racing" class="side-link {% if active == 'racing' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18M3 4.5h13.5a1.5 1.5 0 011.06 2.56L15 9.75l2.56 2.69A1.5 1.5 0 0116.5 15H3"/></svg>
+        <span>Horse Racing</span>
+      </a>
+      <a href="/golf" class="side-link {% if active == 'golf' %}active{% endif %}">
+        <svg class="w-[17px] h-[17px]" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/></svg>
+        <span>Golf Top 20</span>
       </a>
     </nav>
 
@@ -628,24 +600,14 @@
     </div>
     <div x-show="navOpen" x-cloak x-transition.opacity class="border-t border-white/5 bg-surface-1 px-3 py-2">
       <a href="/" class="side-link {% if active_page == 'home' %}active{% endif %}">Dashboard</a>
-      {% if active_sport in ['mlb','nba','nhl','mls','cfb','cbb'] and active_page not in ['home','edge_deck','line_lab','value_lab','prop_radar','dfs'] %}
-      <a href="/{{ active_sport }}" class="side-link">Lines</a>
-      <a href="/{{ active_sport }}/best" class="side-link">Best Bets</a>
-      <a href="/{{ active_sport }}/props" class="side-link">Props</a>
-      <a href="/{{ active_sport }}/games" class="side-link">Matchups</a>
-      <a href="/{{ active_sport }}/edge" class="side-link">Deep Edge</a>
-      {% elif active_sport == 'nfl' and active_page not in ['home','edge_deck','line_lab','value_lab','prop_radar','dfs'] %}
-      <a href="/bets" class="side-link {% if active_page == 'bets' %}active{% endif %}">Live Lines</a>
-      <a href="/props" class="side-link {% if active_page == 'props' %}active{% endif %}">Player Props</a>
       <a href="/touchdown" class="side-link {% if active_page == 'td' %}active{% endif %}">Touchdown Hunt</a>
-      {% endif %}
-      {% if active_page != 'home' %}
-      <a href="/edge-deck" class="side-link {% if active_page == 'edge_deck' %}active{% endif %}">Edge Deck</a>
-      <a href="/line-lab" class="side-link {% if active_page == 'line_lab' %}active{% endif %}">Line Lab</a>
-      <a href="/value-lab" class="side-link {% if active_page == 'value_lab' %}active{% endif %}">Value Scatter Lab</a>
-      <a href="/prop-radar" class="side-link {% if active_page == 'prop_radar' %}active{% endif %}">Prop Radar</a>
-      {% endif %}
       <a href="/dfs" class="side-link {% if active_page == 'dfs' %}active{% endif %}">DFS Optimizer</a>
+      <a href="/parlay" class="side-link {% if active_page == 'parlay' %}active{% endif %}">Parlay Builder</a>
+      <a href="/best-bets" class="side-link {% if active_page == 'best_bets' %}active{% endif %}">Best Bets Today</a>
+      <a href="/goal-hunt" class="side-link {% if active_page == 'goal_hunt' %}active{% endif %}">Goal Hunt</a>
+      <a href="/homerun-hunt" class="side-link {% if active_page == 'homerun_hunt' %}active{% endif %}">Home Run Hunt</a>
+      <a href="/racing" class="side-link {% if active_page == 'racing' %}active{% endif %}">Horse Racing</a>
+      <a href="/golf" class="side-link {% if active_page == 'golf' %}active{% endif %}">Golf Top 20</a>
       <div class="divider-x my-2"></div>
       <div class="grid grid-cols-2 gap-1.5">
         {% for st, sn, si in leagues if sn != 'Golf' %}
@@ -655,7 +617,6 @@
         </a>
         {% endfor %}
       </div>
-      <a href="/golf" class="side-link mt-1.5">⛳ Golf — soon</a>
     </div>
   </header>
 
@@ -680,13 +641,18 @@
           </div>
           <div class="flex items-center gap-5">
             <a href="/bets" class="text-xs text-slate-500 hover:text-white transition-colors">Live Lines</a>
-            <a href="/edge-deck" class="text-xs text-slate-500 hover:text-white transition-colors">Edge Deck</a>
             <a href="/dfs" class="text-xs text-slate-500 hover:text-white transition-colors">DFS</a>
             <span class="text-[10px] font-mono text-slate-700">odds/lines + schedule + weather feeds</span>
           </div>
         </div>
-        <div class="border-t border-white/5 mt-4 pt-4 flex items-center justify-between">
-          <p class="text-xs text-slate-600">&copy; {{ current_year }} ScoreEdge. Built by <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-500 hover:text-brand-light transition-colors">@BryanKruep</a>. Not affiliated with the NFL or any sportsbook.</p>
+        <div class="border-t border-white/5 mt-4 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <a href="/about" class="text-xs text-slate-500 hover:text-white transition-colors">About</a>
+            <a href="/contact" class="text-xs text-slate-500 hover:text-white transition-colors">Contact</a>
+            <a href="/privacy" class="text-xs text-slate-500 hover:text-white transition-colors">Privacy</a>
+            <a href="/terms" class="text-xs text-slate-500 hover:text-white transition-colors">Terms</a>
+          </div>
+          <p class="text-xs text-slate-600">&copy; {{ current_year }} ScoreEdge. Built by <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-500 hover:text-brand-light transition-colors">@BryanKruep</a>. Not affiliated with any league or sportsbook. Odds &amp; analytics for informational purposes only.</p>
         </div>
       </div>
     </footer>

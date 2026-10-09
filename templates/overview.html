@@ -104,7 +104,7 @@
         <span class="eq" aria-hidden="true">
           <i style="animation-delay:0s;"></i><i style="animation-delay:.12s;"></i><i style="animation-delay:.24s;"></i><i style="animation-delay:.36s;"></i><i style="animation-delay:.48s;"></i><i style="animation-delay:.6s;"></i><i style="animation-delay:.72s;"></i><i style="animation-delay:.84s;"></i>
         </span>
-        <span class="text-[10px] font-mono text-slate-500">UTC <b id="utc-clock" class="text-slate-300">--:--:--</b></span>
+        <span class="text-[10px] font-mono text-slate-500">Central <b id="utc-clock" class="text-slate-300">--:--:--</b></span>
       </div>
       <h1 class="text-2xl font-display font-bold text-white tracking-tight">⚡ SPORT <span class="gradient-text">EDGE</span> COMMAND</h1>
       <p class="text-xs font-mono text-slate-500 mt-1"><span id="tw" data-t="ALL-LEAGUE BEST BETS · RANKED BY TRUE EDGE · CLICK A ROW FOR THE BOOK LADDER"></span></p>
@@ -598,7 +598,7 @@
 
   var clk = document.getElementById('utc-clock');
   if (clk) {
-    function tick() { clk.textContent = new Date().toISOString().slice(11, 19); }
+    function tick() { clk.textContent = new Date().toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour12: false }); }
     tick(); setInterval(tick, 1000);
   }
 

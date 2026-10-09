@@ -1,13 +1,33 @@
 {% extends "base.html" %}
-{% block title %}DFS Lineup Optimizer — ScoreEdge{% endblock %}
-{% block meta_description %}Daily fantasy football (DraftKings classic) lineup optimizer: salary-aware picks and value analysis.{% endblock %}
+{% block title %}{{ roster.label }} DFS Lineup Optimizer — ScoreEdge{% endblock %}
+{% block meta_description %}Daily fantasy {{ roster.label }} (DraftKings classic) lineup optimizer: salary-aware picks and value analysis.{% endblock %}
 {% block canonical %}/dfs{% endblock %}
 {% block og_url %}/dfs{% endblock %}
 {% block breadcrumb %}
 <div class="mb-5 flex items-end justify-between border-b border-white/5 pb-3">
   <div>
     <h1 class="text-xl font-display font-bold text-white tracking-tight">DFS OPTIMIZER</h1>
-    <p class="text-xs text-slate-500 mt-0.5 font-mono">DRAFTKINGS CLASSIC · $50K CAP</p>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">{{ roster.label|upper }} · DRAFTKINGS CLASSIC · $50K CAP · {{ roster.summary|upper }}</p>
+    {% set q = '&ds=' ~ dfs_ds ~ '&gs=' ~ dfs_gs ~ '&fade=' ~ dfs_fade ~ '&cap=' ~ dfs_cap ~ '&style=' ~ dfs_style %}
+    <div class="flex flex-wrap items-center gap-1.5 mt-2">
+      {% for s in dfs_sports %}
+      <a href="/dfs?sport={{ s.key }}&n={{ dfs_n }}&stack={{ dfs_stack }}&back={{ dfs_back }}{{ q }}" class="chip {% if s.key == dfs_sport %}chip-on{% endif %}">{{ s.icon }} {{ s.label }}</a>
+      {% endfor %}
+      <span class="w-px h-4 bg-white/10 mx-1"></span>
+      {% for k in dfs_n_options %}
+      <a href="/dfs?sport={{ dfs_sport }}&n={{ k }}&stack={{ dfs_stack }}&back={{ dfs_back }}{{ q }}" class="chip {% if k == dfs_n %}chip-on{% endif %}">{{ k }}{% if k == 1 %} lineup{% else %} lineups{% endif %}</a>
+      {% endfor %}
+      {% if dfs_has_rules %}
+      <span class="w-px h-4 bg-white/10 mx-1"></span>
+      <a href="/dfs?sport={{ dfs_sport }}&n={{ dfs_n }}&stack={{ '0' if dfs_stack == '1' else '1' }}&back={{ dfs_back }}{{ q }}" class="chip {% if dfs_stack == '1' %}chip-on{% endif %}" title="Require the QB's team to have >=1 WR/TE selected (85.4% of Sunday Milly Maker winners)">QB stack</a>
+      <a href="/dfs?sport={{ dfs_sport }}&n={{ dfs_n }}&stack={{ dfs_stack }}&back={{ '0' if dfs_back == '1' else '1' }}{{ q }}" class="chip {% if dfs_back == '1' %}chip-on{% endif %}" title="Require an opposing offensive player in the QB's game (42.7% of Sunday winners — optional in the research)">Bring-back</a>
+      <a href="/dfs?sport={{ dfs_sport }}&n={{ dfs_n }}&stack={{ dfs_stack }}&back={{ dfs_back }}&ds={{ '0' if dfs_ds == '1' else '1' }}&gs={{ dfs_gs }}&fade={{ dfs_fade }}&cap={{ dfs_cap }}&style={{ dfs_style }}" class="chip {% if dfs_ds == '1' %}chip-on{% endif %}" title="Require >=2 same-team WR/TE with the QB (33/89 Sunday winners, 37.1%)">Double stack</a>
+      <a href="/dfs?sport={{ dfs_sport }}&n={{ dfs_n }}&stack={{ dfs_stack }}&back={{ dfs_back }}&ds={{ dfs_ds }}&gs={{ '0' if dfs_gs == '1' else '1' }}&fade={{ dfs_fade }}&cap={{ dfs_cap }}&style={{ dfs_style }}" class="chip {% if dfs_gs == '1' %}chip-on{% endif %}" title="Concentration play: QB + pass catchers + bring-back all in ONE game (implies QB stack + bring-back)">Game stack</a>
+      <a href="/dfs?sport={{ dfs_sport }}&n={{ dfs_n }}&stack={{ dfs_stack }}&back={{ dfs_back }}&ds={{ dfs_ds }}&gs={{ dfs_gs }}&fade={{ '0' if dfs_fade == '1' else '1' }}&cap={{ dfs_cap }}&style={{ dfs_style }}" class="chip {% if dfs_fade == '1' %}chip-on{% endif %}" title="Exclude the 5 most-rostered players (ownership is an ESTIMATE, not DK official)">Fade chalk</a>
+      <a href="/dfs?sport={{ dfs_sport }}&n={{ dfs_n }}&stack={{ dfs_stack }}&back={{ dfs_back }}&ds={{ dfs_ds }}&gs={{ dfs_gs }}&fade={{ dfs_fade }}&cap={{ '0' if dfs_cap == '3' else (dfs_cap|int + 1) }}&style={{ dfs_style }}" class="chip {% if dfs_cap != '0' %}chip-on{% endif %}" title="Cap how many est. >=20%-owned chalk picks make the lineup (1/2/3, cycles back to off)">Chalk cap {{ 'off' if dfs_cap == '0' else dfs_cap }}</a>
+      <a href="/dfs?sport={{ dfs_sport }}&n={{ dfs_n }}&stack={{ dfs_stack }}&back={{ dfs_back }}&ds={{ dfs_ds }}&gs={{ dfs_gs }}&fade={{ dfs_fade }}&cap={{ dfs_cap }}&style={{ 'balanced' if dfs_style == 'stars' else 'stars' }}" class="chip {% if dfs_style == 'stars' %}chip-on{% endif %}" title="Force >=2 players priced at/above the star threshold, then balance around them">Stars</a>
+      {% endif %}
+    </div>
   </div>
   <span class="tick tick-label">LINEUP ENGINE</span>
 </div>
@@ -21,13 +41,67 @@
 </div>
 {% else %}
 
+{% if note %}
+<div class="glass-card rounded-xl p-3 mb-5 border-brand/20 flex items-start gap-2.5">
+  <svg class="w-4 h-4 text-brand-light shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  <div class="text-xs text-slate-400">{{ note }}</div>
+</div>
+{% endif %}
+
+{% if dfs_excluded_note %}
+<div class="glass-card rounded-xl p-3 mb-5 border-amber-500/25 flex items-start gap-2.5">
+  <svg class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+  <div class="text-xs text-slate-400">{{ dfs_excluded_note }}
+    {% if dfs_excluded.questionable %}
+    <span class="text-slate-500">· {{ dfs_excluded.questionable|length }} players marked Q (questionable) are still in the pool — if one is in a lineup, it shows a suggested backup.</span>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if dfs_contest.name %}
+<div class="glass-card rounded-xl p-3 mb-5 border-brand/20 flex items-start gap-2.5">
+  <svg class="w-4 h-4 text-brand-light shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+  <div class="text-xs text-slate-400">
+    <span class="text-slate-200 font-medium">{{ dfs_contest.name }}</span>
+    <span class="text-slate-500">· ${{ dfs_contest.entry }} entry</span>
+    <span class="text-slate-500">· <span class="text-slate-300">{{ dfs_contest.entered or 0 }}</span> / {{ dfs_contest.field or 0 }} entered</span>
+    <span class="text-slate-500">· <span class="text-slate-300">${{ dfs_contest.pool or 0 }}</span> prize pool</span>
+    {% if dfs_contest.guaranteed %}<span class="text-emerald-400">· guaranteed</span>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if dfs_weather %}
+<div class="glass-card rounded-xl p-3 mb-5 border-sky-500/25 flex items-start gap-2.5">
+  <svg class="w-4 h-4 text-sky-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+  <div class="text-xs text-slate-400 flex flex-wrap items-center gap-1.5">
+    <span class="text-sky-300 font-medium">Weather watch</span>
+    {% for w in dfs_weather %}
+    <span class="pill bg-sky-500/10 text-sky-300" title="Home stadium forecast for the game date">{{ w.home }} {{ w.warn }}{% if w.game %} · {{ w.game }}{% endif %}</span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <!-- Lineup card -->
   <div class="lg:col-span-1">
     <div class="glass-card rounded-xl overflow-hidden mb-4 glow-brand">
       <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between">
-        <h2 class="font-display font-semibold text-white text-sm">Optimized Lineup</h2>
+        <h2 class="font-display font-semibold text-white text-sm">Optimized Lineup{% if lineups|length > 1 %} <span class="text-slate-500 font-normal">· 1 of {{ lineups|length }}</span>{% endif %}</h2>
         <span class="pill bg-surface-3 text-slate-300">{{ slate.slate_name }}</span>
+      </div>
+      <div class="px-5 py-2.5 border-b border-white/5 flex flex-wrap items-center gap-1.5">
+        {% if lineup.diag and dfs_has_rules %}
+        <span class="pill {% if lineup.diag.stacked %}bg-emerald-500/15 text-emerald-300{% else %}bg-surface-3 text-slate-500{% endif %}" title="QB + same-team WR/TE — 85.4% of Sunday winners (2021-2025)">QB stack {{ '✓' if lineup.diag.stacked else '—' }}</span>
+        <span class="pill {% if lineup.diag.double %}bg-emerald-500/15 text-emerald-300{% else %}bg-surface-3 text-slate-500{% endif %}" title=">=2 same-team WR/TE with the QB — 37.1% of Sunday winners">Double {{ '✓' if lineup.diag.double else '—' }}</span>
+        <span class="pill {% if lineup.diag.bring_back %}bg-emerald-500/15 text-emerald-300{% else %}bg-surface-3 text-slate-500{% endif %}" title="Opposing offense in the QB's game — 42.7% of Sunday winners">Bring-back {{ '✓' if lineup.diag.bring_back else '—' }}</span>
+        <span class="pill {% if lineup.diag.game_stacked %}bg-emerald-500/15 text-emerald-300{% else %}bg-surface-3 text-slate-500{% endif %}" title="QB's game carries >=4 offensive players (game-stack concentration)">Game {{ '✓' if lineup.diag.game_stacked else '—' }}</span>
+        <span class="pill bg-surface-3 text-slate-400" title="Estimated ownership >=20% (heuristic, not DK official)">{{ lineup.diag.chalky }} chalky</span>
+        <span class="pill bg-surface-3 text-slate-400" title="Highest estimated ownership in the lineup">own {{ lineup.diag.max_own }}%</span>
+        <span class="pill bg-surface-3 text-slate-400" title="Projected players at >=6 pts per $1k — 85.4% of Sunday winners had >=1 (retrospective, not a projection target)">{{ lineup.diag.six_x }} at 6x</span>
+        {% endif %}
       </div>
       <div class="p-4">
         <div class="grid grid-cols-3 gap-3 mb-2">
@@ -60,8 +134,17 @@
               <span class="pill {% if p.position=='QB' %}bg-purple-500/20 text-purple-400{% elif p.position=='RB' %}bg-blue-500/20 text-blue-400{% elif p.position=='WR' %}bg-emerald-500/20 text-emerald-400{% elif p.position=='TE' %}bg-amber-500/20 text-amber-400{% else %}bg-surface-3 text-slate-300{% endif %}">{{ p.position }}</span>
               {% if p.slot and p.slot != p.position %}<span class="pill bg-surface-3 text-slate-400">{{ p.slot }}</span>{% endif %}
               <div>
-                <div class="text-sm font-medium text-white">{{ p.name }}</div>
+                <div class="text-sm font-medium text-white">{{ p.name }}{% if p.dk_status == 'Q' %} <span class="pill bg-amber-500/20 text-amber-300 align-middle" title="DraftKings lists this player as questionable">Q</span>{% endif %}{% if p.weather_note %} <span class="pill bg-sky-500/10 text-sky-300 align-middle" title="Projection dampened for this game's weather">{{ p.weather_note }}</span>{% endif %}</div>
                 <div class="text-xs text-slate-500">{{ p.team }} · ${{ p.salary }}</div>
+                {% set qr = (dfs_q_swaps.get(lineup.idx) or {}).get(p.name) if dfs_q_swaps else none %}
+                {% if qr %}
+                <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-1">
+                  <span>If he sits:</span>
+                  {% for c in qr %}
+                  <span class="pill bg-surface-3 text-slate-400" title="Replacement #{{ loop.index }} — ${{ c.salary }} ({{ c.value_per_1k }} pts/$1k)">{{ c.name }}</span>
+                  {% endfor %}
+                </div>
+                {% endif %}
               </div>
             </div>
             <div class="text-right">
@@ -84,15 +167,13 @@
       <div class="flex items-center gap-2">
         <svg class="w-4 h-4 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
         <h2 class="font-display font-semibold text-white text-sm">Best Value on the Board</h2>
-        <span class="text-xs text-slate-500 ml-1">pts per $1k vs. salary</span>
+        <span class="text-xs text-slate-500 ml-1">pts per $1k vs. salary{% if slate.form_note %} · {{ slate.form_note }}{% endif %}</span>
       </div>
       <select id="dfs-pos" class="bg-surface-2 border border-white/5 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none" onchange="filterDfs(this.value)">
         <option value="">All positions</option>
-        <option value="QB">QB</option>
-        <option value="RB">RB</option>
-        <option value="WR">WR</option>
-        <option value="TE">TE</option>
-        <option value="DST">DST</option>
+        {% for p in roster.filter_positions %}
+        <option value="{{ p }}">{{ p }}</option>
+        {% endfor %}
       </select>
     </div>
     <div class="max-h-[680px] overflow-y-auto overflow-x-auto">
@@ -105,13 +186,15 @@
             <th class="px-4 py-2.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Salary</th>
             <th class="px-4 py-2.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Proj</th>
             <th class="px-4 py-2.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Value</th>
+            <th class="px-4 py-2.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">Own</th>
+            <th class="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">News</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-white/5" id="dfs-body">
           {% set sorted_players = slate.players|sort(attribute='value_per_1k', reverse=True) %}
           {% for p in sorted_players %}
           <tr data-pos="{{ p.position }}" class="hover:bg-brand/5 transition-colors">
-            <td class="px-4 py-2 text-sm font-medium text-white">{{ p.name }}</td>
+            <td class="px-4 py-2 text-sm font-medium text-white">{{ p.name }}{% if p.dk_status == 'Q' %} <span class="pill bg-amber-500/20 text-amber-300" title="DraftKings lists this player as questionable">Q</span>{% endif %}{% if p.weather_note %} <span class="pill bg-sky-500/10 text-sky-300" title="Projection dampened for this game's weather">{{ p.weather_note }}</span>{% endif %}</td>
             <td class="px-4 py-2"><span class="pill bg-surface-3 text-slate-300">{{ p.position }}</span></td>
             <td class="px-4 py-2 text-xs text-slate-400">{{ p.team }}</td>
             <td class="px-4 py-2 text-right text-sm font-mono text-white">${{ p.salary }}</td>
@@ -119,6 +202,8 @@
             <td class="px-4 py-2 text-right">
               <span class="pill {% if p.value_per_1k >= 30 %}bg-emerald-500/20 text-emerald-300{% elif p.value_per_1k >= 20 %}bg-amber-500/20 text-amber-300{% else %}bg-surface-3 text-slate-400{% endif %}">{{ "%.1f"|format(p.value_per_1k) }}</span>
             </td>
+            <td class="px-4 py-2 text-right text-xs font-mono text-slate-500">{{ (p.est_own or 0)|round|int }}%</td>
+            <td class="px-4 py-2 text-xs">{% if p.news %}<span class="pill {% if p.news == 'Breaking' %}bg-red-500/15 text-red-300{% else %}bg-surface-3 text-slate-400{% endif %}" title="Player news flagged by the draftable feed — verify before locking">{{ p.news }}</span>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -126,6 +211,130 @@
     </div>
   </div>
 </div>
+
+{% if lineups|length > 1 %}
+<div class="glass-card rounded-xl overflow-hidden mt-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <svg class="w-5 h-5 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+      <h2 class="font-display font-semibold text-white text-sm">{{ lineups|length }} Distinct Lineups</h2>
+      <span class="text-xs text-slate-500 ml-1">each pair differs by at least {{ dfs_min_diff }} players{% if dfs_excluded.questionable %} · * questionable{% endif %}</span>
+    </div>
+  </div>
+  <div class="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for lu in lineups %}
+    {% if lu.idx > 1 %}
+    <div class="glass-card rounded-lg p-3.5 border border-white/5">
+      <div class="flex items-center justify-between mb-2.5">
+        <span class="pill bg-brand/20 text-brand-light">Lineup {{ lu.idx }}</span>
+        <div class="flex items-center gap-2 text-xs font-mono">
+          <span class="text-brand-light">{{ "%.1f"|format(lu.projected) }} pts</span>
+          <span class="text-slate-500">${{ lu.salary_used }}</span>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-1.5 mb-2.5">
+        {% if dfs_has_rules %}
+        <span class="pill {% if lu.diag.stacked %}bg-emerald-500/15 text-emerald-300{% else %}bg-surface-3 text-slate-500{% endif %}">QB stack {{ '✓' if lu.diag.stacked else '—' }}</span>
+        <span class="pill {% if lu.diag.double %}bg-emerald-500/15 text-emerald-300{% else %}bg-surface-3 text-slate-500{% endif %}">Double {{ '✓' if lu.diag.double else '—' }}</span>
+        <span class="pill {% if lu.diag.bring_back %}bg-emerald-500/15 text-emerald-300{% else %}bg-surface-3 text-slate-500{% endif %}">Bring-back {{ '✓' if lu.diag.bring_back else '—' }}</span>
+        <span class="pill bg-surface-3 text-slate-400">{{ lu.diag.chalky }} chalky · {{ lu.diag.max_own }}% own</span>
+        {% endif %}
+      </div>
+      <div class="space-y-1">
+        {% for p in lu.lineup %}
+        <div class="flex items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <span class="pill bg-surface-3 text-slate-400 shrink-0">{{ p.position }}</span>
+            <span class="text-slate-200 truncate">{{ p.name }}{% if p.dk_status == 'Q' %}<span class="text-amber-300">*</span>{% endif %}</span>
+          </div>
+          <span class="font-mono text-slate-500 shrink-0">${{ p.salary }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-2.5 pt-2.5 border-t border-white/5 flex items-center justify-between text-[11px] text-slate-500">
+        <span>{{ lu.shared_with_first }} shared with Lineup 1</span>
+        <span class="{% if lu.salary_remaining <= 500 %}text-emerald-400{% else %}text-amber-400{% endif %}">${{ lu.salary_remaining }} unused</span>
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if dfs_portfolio.players %}
+<div class="glass-card rounded-xl overflow-hidden mt-6">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <svg class="w-5 h-5 text-brand-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10m18-10v10M3 12h18M3 7a2 2 0 012-2h1m16 7a2 2 0 01-2 2H5a2 2 0 01-2-2m18-5a2 2 0 00-2-2h-1m-15 0v10m0 0h13"/></svg>
+      <h2 class="font-display font-semibold text-white text-sm">Portfolio Exposure</h2>
+      <span class="text-xs text-slate-500 ml-1">{{ dfs_portfolio.n }} lineups · {{ dfs_portfolio.slots }} slots · {{ "%.1f"|format(dfs_portfolio.tot_pts) }} total pts · max own {{ dfs_portfolio.max_own }}%</span>
+    </div>
+  </div>
+  <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Most exposed players</div>
+      <div class="space-y-1.5">
+        {% for pl in dfs_portfolio.players %}
+        {% if pl.count >= 2 %}
+        <div class="flex items-center gap-2 text-xs">
+          <span class="w-40 truncate text-slate-200 shrink-0" title="{{ pl.name }}">{{ pl.name }} <span class="text-slate-500">({{ pl.pos }})</span></span>
+          <div class="flex-1 h-1.5 rounded-full bg-surface-3/50 overflow-hidden">
+            <div class="h-full rounded-full {% if pl.pct >= 60 %}bg-red-400{% elif pl.pct >= 40 %}bg-amber-400{% else %}bg-emerald-400{% endif %}" style="width: {{ pl.pct }}%"></div>
+          </div>
+          <span class="w-10 text-right font-mono text-slate-400 shrink-0">{{ pl.pct }}%</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Games</div>
+        <div class="flex flex-wrap gap-1.5">
+          {% for g, n in dfs_portfolio.games.items() %}
+          <span class="pill bg-surface-3 text-slate-400" title="Appears in {{ n }} of {{ dfs_portfolio.n }} lineups">{{ n }}× {{ g }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Teams</div>
+        <div class="flex flex-wrap gap-1.5">
+          {% for t, n in dfs_portfolio.teams.items() %}
+          <span class="pill bg-surface-3 text-slate-400" title="Appears in {{ n }} appearances">{{ t }} {{ n }}×</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if dfs_relaxed %}
+<div class="glass-card rounded-xl p-3 mb-5 border-amber-500/30 flex items-start gap-2.5">
+  <svg class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+  <div class="text-xs text-slate-400">{{ dfs_relaxed }}</div>
+</div>
+{% endif %}
+
+{% if dfs_has_rules and not error %}
+<div class="glass-card rounded-xl p-4 mt-6 border-white/5">
+  <div class="flex items-start gap-3">
+    <svg class="w-5 h-5 text-brand-light shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+    <div>
+      <div class="text-sm font-medium text-white">Construction rules from the five-season Milly Maker study</div>
+      <div class="text-xs text-slate-400 mt-1">
+        <span class="text-slate-300">QB stack</span> — QB + ≥1 same-team WR/TE: 76/89 Sunday winners (85.4%), now on by default.
+        <span class="text-slate-300">Bring-back</span> — opposing offense in the QB's game: 38/89 (42.7%), off by default because the research calls it optional.
+        The 6x pill counts projected players at ≥6 pts/$1k; in the study 76/89 winners had one, but the research is explicit that this is a
+        <em class="text-slate-300">retrospective</em> outcome, not a projection target — so it's reported, never forced.
+        Ownership rules are deliberately absent: the study says the ownership sum and low-owned counts must not become mandatory lineup rules,
+        and we don't have pre-lock projected ownership here. This is a construction framework, not a tested profitable strategy.
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <div class="glass-card rounded-xl p-4 mt-6 border-amber-500/20">
   <div class="flex items-start gap-3">
@@ -140,8 +349,10 @@
 
 <script>
 function filterDfs(pos) {
+  const want = (pos || '').toUpperCase();
   document.querySelectorAll('#dfs-body tr').forEach(tr => {
-    tr.style.display = (pos === '' || tr.dataset.pos === pos) ? '' : 'none';
+    const slots = (tr.dataset.pos || '').toUpperCase().split('/');
+    tr.style.display = (!want || slots.includes(want)) ? '' : 'none';
   });
 }
 </script>

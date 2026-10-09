@@ -243,6 +243,66 @@ def load_rosters() -> dict:
     except Exception:
         return {}
 
+
+def sleeper_state() -> dict:
+    """Current Sleeper season/week ({season, week}) or {} when unreachable."""
+    try:
+        r = requests.get(f"{SLEEPER_BASE}/state/nfl", timeout=20)
+        r.raise_for_status()
+        st = r.json()
+        return {"season": int(st.get("season") or 0),
+                "week": int(st.get("week") or 0)}
+    except Exception:
+        return {}
+
+
+def load_sleeper_recent(weeks: int = 3) -> dict:
+    """Average fantasy points over the last `weeks` regular-season weeks, keyed
+    by lowercased full name. Uses Sleeper's player map + weekly stat feed and
+    NFL.com-style standard scoring (no PPR) as a *relative form signal* — the
+    DFS optimizer blends it with DraftKings' season FPPG rather than replacing
+    it. Returns {} whenever Sleeper is unreachable so callers fail soft."""
+    state = sleeper_state()
+    season = state.get("season")
+    wk = state.get("week")
+    if not season or not wk or weeks < 1:
+        return {}
+    roster_map = (load_rosters() or {})
+    if not roster_map:
+        return {}
+    name_by_id: dict[str, str] = {}
+    for pid, meta in roster_map.items():
+        nm = str((meta or {}).get("full_name") or "").strip().lower()
+        if nm:
+            name_by_id[str(pid)] = nm
+
+    def _pts(st: dict) -> float:
+        g = lambda k: float(st.get(k) or 0.0)
+        return (0.1 * g("pass_yds") + 4.0 * g("pass_td") - 2.0 * g("pass_int")
+                + 0.1 * g("rush_yds") + 6.0 * g("rush_td")
+                + 0.1 * g("rec_yds") + 6.0 * g("rec_td")
+                - 2.0 * g("fumbles_lost"))
+
+    acc: dict[str, list[float]] = {}
+    for w in range(max(1, wk - weeks + 1), wk + 1):
+        try:
+            r = requests.get(
+                f"{SLEEPER_BASE}/stats/nfl/regular/{season}/{w}", timeout=30)
+            r.raise_for_status()
+            week_stats = r.json() or {}
+        except Exception:
+            continue
+        for pid, st in week_stats.items():
+            nm = name_by_id.get(str(pid))
+            if not nm:
+                continue
+            acc.setdefault(nm, []).append(_pts(st))
+    out: dict[str, float] = {}
+    for nm, pts in acc.items():
+        if pts:
+            out[nm] = round(sum(pts) / len(pts), 2)
+    return out
+
 LEAGUELOGS_BASE = "https://developer.leaguelogs.com/v1"
 
 

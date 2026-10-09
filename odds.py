@@ -1094,7 +1094,10 @@ def fetch_edge_slate(date: str) -> dict:
         stale = _last_good_slate(cache_key)
         if stale is not None:
             return stale
-    record_line_baselines(quotes)
+    # Seed baselines from the same deduped main-line rows the pages show —
+    # raw quotes include alt lines and mirrored perspectives, which seeded
+    # inconsistent references and made normal lines look like steam moves.
+    record_line_baselines(moneylines + spreads + totals)
     record_line_history(moneylines + spreads + totals)
     log_slate_snapshot(slate, "fetch")
     try:
@@ -1576,14 +1579,22 @@ def record_line_baselines(quotes: list[BetQuote]) -> None:
             continue
         k = _line_steam_key(q)
         if k not in snap:
-            snap[k] = {"line": q.line, "ts": time.time()}
+            # Store the magnitude: the provider flips the sign convention on
+            # spreads between fetches (the same side shows -3.5 one hour and
+            # +3.5 the next), which produced phantom moves of 7 points.
+            snap[k] = {"line": abs(q.line), "ts": time.time()}
             changed = True
     if changed:
         _cache_set("line_snap", snap)
 
 
 def line_moves(quotes: list[BetQuote], min_delta: float = 1.5) -> dict[tuple, dict]:
-    """Movement vs each line's first-seen baseline (steam-move signal)."""
+    """Movement vs each line's first-seen baseline (steam-move signal).
+
+    Compares line *magnitudes* — a sign flip with the same magnitude is a
+    provider perspective change, not a real move; a magnitude change of
+    >= min_delta is genuine movement on either side of zero.
+    """
     snap = _cached("line_snap") or {}
     out: dict[tuple, dict] = {}
     for q in quotes:
@@ -1593,9 +1604,15 @@ def line_moves(quotes: list[BetQuote], min_delta: float = 1.5) -> dict[tuple, di
         base = snap.get(k)
         if not base:
             continue
-        delta = abs(q.line - base["line"])
+        try:
+            base_line = abs(float(base["line"]))
+        except (TypeError, ValueError):
+            continue
+        cur_line = abs(q.line)
+        delta = abs(cur_line - base_line)
         if delta >= min_delta:
-            out[k] = {"from": base["line"], "to": q.line, "delta": round(delta, 1)}
+            out[k] = {"from": round(base_line, 1), "to": round(cur_line, 1),
+                      "delta": round(delta, 1)}
     return out
 
 

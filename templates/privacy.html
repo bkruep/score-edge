@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy — ScoreEdge{% endblock %}
+{% block meta_description %}ScoreEdge privacy policy: what data the site collects, how third-party sports data providers are used, and your choices.{% endblock %}
+{% block canonical %}/privacy{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 border-b border-white/5 pb-3">
+  <h1 class="text-xl font-display font-bold text-white tracking-tight">PRIVACY POLICY</h1>
+  <p class="text-xs text-slate-500 mt-0.5 font-mono">LAST UPDATED: OCTOBER 2026</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="glass-card rounded-xl p-6 max-w-3xl text-sm text-slate-300 leading-relaxed space-y-4">
+  <p>This policy explains what information ScoreEdge ("the site", "we") handles when you use it, and the third parties involved. It is written plainly; where we are not certain which category a piece of data falls into, we treat it conservatively.</p>
+
+  <h2 class="font-display font-semibold text-white text-sm pt-2">Information we handle</h2>
+  <ul class="list-disc pl-5 space-y-1.5">
+    <li><span class="text-white">Nothing you type is stored on a server</span> except optional API keys you explicitly save for the golf and horse-racing tools. Those keys are written to the app's own local settings file and are used only to call the matching provider on your behalf.</li>
+    <li>Tool state that is meant to survive a reload &mdash; for example a saved bankroll value or a watchlist &mdash; is stored locally or on the app instance serving you, not shared with advertisers.</li>
+    <li>Like most web hosts, the infrastructure provider may log standard request data (IP address, user agent, timestamp) for security and uptime. We do not sell this data.</li>
+  </ul>
+
+  <h2 class="font-display font-semibold text-white text-sm pt-2">Third-party data providers</h2>
+  <p>The site displays odds, stats and model numbers supplied by external providers (including sportsbook odds aggregators, DataGolf, FormFav and the NHL/MLB public stats APIs). When you use a tool that calls one of those providers with your own API key, your request goes to that provider under their terms and privacy policy. We do not control their practices.</p>
+
+  <h2 class="font-display font-semibold text-white text-sm pt-2">Cookies &amp; analytics</h2>
+  <p>The site does not run third-party advertising trackers. Any local storage is used only to make the tools work.</p>
+
+  <h2 class="font-display font-semibold text-white text-sm pt-2">Children</h2>
+  <p>The site is intended for adults of legal wagering age. It is not directed at children.</p>
+
+  <h2 class="font-display font-semibold text-white text-sm pt-2">Your choices</h2>
+  <p>You can clear any locally saved preference by clearing your browser storage, and you can remove a saved API key by saving an empty value in the relevant tool. To request changes or ask a question, see the <a href="/contact" class="text-brand hover:underline">contact page</a>.</p>
+
+  <h2 class="font-display font-semibold text-white text-sm pt-2">Changes</h2>
+  <p>This policy may be updated as the site changes. Continued use after an update means you accept the revised policy.</p>
+</div>
+{% endblock %}

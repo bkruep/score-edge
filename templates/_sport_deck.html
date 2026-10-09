@@ -2,6 +2,12 @@
 {% set has_tape = best_bets|length > 0 %}
 {% set has_props = props|length > 0 %}
 {% set has_edge = analytics.n_markets > 0 or analytics.n_quotes > 0 %}
+{% set value_spots = slate.get('value_spots') or [] %}
+{% set has_values = value_spots|length > 0 %}
+{# NFL has its own routes (/bets, /props, /touchdown); the shared /{sport}/{tab}
+   deep-links 404 on it, so rewire them and swap the footer's board pill set. #}
+{% set is_nfl = active_sport == 'nfl' %}
+{% set props_board = '/props' if is_nfl else '/' ~ active_sport ~ '/props' %}
 {% block title %}{{ sport_cfg.name }} — Command Deck | ScoreEdge{% endblock %}
 {% block meta_description %}{{ sport_cfg.name }} betting command deck — moneyline, spread, totals and player props with real edge detection, market motion and portfolio math in one scrolly board.{% endblock %}
 
@@ -69,6 +75,7 @@
 {% block breadcrumb %}
 <nav class="deck-nav mb-6 flex items-center gap-1.5 flex-wrap" aria-label="Deck sections">
   <a href="#deck-field" class="chip deck-spy" data-spy="deck-field">Field</a>
+  {% if has_values %}<a href="#deck-values" class="chip deck-spy" data-spy="deck-values">Value</a>{% endif %}
   {% if has_tape %}<a href="#deck-tape" class="chip deck-spy" data-spy="deck-tape">Best Bets</a>{% endif %}
   <a href="#deck-games" class="chip deck-spy" data-spy="deck-games">Box</a>
   {% if has_props %}<a href="#deck-props" class="chip deck-spy" data-spy="deck-props">Props</a>{% endif %}
@@ -101,8 +108,8 @@
       </h1>
       <p class="text-sm text-slate-400 font-mono mt-3 max-w-xl">{% block deck_tagline %}{{ market_names.get('moneyline', 'Moneyline') }} · {{ market_names.get('point_spread', 'Spread') }} · {{ market_names.get('total_points', 'Total') }}{% if not no_props %} · player props{% endif %} — best price vs book consensus, ranked by true edge.{% endblock %}</p>
       <div class="mt-5 flex items-center gap-2 flex-wrap">
-        <a href="/{{ active_sport }}/edge" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Deep tables →</a>
-        {% if not no_props %}<a href="/{{ active_sport }}/props" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Full props →</a>{% endif %}
+        {% if not is_nfl %}<a href="/{{ active_sport }}/edge" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Deep tables →</a>{% endif %}
+        {% if not no_props %}<a href="{{ props_board }}" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Full props →</a>{% endif %}
         <span class="pill bg-emerald-500/15 text-emerald-400 border-emerald-500/25">boards refresh straight from the feed</span>
       </div>
     </div>
@@ -237,6 +244,39 @@
 </section>
 {% endblock %}
 
+<!-- VALUE SPOTS -->
+{% if has_values %}
+{% set conferences = slate.get('conferences') or {} %}
+<section id="deck-values" class="mb-8 rv">
+  <div class="flex items-center gap-2 mb-3">
+    <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+    <h2 class="font-display font-semibold text-white text-sm">Value Spots — Mispriced Main Lines</h2>
+    <span class="text-xs text-slate-600 font-mono">{{ value_spots|length }} lines where best price beats consensus</span>
+  </div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+    {% for q in value_spots[:12] %}
+    <article class="glass-card deck-box rounded-xl p-4 flex flex-col" data-box style="--rd:{{ loop.index0 * 50 }}ms">
+      <div class="flex items-center gap-2">
+        <span class="text-[9px] font-mono uppercase tracking-widest text-slate-500 truncate">{{ market_names.get(q.market, q.market) }}</span>
+        {{ edge_dial(q, 26) }}
+      </div>
+      <div class="text-sm text-white font-medium mt-1 truncate" title="{{ q.selection }}">{{ q.selection }}{% if q.line is not none %} <span class="text-slate-500 text-xs">{{ q.line }}</span>{% endif %}</div>
+      <div class="text-[11px] text-slate-500 truncate">{{ q.game }}{% if conferences.get(q.game) %} <span class="pill bg-surface-3 text-slate-400">{{ conferences[q.game] }}</span>{% endif %}</div>
+      <div class="mt-3 rounded-lg bg-white/[0.03] border border-white/5 px-2.5 py-1.5 hot flex items-center gap-2" data-hot>
+        <span class="min-w-0 flex-1 text-[10px] font-mono text-slate-600 truncate">{{ q.best_book }} · cons {{ q.consensus_odds }}</span>
+        <span class="font-mono text-sm text-emerald-400">{{ odds.odds_html(q.best_odds) }}</span>
+        {{ slip_btn(q) }}
+      </div>
+      {{ ladder(q, 4) }}
+    </article>
+    {% endfor %}
+  </div>
+  {% if value_spots|length > 12 %}
+  <div class="mt-3 text-center text-[11px] font-mono text-slate-600">+{{ value_spots|length - 12 }} more in the feed · ranked into Best Bets below</div>
+  {% endif %}
+</section>
+{% endif %}
+
 <!-- BEST BETS TAPE -->
 {% if has_tape %}
 <section id="deck-tape" class="mb-8 rv">
@@ -348,7 +388,7 @@
       {% set group_total = prop_groups_group[mk]|length %}
       {% if group_total > 40 %}
       <div class="px-5 py-3 border-t border-white/5 text-center">
-        <a href="/{{ active_sport }}/props" class="pill bg-surface-3 text-slate-400 hover:text-brand transition-colors">{{ group_total - 40 }} more {{ label|lower }} plays — full board →</a>
+        <a href="{{ props_board }}" class="pill bg-surface-3 text-slate-400 hover:text-brand transition-colors">{{ group_total - 40 }} more {{ label|lower }} plays — full board →</a>
       </div>
       {% endif %}
     </div>
@@ -436,12 +476,20 @@
 
 <div class="deck-rule my-6"></div>
 <div class="flex items-center flex-wrap gap-2 mb-2 rv">
+  {% if is_nfl %}
+  <span class="text-[10px] font-mono uppercase tracking-widest text-slate-600">Open the full {{ sport_cfg.name }} board</span>
+  <a href="/bets" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Live Lines</a>
+  <a href="/props" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Player Props</a>
+  <a href="/touchdown" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Touchdown Hunt</a>
+  <a href="/nfl/dashboard" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Classic dashboard</a>
+  {% else %}
   <span class="text-[10px] font-mono uppercase tracking-widest text-slate-600">Open the full {{ sport_cfg.name }} board</span>
   <a href="/{{ active_sport }}/best" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Best Bets</a>
   {% if not no_props %}<a href="/{{ active_sport }}/props" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Props</a>{% endif %}
   <a href="/{{ active_sport }}/games" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Matchups</a>
   <a href="/{{ active_sport }}/edge" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Deep Edge</a>
   <a href="/bets" class="pill bg-surface-3 text-slate-300 hover:text-brand transition-colors">Home deck</a>
+  {% endif %}
 </div>
 {% endblock %}
 
@@ -524,7 +572,7 @@
         });
       });
     }, { rootMargin: '-30% 0px -58% 0px' });
-    ['deck-field', 'deck-tape', 'deck-games', 'deck-props', 'deck-edge'].forEach(function (id) {
+    ['deck-field', 'deck-values', 'deck-tape', 'deck-games', 'deck-props', 'deck-edge'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) spyIo.observe(el);
     });

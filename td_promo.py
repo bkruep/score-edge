@@ -249,6 +249,23 @@ def build(slate: dict) -> tuple[list[dict], list[dict], list[dict], str, str]:
     stats_map = _stats_map(stats)
     signal = _market_signal(list(slate.get("props") or []))
 
+    # Scope the player universe to THIS WEEK's DraftKings draftable pool when
+    # the DFS slate is available. Sleeper rosters still carry retired/unsigned
+    # ghosts (Frank Gore on BUF, etc.) that have zero TD expectation but were
+    # being ranked at the position prior. DK only prices players actually on a
+    # roster this week, so a player missing from it is dropped. If a team is
+    # absent from the DK slate entirely (e.g. an off-main-slate game), we keep
+    # its players rather than silently emptying the team.
+    recent_pool: dict[str, set[str]] = {}
+    try:
+        import dfs
+        dk_slate = dfs.fetch_slate("nfl")
+        for p in dk_slate.get("players") or []:
+            t = str(p.get("team") or "").upper()
+            recent_pool.setdefault(t, set()).add(str(p.get("name") or "").casefold())
+    except Exception:
+        recent_pool = {}
+
     anytime: list[dict] = []
     longest: list[dict] = []
     for info in rosters.values():
@@ -267,6 +284,9 @@ def build(slate: dict) -> tuple[list[dict], list[dict], list[dict], str, str]:
         if not name:
             continue
         key = name.casefold()
+        pool = recent_pool.get(team)
+        if pool is not None and key not in pool:
+            continue
         srow = stats_map.get(key)
         prior = priors.get(pos, 0.2)
         if srow:
@@ -274,8 +294,13 @@ def build(slate: dict) -> tuple[list[dict], list[dict], list[dict], str, str]:
             p_td = w * srow["td_rate"] + (1.0 - w) * prior
             note = f"{srow['tds']} TD / {srow['games']} gms"
         else:
-            p_td = prior
-            note = "rookie — position avg"
+            # No stats AND no market: zero evidence of involvement in the
+            # offense, so a full position prior (a mean that includes backups)
+            # is nonsense — it ranked deep-roster RBs ABOVE used starters.
+            # Hold them at a low floor instead; any player with a real TD is
+            # strictly above it.
+            p_td = prior * 0.35
+            note = "no stats — deep roster"
         p_td = min(p_td * 0.97, 0.85)
 
         sig = signal.get(key, {})

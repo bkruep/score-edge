@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Goal Hunt — NHL Anytime-Goal Projections | ScoreEdge{% endblock %}
+{% block meta_description %}NHL Goal Hunt: every skater on tonight's card ranked by an estimated anytime-goal probability, built from the player's goal and shot rates on the league's public stats feed.{% endblock %}
+{% block canonical %}/goal-hunt{% endblock %}
+{% block og_url %}/goal-hunt{% endblock %}
+
+{% block breadcrumb %}
+<div class="mb-5 border-b border-white/5 pb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">GOAL <span class="gradient-text">HUNT</span> — NHL</h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">ANYTIME-GOAL PROJECTION &middot; STATS-BASED ESTIMATE &middot; NOT A MARKET PRICE</p>
+  </div>
+  <form method="get" action="/goal-hunt" class="flex items-center gap-2">
+    <input type="date" name="date" value="{{ hunt.date }}" class="bg-surface-2 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-brand/40">
+    <button class="chip chip-on" type="submit">Go</button>
+    <a href="/goal-hunt?date={{ today }}" class="chip">Today</a>
+  </form>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if not hunt.ok %}
+<div class="glass-card rounded-xl p-10 text-center">
+  <div class="text-3xl mb-3">🏒</div>
+  {% if hunt.error == 'no_games' %}
+  <div class="text-sm font-medium text-white mb-1">No NHL games on {{ hunt.date }}</div>
+  <div class="text-xs text-slate-500 max-w-md mx-auto">Pick another date above — the board rebuilds for any night with games on the schedule.</div>
+  {% else %}
+  <div class="text-sm font-medium text-white mb-1">Couldn't build the board</div>
+  <div class="text-xs text-slate-500 max-w-md mx-auto">{{ hunt.error }}</div>
+  {% endif %}
+</div>
+{% else %}
+<div class="glass-card rounded-xl p-4 mb-5 border-brand/15 flex items-center gap-3 flex-wrap">
+  <span class="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Goal Hunt</span>
+  <span class="text-sm text-white font-medium">{{ hunt.date }}</span>
+  <span class="text-[10px] font-mono text-slate-500">{{ hunt.games_n }} games &middot; {{ hunt.players_n }} skaters &middot; season {{ hunt.season }}</span>
+  <div class="flex-1"></div>
+  <span class="text-[10px] font-mono text-slate-600">{{ hunt.fetched_at }}</span>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-6">
+  {% for g in hunt.games %}
+  <div class="glass-card rounded-xl overflow-hidden">
+    <div class="px-4 py-3 border-b border-white/5 flex items-center gap-2">
+      <span class="text-sm font-semibold text-white">{{ g.matchup }}</span>
+      <span class="text-[10px] font-mono text-slate-500">{{ g.start }} UTC &middot; {{ g.state }}</span>
+    </div>
+    <div class="grid grid-cols-2 divide-x divide-white/5">
+      {% for t in g.teams %}
+      <div class="p-3">
+        <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-2">{{ t.abbr }} <span class="text-slate-600">{{ t.name }}</span></div>
+        <div class="space-y-1.5">
+          {% for p in t.players %}
+          <div class="rounded-lg px-2 py-1.5 bg-surface-2/60">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs text-white truncate">{{ p.name }} <span class="text-slate-600 text-[9px]">{{ p.pos }}</span></span>
+              <span class="text-xs font-mono {% if p.prob >= 30 %}text-emerald-300{% elif p.prob >= 20 %}text-brand{% else %}text-slate-400{% endif %}">{{ "%.1f"|format(p.prob) }}%</span>
+            </div>
+            <div class="mt-1 h-1 rounded-full bg-white/5 overflow-hidden">
+              <div class="h-full rounded-full {% if p.prob >= 30 %}bg-emerald-400{% elif p.prob >= 20 %}bg-brand{% else %}bg-slate-500{% endif %}" style="width:{{ [p.prob, 100]|min }}%"></div>
+            </div>
+            <div class="text-[9px] font-mono text-slate-600 mt-0.5">{{ p.goals }} G in {{ p.gp }} GP &middot; {{ "%.1f"|format(p.spg) }} shots/gm &middot; proj {{ "%.2f"|format(p.proj_goals) }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="glass-card rounded-xl p-4 border-white/5">
+  <div class="text-xs text-slate-400 leading-relaxed">
+    <span class="text-amber-300">Estimates, not guarantees.</span> Each percentage is a Poisson anytime-goal
+    projection from the player's own goals-per-game and shot volume (shots blended with a ~10.5% league-average
+    shooting rate), using the league's public stats feed. It does not know tonight's goalie, injuries, lineup
+    or power-play time &mdash; and it is not a sportsbook price. Treat it as a starting point, not a pick.
+  </div>
+</div>
+{% endif %}
+{% endblock %}

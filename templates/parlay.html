@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Parlay Fair-Odds Builder — Same-Game Leg Pricing | ScoreEdge{% endblock %}
+{% block meta_description %}Build a same-game parlay and compare the book's combined price against the de-vigged fair price per leg, with correlated-leg warnings. Powered by ScoreEdge.{% endblock %}
+{% block canonical %}/parlay{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-white/5 pb-3">
+  <div>
+    <h1 class="text-xl font-display font-bold text-white tracking-tight">PARLAY BUILDER</h1>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">ONE BEST BET PER PLAYER &middot; FAIR (DE-VIGGED) PRICE PER LEG &middot; BOOK TAKEOUT &middot; CORRELATION CAVEAT &middot; KICKERS &amp; LONGSHOTS OUT</p>
+    {% include "_tool_sports.html" %}
+  </div>
+  <div class="text-right">
+    <div class="text-[10px] font-mono text-slate-600">{{ slate_size }} PROP LINES ON THE BOARD</div>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+{% if not api_key_set %}
+<div class="glass-card rounded-xl p-4 mb-6 flex items-center gap-3 border-amber-500/20">
+  <div class="text-sm font-medium text-white">No odds feed connected</div>
+  <div class="text-xs text-slate-400">Add ODDS_API_KEY to the environment, then reload.</div>
+</div>
+{% endif %}
+
+{% if games %}
+<div class="flex flex-wrap items-center gap-1.5 mb-3">
+  {% if active_game %}<a href="/parlay?sport={{ active_sport }}&n={{ per_game }}" class="chip chip-on">All games</a>{% else %}<span class="chip chip-on">All games</span>{% endif %}
+  {% for g in games %}
+  <a href="/parlay?sport={{ active_sport }}&game={{ g|urlencode }}&n={{ per_game }}" class="chip {% if active_game == g %}chip-on{% endif %}">{{ g }}</a>
+  {% endfor %}
+</div>
+<div class="flex flex-wrap items-center gap-1.5 mb-5">
+  <span class="text-[10px] font-mono text-slate-600 uppercase mr-1">Players per game</span>
+  {% for k in [5, 8, 10] %}
+  <a href="/parlay?sport={{ active_sport }}{% if active_game %}&game={{ active_game|urlencode }}{% endif %}&n={{ k }}" class="chip {% if per_game == k %}chip-on{% endif %}">{{ k }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="grid lg:grid-cols-[1fr_340px] gap-4 items-start">
+  <div class="glass-card rounded-xl overflow-hidden">
+    <div class="px-4 py-3 border-b border-white/5 flex items-center gap-2">
+      <h2 class="font-display font-semibold text-white text-sm">Legs{% if active_game %} — {{ active_game }}{% endif %}</h2>
+      <span class="text-[10px] font-mono text-slate-500">click a row to add the leg · fair price is de-vigged from the books on that market</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="sticky top-0 bg-surface-2 z-10">
+          <tr class="text-left text-[10px] font-mono uppercase tracking-wider text-slate-500">
+            <th class="px-4 py-2 w-8"></th>
+            <th class="px-3 py-2">Player / market</th>
+            <th class="px-3 py-2 text-right">Side</th>
+            <th class="px-3 py-2 text-right">Line</th>
+            <th class="px-3 py-2 text-right">Price</th>
+            <th class="px-3 py-2 text-right">Fair</th>
+            <th class="px-3 py-2 text-right">Edge</th>
+            <th class="px-3 py-2">Book</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in legs %}
+          <tr class="border-t border-white/5 hover:bg-brand/[0.04] cursor-pointer select-none leg-row"
+              data-fd="{{ r.fair_dec }}" data-de="{{ r.dec }}" data-owner="{{ r.player }}" data-game="{{ r.game }}"
+              data-label="{{ r.player }} {{ r.market|replace('player_','') }} {{ r.side }} {{ r.line }}">
+            <td class="px-4 py-2.5"><input type="checkbox" class="leg-cb accent-brand" title="add leg"></td>
+            <td class="px-3 py-2.5">
+              <div class="text-white font-medium">{{ r.player }}</div>
+              <div class="text-[10px] text-slate-500 font-mono">{{ r.market|replace('player_','')|replace('_',' ') }}</div>
+            </td>
+            <td class="px-3 py-2.5 text-right text-xs"><span class="pill {% if r.side == 'Over' %}bg-emerald-500/10 text-emerald-300{% else %}bg-surface-3 text-slate-300{% endif %}">{{ r.side }}</span></td>
+            <td class="px-3 py-2.5 text-right font-mono text-slate-300">{{ r.line }}</td>
+            <td class="px-3 py-2.5 text-right font-mono text-white">{{ r.am }}</td>
+            <td class="px-3 py-2.5 text-right font-mono text-brand">{{ r.fair_dec }}</td>
+            <td class="px-3 py-2.5 text-right font-mono {% if r.edge > 0 %}text-emerald-300{% else %}text-slate-500{% endif %}">{{ "%.1f"|format(r.edge) }}%</td>
+            <td class="px-3 py-2.5 text-xs text-slate-400 font-mono">{{ r.book }}</td>
+          </tr>
+          {% endfor %}
+          {% if not legs %}
+          <tr><td colspan="8" class="px-4 py-6 text-sm text-slate-500">
+            {% if active_sport in ('cfb', 'cbb') %}
+            No game lines posted for this game yet — college boards build from the moneyline / spread / total.
+            {% else %}
+            No prop legs on this path yet. Pick a game above.
+            {% endif %}
+          </td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="glass-card rounded-xl p-4 sticky top-20">
+    <h2 class="font-display font-semibold text-white text-sm mb-3">Slip</h2>
+    <div id="slip-legs" class="grid gap-1.5 mb-3 text-xs text-slate-400"></div>
+    <div class="grid grid-cols-2 gap-2 text-xs mb-3">
+      <div class="bg-surface-1 rounded-lg p-2.5">
+        <div class="text-[10px] font-mono text-slate-500 uppercase">Fair parlay</div>
+        <div class="text-base font-display font-bold text-brand" id="slip-fair">—</div>
+      </div>
+      <div class="bg-surface-1 rounded-lg p-2.5">
+        <div class="text-[10px] font-mono text-slate-500 uppercase">Book pay</div>
+        <div class="text-base font-display font-bold text-white" id="slip-book">—</div>
+      </div>
+      <div class="bg-surface-1 rounded-lg p-2.5">
+        <div class="text-[10px] font-mono text-slate-500 uppercase">Fair hit</div>
+        <div class="text-base font-display font-bold text-white" id="slip-pct">—</div>
+      </div>
+      <div class="bg-surface-1 rounded-lg p-2.5">
+        <div class="text-[10px] font-mono text-slate-500 uppercase">Takeout</div>
+        <div class="text-base font-display font-bold {% if takeout_warn %}text-amber-300{% else %}text-white{% endif %}" id="slip-takeout">—</div>
+      </div>
+    </div>
+    <div id="slip-correl" class="text-[11px] leading-relaxed"></div>
+    <p class="text-[10px] font-mono text-slate-600 mt-3">Fair price per leg = Shin de-vig against the actual books on that market. Same-game legs are positively correlated — the true parlay hit rate is usually <i>worse</i> than the fair product below.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  var rows = Array.prototype.slice.call(document.querySelectorAll('.leg-row'));
+  function legOf(i) { var els = rows[i].getElementsByTagName('td'); return { player: rows[i].dataset.owner, game: rows[i].dataset.game, fd: parseFloat(rows[i].dataset.fd) || 1, de: parseFloat(rows[i].dataset.de) || 1, label: rows[i].dataset.label }; }
+  function paint() {
+    var sel = [];
+    rows.forEach(function (r, i) { if (r.querySelector('.leg-cb').checked) sel.push(i); });
+    var lags = sel.map(legOf);
+    var out = document.getElementById('slip-legs');
+    if (!lags.length) { out.innerHTML = '<div class="text-slate-600">No legs selected.</div>'; }
+    else { out.innerHTML = lags.map(function (l) { return '<div class="flex items-center justify-between gap-2"><span class="truncate">' + l.label + '</span><span class="font-mono text-slate-500">' + l.fd.toFixed(2) + '</span></div>'; }).join(''); }
+    var fair = 1, book = 1, fpct = 1;
+    lags.forEach(function (l) { fair *= l.fd; book *= l.de; fpct *= 100 / l.fd / 100; });
+    document.getElementById('slip-fair').textContent = lags.length ? fair.toFixed(2) : '—';
+    document.getElementById('slip-book').textContent = lags.length ? book.toFixed(2) : '—';
+    document.getElementById('slip-pct').textContent = lags.length ? (fpct * 100).toFixed(2) + '%' : '—';
+    document.getElementById('slip-takeout').textContent = lags.length ? ((book - fair) / book * 100).toFixed(1) + '%' : '—';
+    var byOwner = {}, games = {};
+    lags.forEach(function (l) { byOwner[l.player] = (byOwner[l.player] || 0) + 1; games[l.game] = (games[l.game] || 0) + 1; });
+    var cor = document.getElementById('slip-correl');
+    var parts = [];
+    var sharing = Object.keys(byOwner).filter(function (k) { return byOwner[k] > 1; });
+    if (sharing.length) parts.push('<span class="text-amber-300">⚠ Same player legs: ' + sharing.join(', ') + ' are correlated and will not hit together as often as independent pricing suggests.</span>');
+    if (Object.keys(games).length > 1) parts.push('<span class="text-slate-400">Note: your legs span multiple games — that stops being a same-game parlay.</span>');
+    cor.innerHTML = parts.join('<br>');
+  }
+  rows.forEach(function (r) { r.addEventListener('click', function (ev) { var cb = r.querySelector('.leg-cb'); if (ev.target !== cb) { cb.checked = !cb.checked; } paint(); }); r.querySelector('.leg-cb').addEventListener('change', paint); });
+})();
+</script>
+{% endblock %}
