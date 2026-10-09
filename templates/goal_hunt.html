@@ -37,7 +37,7 @@
 <div class="flex flex-wrap items-center gap-1.5 mb-5">
   {% if hunt.active_game %}<a href="/goal-hunt?date={{ hunt.date }}" class="chip chip-on">All games</a>{% else %}<span class="chip chip-on">All games</span>{% endif %}
   {% for g in hunt.games %}
-  <a href="/goal-hunt?date={{ hunt.date }}&game={{ g|urlencode }}" class="chip {% if hunt.active_game == g %}chip-on{% endif %}">{{ g }}</a>
+  <a href="/goal-hunt?date={{ hunt.date }}&game={{ g|urlencode }}" class="chip {% if hunt.active_game == g %}chip-on{% endif %}" data-tip="{{ (hunt.per_game or {}).get(g, [])|tojson|forceescape }}">{{ g }}</a>
   {% endfor %}
 </div>
 {% endif %}

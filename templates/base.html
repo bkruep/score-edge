@@ -576,6 +576,25 @@
     .ksheet-row:last-child { border-bottom: 0; }
     .ksheet-row kbd { border: 1px solid rgba(148,163,184,0.2); border-radius: 6px; padding: 2px 7px; font-size: .64rem; font-family: 'JetBrains Mono', monospace; color: #94a3b8; }
 
+    /* ---- SORTABLE TABLES ---- */
+    th.sortable { cursor: pointer; position: relative; white-space: nowrap; user-select: none; }
+    th.sortable:hover { color: #fff; }
+    th.sortable::after { content: '⇅'; margin-left: 5px; font-size: .6rem; opacity: .35; color: #64748b; }
+    th.sort-asc::after { content: '▲'; opacity: 1; color: #00e676; }
+    th.sort-desc::after { content: '▼'; opacity: 1; color: #00e676; }
+
+    /* ---- UNDO ACTIONS ON TOASTS ---- */
+    .toast-act { margin-left: 5px; padding: 3px 9px; border-radius: 7px; background: rgba(0,230,118,0.14); border: 1px solid rgba(0,230,118,0.35); color: #00e676; font-size: .74rem; font-family: 'JetBrains Mono', monospace; font-weight: 700; cursor: pointer; }
+    .toast-act:hover { background: rgba(0,230,118,0.26); }
+
+    /* ---- GAME-CHIP HOVER PREVIEW ---- */
+    #hover-tip { position: fixed; z-index: 95; pointer-events: none; min-width: 190px; max-width: 260px; border-radius: 12px; background: rgba(7,11,18,0.97); border: 1px solid rgba(148,163,184,0.16); box-shadow: 0 18px 50px rgba(0,0,0,.55); padding: 10px 12px; display: none; opacity: 0; transform: translateY(6px); transition: opacity .18s ease, transform .18s ease; }
+    #hover-tip.show { display: block; opacity: 1; transform: none; }
+    .ht-title { font-size: .62rem; font-family: 'JetBrains Mono', monospace; color: #64748b; letter-spacing: .08em; text-transform: uppercase; border-bottom: 1px solid rgba(148,163,184,0.1); padding-bottom: 6px; margin-bottom: 6px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ht-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: .74rem; color: #e2e8f0; }
+    .ht-row em { font-style: normal; color: #64748b; font-family: 'JetBrains Mono', monospace; font-size: .62rem; }
+    .ht-pr { font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: #00e676; }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: .01ms !important; animation-iteration-count: 1 !important;
@@ -811,6 +830,8 @@
     <div class="ksheet-row"><span>Open / confirm</span><span><kbd>Enter</kbd></span></div>
     <div class="ksheet-row"><span>Close overlays</span><span><kbd>Esc</kbd></span></div>
     <div class="ksheet-row"><span>Copy a pick / value</span><span><kbd>click value</kbd></span></div>
+    <div class="ksheet-row"><span>Sort a board</span><span><kbd>click header</kbd></span></div>
+    <div class="ksheet-row"><span>Preview a game</span><span><kbd>hover chip</kbd></span></div>
   </div>
 </div>
 
@@ -871,6 +892,7 @@
     var panel = document.getElementById('ledger-panel');
     var rowsEl = document.getElementById('ledger-rows');
     var open = false;
+    var undoCache = null, undoTO = null;
 
     function amDec(a) { a = parseInt(a, 10) || -110; return a > 0 ? 1 + a / 100 : 1 + 100 / (-a); }
     function amTxt(a) { a = parseInt(a, 10) || 0; return a > 0 ? '+' + a : String(a); }
@@ -956,7 +978,26 @@
       if (window.Toast) window.Toast('Added to slip — ' + entry.m, 'ok');
       return true;
     }
-    function remove(id) { items = items.filter(function (x) { return x.id !== id; }); save(); render(); if (window.Toast) window.Toast('Removed from slip'); }
+    function remove(id) {
+      var it = null, idx = -1;
+      for (var i = 0; i < items.length; i++) { if (items[i].id === id) { it = items[i]; idx = i; break; } }
+      if (!it) return;
+      items.splice(idx, 1); save(); render();
+      undoCache = { it: it, idx: idx };
+      if (undoTO) clearTimeout(undoTO);
+      undoTO = setTimeout(function () { undoCache = null; }, 6000);
+      if (window.Toast) window.Toast('Removed from slip', '', {
+        label: 'Undo', ttl: 6000,
+        fn: function () {
+          if (undoTO) clearTimeout(undoTO); undoTO = null;
+          var u = undoCache; undoCache = null;
+          if (!u) return;
+          items.splice(Math.min(u.idx, items.length), 0, u.it);
+          save(); render();
+          if (window.Toast) window.Toast('Restored to slip', 'ok');
+        }
+      });
+    }
     function clearAll() { items = []; save(); render(); if (window.Toast) window.Toast('Slip cleared', 'ok'); }
 
     function flash(btn) { if (!btn) return; btn.classList.add('added'); setTimeout(function () { btn.classList.remove('added'); }, 320); }
@@ -1592,7 +1633,7 @@
 
   /* ---- FEEDBACK PACK: toasts + copy-to-clipboard + shortcut sheet ---- */
   (function () {
-    function toast(msg, type) {
+    function toast(msg, type, opts) {
       var box = document.getElementById('toasts');
       if (!box) return;
       var t = document.createElement('div');
@@ -1602,8 +1643,22 @@
       var txt = document.createElement('span');
       txt.textContent = msg;
       t.appendChild(dot); t.appendChild(txt);
+      var ttl = (opts && opts.ttl) || 2600;
+      var remove = function () { t.classList.add('out'); setTimeout(function () { t.remove(); }, 320); };
+      var to;
+      if (opts && opts.label) {
+        var act = document.createElement('button');
+        act.type = 'button'; act.className = 'toast-act';
+        act.textContent = opts.label;
+        act.addEventListener('click', function () {
+          clearTimeout(to);
+          remove();
+          if (opts.fn) opts.fn();
+        });
+        t.appendChild(act);
+      }
       box.appendChild(t);
-      setTimeout(function () { t.classList.add('out'); setTimeout(function () { t.remove(); }, 320); }, 2600);
+      to = setTimeout(remove, ttl);
     }
     window.Toast = toast;
 
@@ -1638,6 +1693,83 @@
         if (e.key === '?') { e.preventDefault(); if (sheet.hidden) openS(); else closeS(); }
       });
     }
+  })();
+</script>
+
+<script>
+  /* ---- SORTABLE TABLE COLUMNS ---- */
+  (function () {
+    var key = 0, dir = {};
+    function cellText(r, ci) {
+      var td = r.children[ci];
+      return td ? (td.textContent || '').trim() : '';
+    }
+    function cmp(a, b, asc) {
+      var av = a[1], bv = b[1];
+      var an = parseFloat(av.replace(/[$,%+]/g, '')), bn = parseFloat(bv.replace(/[$,%+]/g, ''));
+      var AN = av !== '' && isFinite(an) && /\d/.test(av);
+      var BN = bv !== '' && isFinite(bn) && /\d/.test(bv);
+      var r = (AN && BN) ? an - bn : av.localeCompare(bv, undefined, { numeric: true });
+      return asc ? r : -r;
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('table'), function (tbl) {
+      if (tbl.hasAttribute('data-nosort')) return;
+      var thead = tbl.querySelector('thead');
+      if (!thead) return;
+      var ths = Array.prototype.slice.call(thead.querySelectorAll('th'));
+      if (!ths.length) return;
+      ths.forEach(function (th, ci) {
+        if (th.hasAttribute('data-nosort')) return;
+        th.classList.add('sortable');
+        th.setAttribute('title', 'Click to sort');
+        th.addEventListener('click', function () {
+          var tb = tbl.querySelector('tbody'); if (!tb) return;
+          var rows = Array.prototype.slice.call(tb.querySelectorAll('tr'));
+          if (!rows.length) return;
+          var k = 't' + (++key);
+          var cur = dir[k] || { ci: -1, asc: true };
+          var asc = (cur.ci === ci) ? !cur.asc : true;
+          dir[k] = { ci: ci, asc: asc };
+          ths.forEach(function (t, i) { t.classList.remove('sort-asc', 'sort-desc'); });
+          ths[ci].classList.add(asc ? 'sort-asc' : 'sort-desc');
+          var pairs = rows.map(function (r) { return [r, cellText(r, ci)]; });
+          pairs.sort(function (x, y) { return cmp(x, y, asc); });
+          var frag = document.createDocumentFragment();
+          pairs.forEach(function (p) { frag.appendChild(p[0]); });
+          tb.appendChild(frag);
+        });
+      });
+    });
+  })();
+
+  /* ---- GAME-CHIP HOVER PREVIEW ---- */
+  (function () {
+    var tip = document.getElementById('hover-tip');
+    if (!tip) { tip = document.createElement('div'); tip.id = 'hover-tip'; document.body.appendChild(tip); }
+    function esc(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tip]'), function (el) {
+      el.addEventListener('mouseenter', function () {
+        tip.classList.remove('show');
+        var raw = el.getAttribute('data-tip');
+        if (!raw) return;
+        var data;
+        try { data = JSON.parse(raw); } catch (e) { return; }
+        if (!data || !data.length) return;
+        var h = '<div class="ht-title">' + esc(el.textContent.trim()) + '</div>';
+        data.forEach(function (d, i) {
+          h += '<div class="ht-row"><span>' + (i + 1) + '. ' + esc(d.p) + ' <em>' + esc(d.t) + ' · ' + esc(d.pt) + '</em></span><span class="ht-pr">' + (+d.pr).toFixed(1) + '%</span></div>';
+        });
+        tip.innerHTML = h;
+        var r = el.getBoundingClientRect();
+        var tw = tip.offsetWidth, th = tip.offsetHeight;
+        var x = Math.max(8, Math.min(r.left + r.width / 2 - tw / 2, window.innerWidth - tw - 8));
+        var y = r.bottom + 10;
+        if (r.bottom + th + 14 > window.innerHeight) y = r.top - th - 10;
+        tip.style.left = x + 'px'; tip.style.top = y + 'px';
+        tip.classList.add('show');
+      });
+      el.addEventListener('mouseleave', function () { tip.classList.remove('show'); });
+    });
   })();
 </script>
 {% block scripts %}{% endblock %}

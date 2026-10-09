@@ -164,14 +164,23 @@ def build_board(date_str: str = "", game: str = "", top: int = 10,
                     "proj_goals": round(rate, 3), "prob": round(p * 100.0, 1),
                 })
 
+    ranked = sorted(rows, key=lambda r: (r["prob"], r["gpg"]), reverse=True)
+    per_game: dict[str, list[dict]] = {}
+    for r in ranked:
+        lst = per_game.setdefault(r["game"], [])
+        if len(lst) < 4:
+            lst.append({"p": r["player"], "pt": r["pos"], "t": r["team"],
+                        "opp": r["opp"], "pr": r["prob"]})
     if game:
         rows = [r for r in rows if r["game"] == game]
-    rows.sort(key=lambda r: (r["prob"], r["gpg"]), reverse=True)
-    rows = rows[:top]
+        rows = sorted(rows, key=lambda r: (r["prob"], r["gpg"]), reverse=True)[:top]
+    else:
+        rows = ranked[:top]
 
     result = {
         "ok": True, "error": "", "date": date_str, "season": season,
         "games": game_names, "active_game": game, "rows": rows, "count": len(rows),
+        "per_game": per_game,
         "fetched_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
     }
     toolbox._save(_CACHE, {"ts": time.time(), "key": ck, "result": result})
