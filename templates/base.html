@@ -85,9 +85,23 @@
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
     .search-results { backdrop-filter: blur(14px); background: rgba(7, 11, 18, 0.98); }
     .pill { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 600; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.04em; border: 1px solid transparent; }
-    .chip { border: 1px solid rgba(255,255,255,0.10); background: #0c1120; color: #94a3b8; padding: 4px 12px; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.04em; cursor: pointer; transition: all .15s ease; }
+    .chip { position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.10); background: #0c1120; color: #94a3b8; padding: 4px 12px; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.04em; cursor: pointer; transition: all .15s ease; }
     .chip:hover { color: #fff; border-color: rgba(255,255,255,0.35); }
     .chip-on { border-color: rgba(0,230,118,0.55); background: rgba(0,230,118,0.12); color: #fff; }
+    /* glide-of-light sweeping across a chip on hover */
+    .chip::after { content: ''; position: absolute; top: 0; bottom: 0; left: -40%; width: 35%; pointer-events: none;
+      background: linear-gradient(100deg, transparent, rgba(255,255,255,0.22), transparent); transform: skewX(-18deg); opacity: 0; }
+    .chip:hover::after { animation: chipSheen .55s ease; }
+    @keyframes chipSheen { 0% { left: -40%; opacity: 0; } 25% { opacity: 1; } 100% { left: 120%; opacity: 0; } }
+    /* sliding pill for chip tab-strips (auto-wired in base.html) */
+    .tab-strip { position: relative; }
+    .tab-strip > .chip { position: relative; z-index: 1; }
+    .tab-strip .strip-pill { position: absolute; z-index: 0; border-radius: 9999px; background: rgba(0,230,118,0.15);
+      border: 1px solid rgba(0,230,118,0.5); box-shadow: 0 0 14px rgba(0,230,118,0.35), inset 0 0 8px rgba(0,230,118,0.12);
+      opacity: 0; pointer-events: none;
+      transition: left .42s cubic-bezier(.34,1.3,.64,1), top .42s cubic-bezier(.34,1.3,.64,1),
+                  width .42s cubic-bezier(.34,1.3,.64,1), height .42s cubic-bezier(.34,1.3,.64,1), opacity .25s ease; }
+    .tab-strip.has-pill > .chip.chip-on { background: transparent; border-color: transparent; }
     .tick-label { font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: #64748b; }
     .tick::after { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: #00e676; margin-left: 8px; box-shadow: 0 0 8px #00e676; animation: pulse 1.8s infinite; vertical-align: baseline; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
@@ -99,6 +113,8 @@
     .side-link:hover { color: #e2e8f0; background: rgba(255,255,255,0.04); }
     .side-link.active { color: #00e676; background: rgba(0,230,118,0.10); border-color: rgba(0,230,118,0.22); }
     .side-link.active svg { color: #00e676; }
+    .side-link svg { transition: transform .18s ease; }
+    .side-link:hover svg { transform: scale(1.12); }
     .side-group { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase; color: #475569; padding: 0.85rem 0.7rem 0.35rem; }
     .live-dot { width: 6px; height: 6px; border-radius: 9999px; background: #00e676; box-shadow: 0 0 8px #00e676; animation: pulse 1.8s infinite; }
     /* charts (pure CSS/SVG — no chart libs, nothing that can block paint) */
@@ -386,9 +402,13 @@
     .rv { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .65s cubic-bezier(.16,1,.3,1); transition-delay: var(--rd, 0ms); }
     .rv.on { opacity: 1; transform: none; }
 
-    /* chip activation pop */
-    .chip-on { animation: chipIn .3s cubic-bezier(.34,1.56,.64,1); }
-    @keyframes chipIn { from { transform: scale(.9); } to { transform: scale(1); } }
+    /* chip activation pop + glow burst */
+    .chip-on { animation: chipIn .45s cubic-bezier(.34,1.56,.64,1); }
+    @keyframes chipIn {
+      0% { transform: scale(.9); box-shadow: 0 0 0 0 rgba(0,230,118,0); }
+      55% { box-shadow: 0 0 15px 2px rgba(0,230,118,0.42); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,230,118,0); }
+    }
 
     /* edge dials pop in */
     .dial-svg { animation: dialPop .55s cubic-bezier(.34,1.56,.64,1) both; animation-delay: .15s; }
@@ -1219,6 +1239,50 @@
       }
       requestAnimationFrame(step);
     });
+  })();
+</script>
+<script>
+  /* Auto-wire chip tab-strips: a sliding pill glides from the first chip to the
+     active one on load, and follows clicks. Skips the home league bar (has its
+     own pill) and Alpine-driven groups (they toggle classes client-side). */
+  (function () {
+    function isChip(el) { return el.nodeType === 1 && el.classList && el.classList.contains('chip'); }
+    var strips = [];
+    function place(s, chip) {
+      var er = s.el.getBoundingClientRect(), cr = chip.getBoundingClientRect();
+      s.pill.style.left = (cr.left - er.left) + 'px';
+      s.pill.style.top = (cr.top - er.top) + 'px';
+      s.pill.style.width = cr.width + 'px';
+      s.pill.style.height = cr.height + 'px';
+      s.pill.style.opacity = '1';
+    }
+    document.querySelectorAll('*').forEach(function (el) {
+      if (el.closest('.league-tabs') || el.closest('[x-data]')) return;
+      var kids = Array.prototype.slice.call(el.children);
+      if (kids.length < 2 || !kids.every(isChip)) return;
+      var on = kids.filter(function (c) { return c.classList.contains('chip-on'); });
+      if (on.length !== 1) return;
+      var pill = document.createElement('span');
+      pill.className = 'strip-pill';
+      pill.setAttribute('aria-hidden', 'true');
+      el.classList.add('tab-strip', 'has-pill');
+      el.insertBefore(pill, el.firstChild);
+      var er = el.getBoundingClientRect(), fr = kids[0].getBoundingClientRect();
+      pill.style.left = (fr.left - er.left) + 'px';
+      pill.style.top = (fr.top - er.top) + 'px';
+      pill.style.width = fr.width + 'px';
+      pill.style.height = fr.height + 'px';
+      var s = { el: el, pill: pill, chip: on[0] };
+      strips.push(s);
+      kids.forEach(function (c) {
+        c.addEventListener('click', function () { s.chip = c; place(s, c); });
+      });
+    });
+    function reposition() { strips.forEach(function (s) { if (s.chip) place(s, s.chip); }); }
+    requestAnimationFrame(function () { requestAnimationFrame(reposition); });
+    window.addEventListener('load', reposition);
+    var rz;
+    window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(reposition, 120); });
   })();
 </script>
 {% block scripts %}{% endblock %}
