@@ -535,6 +535,47 @@
     .cmdk-trigger:hover { border-color: rgba(0,230,118,0.4); color: #fff; }
     .cmdk-trigger kbd { margin-left: auto; border: 1px solid rgba(148,163,184,0.2); border-radius: 5px; padding: 1px 5px; font-size: .58rem; }
 
+    /* ---- PAGE-LOAD PROGRESS BAR ---- */
+    #pgbar { position: fixed; top: 0; left: 0; height: 2px; width: 0; z-index: 120; background: linear-gradient(90deg,#00e676,#38bdf8); box-shadow: 0 0 12px rgba(0,230,118,.7); opacity: 0; transition: width .25s ease, opacity .3s ease; }
+    #pgbar.on { opacity: 1; }
+    #pgbar.done { width: 100% !important; opacity: 0; transition: width .2s ease, opacity .45s ease .12s; }
+    /* persistent chrome across navigations */
+    #site-sidebar { view-transition-name: site-sidebar; }
+    #site-header { view-transition-name: site-header; }
+    #site-footer { view-transition-name: site-footer; }
+
+    /* ---- SCROLL REVEAL + ROW STAGGER ---- */
+    [data-reveal] { opacity: 0; transform: translateY(12px); transition: opacity .5s ease, transform .55s cubic-bezier(.22,1,.36,1); }
+    [data-reveal].in { opacity: 1; transform: none; }
+    tbody.stagger-in tr { animation: rowIn .42s both cubic-bezier(.22,1,.36,1); }
+    @keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    /* ---- TOASTS ---- */
+    #toasts { position: fixed; left: 50%; bottom: 1.4rem; transform: translateX(-50%); z-index: 110; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+    .toast { pointer-events: auto; display: flex; align-items: center; gap: 9px; padding: 9px 14px; border-radius: 11px; background: rgba(7,11,18,0.96); border: 1px solid rgba(148,163,184,0.16); color: #e2e8f0; font-size: .8rem; box-shadow: 0 16px 40px rgba(0,0,0,.5); animation: toastIn .28s cubic-bezier(.22,1,.36,1); }
+    .toast.out { animation: toastOut .3s ease forwards; }
+    .toast.ok { border-color: rgba(0,230,118,.4); }
+    .toast.ok .toast-dot { background: #00e676; }
+    .toast.err { border-color: rgba(248,113,113,.4); }
+    .toast.err .toast-dot { background: #f87171; }
+    .toast-dot { width: 7px; height: 7px; border-radius: 9999px; background: #38bdf8; flex: none; }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+    @keyframes toastOut { to { opacity: 0; transform: translateY(10px) scale(.98); } }
+
+    /* ---- COPY-TO-CLIPBOARD ---- */
+    [data-copy] { position: relative; cursor: pointer; }
+    [data-copy].copied::after { content: '✓ copied'; position: absolute; right: 0; top: -1.35rem; font-size: .58rem; font-family: 'JetBrains Mono', monospace; color: #00e676; white-space: nowrap; animation: copyPop .35s ease; }
+    @keyframes copyPop { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+    /* ---- KEYBOARD SHORTCUT SHEET ---- */
+    .ksheet { position: fixed; inset: 0; z-index: 105; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .ksheet[hidden] { display: none; }
+    .ksheet-backdrop { position: absolute; inset: 0; background: rgba(4,6,11,0.7); backdrop-filter: blur(8px); }
+    .ksheet-panel { position: relative; width: min(440px, 94vw); border-radius: 14px; background: rgba(7,11,18,0.97); border: 1px solid rgba(148,163,184,0.14); box-shadow: 0 30px 80px rgba(0,0,0,0.6); padding: 18px 20px; animation: cmdkIn .26s cubic-bezier(.22,1,.36,1); }
+    .ksheet-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,0.07); font-size: .8rem; color: #cbd5e1; }
+    .ksheet-row:last-child { border-bottom: 0; }
+    .ksheet-row kbd { border: 1px solid rgba(148,163,184,0.2); border-radius: 6px; padding: 2px 7px; font-size: .64rem; font-family: 'JetBrains Mono', monospace; color: #94a3b8; }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: .01ms !important; animation-iteration-count: 1 !important;
@@ -542,6 +583,9 @@
       }
       .cursor-aura, .terminal-bg::before, .hero-spark, .cmd-hero::after, .cmd-stat::after, #ambient-bg, .hud::before, .eq, #wave-canvas, #edge-field { display: none; }
       ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
+      #pgbar { transition: none !important; }
+      [data-reveal] { opacity: 1 !important; transform: none !important; }
+      tbody.stagger-in tr, .toast, .toast.out { animation: none !important; }
     }
   </style>
   {% block head %}{% endblock %}
@@ -549,10 +593,11 @@
 <body class="min-h-screen terminal-bg" style="color-scheme: dark;">
 <div class="cursor-aura" aria-hidden="true"></div>
 <canvas id="ambient-bg" aria-hidden="true"></canvas>
+<div id="pgbar" aria-hidden="true"></div>
 <div x-data="{ navOpen: false }" class="lg:flex min-h-screen">
 
   <!-- ======================= SIDEBAR (desktop) ======================= -->
-  <aside class="hidden lg:flex flex-col fixed inset-y-0 left-0 w-[232px] glass border-r border-white/5 z-40">
+  <aside id="site-sidebar" class="hidden lg:flex flex-col fixed inset-y-0 left-0 w-[232px] glass border-r border-white/5 z-40">
     <div class="flex items-center gap-2.5 px-4 h-14 border-b border-white/5 shrink-0">
       <div class="w-8 h-8 rounded-md bg-brand/10 border border-brand/40 flex items-center justify-center">
         <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
@@ -651,7 +696,7 @@
   </aside>
 
   <!-- ======================= MOBILE top bar ======================= -->
-  <header class="lg:hidden sticky top-0 z-50 glass border-b border-white/5">
+  <header id="site-header" class="lg:hidden sticky top-0 z-50 glass border-b border-white/5">
     <div class="flex items-center justify-between px-4 h-14">
       <a href="/" class="flex items-center gap-2.5">
         <div class="w-8 h-8 rounded-md bg-brand/10 border border-brand/40 flex items-center justify-center">
@@ -700,7 +745,7 @@
       </div>
     </div>
 
-    <footer class="border-t border-white/5 bg-surface-1 mt-auto">
+    <footer id="site-footer" class="border-t border-white/5 bg-surface-1 mt-auto">
       <div class="max-w-[1280px] mx-auto px-6 py-6">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div class="flex items-center gap-2">
@@ -723,6 +768,7 @@
             <a href="/privacy" class="text-xs text-slate-500 hover:text-white transition-colors">Privacy</a>
             <a href="/terms" class="text-xs text-slate-500 hover:text-white transition-colors">Terms</a>
             <a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-white transition-colors">Responsible Gambling</a>
+            <button type="button" class="ksheet-open text-xs text-slate-500 hover:text-white transition-colors">Shortcuts</button>
           </div>
           <p class="text-xs text-slate-600">&copy; {{ current_year }} ScoreEdge. Built by <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-500 hover:text-brand-light transition-colors">@BryanKruep</a>. Not affiliated with any league or sportsbook. Odds &amp; analytics for informational purposes only. If you or someone you know has a gambling problem, call <a href="tel:18004262537" class="text-slate-500 hover:text-brand transition-colors">1-800-GAMBLER</a>.</p>
         </div>
@@ -746,6 +792,25 @@
       <span><kbd>↵</kbd> open</span>
       <span><kbd>⌘K</kbd> toggle</span>
     </div>
+  </div>
+</div>
+
+<div id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+<!-- ======================= KEYBOARD SHORTCUTS ======================= -->
+<div id="ksheet" class="ksheet" hidden>
+  <div class="ksheet-backdrop" aria-hidden="true"></div>
+  <div class="ksheet-panel" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-display font-bold text-white text-sm tracking-tight">KEYBOARD SHORTCUTS</h2>
+      <button type="button" class="ksheet-close text-slate-500 hover:text-white text-xs font-mono">ESC</button>
+    </div>
+    <div class="ksheet-row"><span>Open command palette</span><span><kbd>Ctrl</kbd> <kbd>K</kbd></span></div>
+    <div class="ksheet-row"><span>Toggle this panel</span><span><kbd>?</kbd></span></div>
+    <div class="ksheet-row"><span>Navigate list</span><span><kbd>↑</kbd> <kbd>↓</kbd></span></div>
+    <div class="ksheet-row"><span>Open / confirm</span><span><kbd>Enter</kbd></span></div>
+    <div class="ksheet-row"><span>Close overlays</span><span><kbd>Esc</kbd></span></div>
+    <div class="ksheet-row"><span>Copy a pick / value</span><span><kbd>click value</kbd></span></div>
   </div>
 </div>
 
@@ -852,6 +917,8 @@
       for (var i = 0; i < items.length; i++) {
         (function (it) {
           var row = el('div', 'ledger-row');
+          row.setAttribute('data-copy', it.s + ' ' + amTxt(it.a) + ' · ' + it.g);
+          row.title = 'Click to copy pick';
           if (it.status === 'won') row.classList.add('won');
           else if (it.status === 'lost') row.classList.add('lost');
           else if (it.status === 'push') row.classList.add('push');
@@ -869,7 +936,7 @@
           else if (it.status === 'push') row.appendChild(el('span', 'st-pill bg-white/10 text-slate-400', 'P'));
           var x = el('button', 'text-slate-600 hover:text-red-400 transition-colors shrink-0 text-xs font-mono', '✕');
           x.type = 'button';
-          x.addEventListener('click', function () { remove(it.id); });
+          x.addEventListener('click', function (ev2) { ev2.stopPropagation(); remove(it.id); });
           row.appendChild(x);
           rowsEl.appendChild(row);
         })(items[i]);
@@ -886,10 +953,11 @@
       entry.id = 's' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
       items.push(entry);
       save(); render();
+      if (window.Toast) window.Toast('Added to slip — ' + entry.m, 'ok');
       return true;
     }
-    function remove(id) { items = items.filter(function (x) { return x.id !== id; }); save(); render(); }
-    function clearAll() { items = []; save(); render(); }
+    function remove(id) { items = items.filter(function (x) { return x.id !== id; }); save(); render(); if (window.Toast) window.Toast('Removed from slip'); }
+    function clearAll() { items = []; save(); render(); if (window.Toast) window.Toast('Slip cleared', 'ok'); }
 
     function flash(btn) { if (!btn) return; btn.classList.add('added'); setTimeout(function () { btn.classList.remove('added'); }, 320); }
 
@@ -914,6 +982,8 @@
           }
         }
         save(); render();
+        var n = res.reduce(function (c, r) { return c + ((r && r.status && r.status !== 'undecided') ? 1 : 0); }, 0);
+        if (window.Toast) window.Toast(n + ' pick' + (n === 1 ? '' : 's') + ' resolved', n ? 'ok' : 'err');
       }).catch(function () {});
     });
 
@@ -1456,6 +1526,118 @@
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); toggle(); }
       else if (e.key === 'Escape' && !root.hidden) { close(); }
     });
+  })();
+</script>
+
+<script>
+  /* ---- FEEL PACK: page-load progress bar + scroll reveal / row stagger ---- */
+  (function () {
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var bar = document.getElementById('pgbar');
+    if (bar) {
+      var iv = null, w = 0;
+      function start() {
+        w = 0; bar.style.width = '0';
+        bar.classList.remove('done'); bar.classList.add('on');
+        if (iv) clearInterval(iv);
+        iv = setInterval(function () { w += Math.max(1, (92 - w) / 9); bar.style.width = Math.min(w, 92) + '%'; }, 110);
+      }
+      function done() {
+        if (iv) clearInterval(iv); iv = null;
+        bar.classList.remove('on'); bar.classList.add('done');
+        setTimeout(function () { bar.classList.remove('done'); bar.style.width = '0'; }, 700);
+      }
+      window.addEventListener('pageshow', done);
+      window.addEventListener('load', done);
+      document.addEventListener('click', function (e) {
+        var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+        if (!a) return;
+        if (a.target || a.hasAttribute('download') || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+        var href = a.getAttribute('href') || '';
+        if (!href || href.charAt(0) === '#' || href.indexOf('mailto:') === 0 || href.indexOf('tel:') === 0 || href.indexOf('javascript:') === 0) return;
+        if (href.indexOf('http') === 0) { try { var u = new URL(href, location.href); if (u.origin !== location.origin) return; } catch (err) { return; } }
+        start();
+      }, true);
+      document.addEventListener('submit', function () { start(); }, true);
+    }
+
+    var reveals = Array.prototype.slice.call(document.querySelectorAll('.hero-glow [data-reveal], .hero-glow .glass-card'));
+    reveals.forEach(function (el) { if (!el.hasAttribute('data-reveal')) el.setAttribute('data-reveal', ''); });
+    var showAll = function () { reveals.forEach(function (el) { el.classList.add('in'); }); };
+    if (!reduce && reveals.length && 'IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (ents) {
+        ents.forEach(function (en) { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
+      }, { rootMargin: '0px 0px -8% 0px', threshold: 0.05 });
+      reveals.forEach(function (el) { io.observe(el); });
+      setTimeout(showAll, 1400);
+    } else {
+      showAll();
+    }
+
+    if (!reduce) {
+      var tbodies = Array.prototype.slice.call(document.querySelectorAll('table tbody'));
+      var tabIdx = 0;
+      tbodies.forEach(function (tb) {
+        if (tb.dataset.stag) return;
+        tb.dataset.stag = '1';
+        var rows = Array.prototype.slice.call(tb.querySelectorAll('tr'));
+        if (!rows.length) return;
+        tb.classList.add('stagger-in');
+        for (var i = 0; i < rows.length && i < 24; i++) rows[i].style.animationDelay = (tabIdx * 0.02 + i * 0.022).toFixed(3) + 's';
+        tabIdx++;
+      });
+    }
+  })();
+
+  /* ---- FEEDBACK PACK: toasts + copy-to-clipboard + shortcut sheet ---- */
+  (function () {
+    function toast(msg, type) {
+      var box = document.getElementById('toasts');
+      if (!box) return;
+      var t = document.createElement('div');
+      t.className = 'toast ' + (type || '');
+      t.setAttribute('role', 'status');
+      var dot = document.createElement('span'); dot.className = 'toast-dot';
+      var txt = document.createElement('span');
+      txt.textContent = msg;
+      t.appendChild(dot); t.appendChild(txt);
+      box.appendChild(t);
+      setTimeout(function () { t.classList.add('out'); setTimeout(function () { t.remove(); }, 320); }, 2600);
+    }
+    window.Toast = toast;
+
+    document.addEventListener('click', function (e) {
+      var el = e.target && e.target.closest ? e.target.closest('[data-copy]') : null;
+      if (!el) return;
+      var txt = el.getAttribute('data-copy') || (el.textContent || '').trim();
+      var flash = function () { el.classList.add('copied'); setTimeout(function () { el.classList.remove('copied'); }, 950); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt.trim()).then(function () { toast('Copied to clipboard', 'ok'); flash(); }).catch(function () {});
+      } else {
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = txt.trim(); ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy'); ta.remove();
+          toast('Copied to clipboard', 'ok'); flash();
+        } catch (err) {}
+      }
+    });
+
+    var sheet = document.getElementById('ksheet');
+    if (sheet) {
+      function openS() { sheet.hidden = false; document.body.style.overflow = 'hidden'; }
+      function closeS() { sheet.hidden = true; document.body.style.overflow = ''; }
+      Array.prototype.forEach.call(document.querySelectorAll('.ksheet-open'), function (b) { b.addEventListener('click', openS); });
+      Array.prototype.forEach.call(sheet.querySelectorAll('.ksheet-backdrop, .ksheet-close'), function (n) { n.addEventListener('click', closeS); });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !sheet.hidden) { closeS(); return; }
+        var tgt = e.target, tag = (tgt && tgt.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || (tgt && tgt.isContentEditable)) return;
+        if (e.key === '?') { e.preventDefault(); if (sheet.hidden) openS(); else closeS(); }
+      });
+    }
   })();
 </script>
 {% block scripts %}{% endblock %}
