@@ -3172,10 +3172,11 @@ async def golf_key(payload: dict):
 
 
 @app.get("/goal-hunt", response_class=HTMLResponse)
-def goal_hunt_page(request: Request, date: str = "", force: int = 0):
-    """NHL Goal Hunt: stats-based anytime-goal projections for tonight's skaters."""
+def goal_hunt_page(request: Request, date: str = "", game: str = "",
+                   top: int = 10, force: int = 0):
+    """NHL Goal Hunt: the ten most-likely goal scorers on tonight's slate."""
     ensure_data()
-    data = hockey.build_board(date, force=force)
+    data = hockey.build_board(date, game, top=top, force=force)
     return templates.TemplateResponse(request, "goal_hunt.html", {
         **_ctx(request, "nhl", active_page="goal_hunt"),
         "hunt": data,
@@ -3184,15 +3185,16 @@ def goal_hunt_page(request: Request, date: str = "", force: int = 0):
 
 
 @app.get("/api/goal-hunt", response_class=JSONResponse)
-def api_goal_hunt(date: str = "", force: int = 0):
-    return JSONResponse(hockey.build_board(date, force=force))
+def api_goal_hunt(date: str = "", game: str = "", top: int = 10, force: int = 0):
+    return JSONResponse(hockey.build_board(date, game, top=top, force=force))
 
 
 @app.get("/homerun-hunt", response_class=HTMLResponse)
-def homerun_hunt_page(request: Request, date: str = "", force: int = 0):
-    """MLB Home Run Hunt: stats-based home-run projections for today's hitters."""
+def homerun_hunt_page(request: Request, date: str = "", game: str = "",
+                      top: int = 10, force: int = 0):
+    """MLB Home Run Hunt: the ten most-likely home-run hitters on today's slate."""
     ensure_data()
-    data = baseball.build_board(date, force=force)
+    data = baseball.build_board(date, game, top=top, force=force)
     return templates.TemplateResponse(request, "homerun_hunt.html", {
         **_ctx(request, "mlb", active_page="homerun_hunt"),
         "hunt": data,
@@ -3201,8 +3203,8 @@ def homerun_hunt_page(request: Request, date: str = "", force: int = 0):
 
 
 @app.get("/api/homerun-hunt", response_class=JSONResponse)
-def api_homerun_hunt(date: str = "", force: int = 0):
-    return JSONResponse(baseball.build_board(date, force=force))
+def api_homerun_hunt(date: str = "", game: str = "", top: int = 10, force: int = 0):
+    return JSONResponse(baseball.build_board(date, game, top=top, force=force))
 
 
 @app.get("/racing", response_class=HTMLResponse)
@@ -3233,20 +3235,6 @@ async def racing_key(payload: dict):
     """Save the FormFav API key locally (server-side settings file only)."""
     saved = racing.set_key(str(payload.get("key") or ""))
     return JSONResponse({"ok": True, "set": bool(saved)})
-
-
-@app.get("/best-bets", response_class=HTMLResponse)
-def best_bets_page(request: Request):
-    try:
-        board = _overview_board()
-    except Exception:
-        board = {"plays": [], "leagues": [], "summary": {
-            "plays": 0, "leagues": 0, "avg_edge": 0.0, "top_edge": 0.0, "top_play": None}}
-    return templates.TemplateResponse(request, "best_bets.html", {
-        **_ctx(request, "nfl", active_page="best_bets"),
-        "odds": odds,
-        "board": board,
-    })
 
 
 @app.get("/about", response_class=HTMLResponse)
@@ -3286,7 +3274,7 @@ def robots_txt():
 def sitemap_xml():
     base = "https://scoreedge.onrender.com"
     pages = ["", "/bets", "/nba", "/cfb", "/cbb", "/mlb", "/nhl", "/mls", "/golf",
-             "/best-bets", "/goal-hunt", "/homerun-hunt", "/racing",
+             "/goal-hunt", "/homerun-hunt", "/racing",
              "/about", "/contact", "/privacy", "/terms"]
     urls = "\n".join(f'  <url><loc>{base}{p}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>' for p in pages)
     xml = f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{urls}\n</urlset>'

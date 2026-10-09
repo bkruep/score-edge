@@ -100,11 +100,15 @@ def _project(row: dict) -> tuple[float, float]:
     return rate, 1.0 - math.exp(-rate)
 
 
-def build_board(date_str: str = "", per_team: int = 5, force: int = 0) -> dict:
+def build_board(date_str: str = "", game: str = "", top: int = 10,
+                force: int = 0) -> dict:
+    """Top-`top` most-likely home-run hitters across the slate (or one game)."""
     date_str = date_str or _today()
+    top = max(1, min(int(top or 10), 25))
+    ck = f"{date_str}|{game}|{top}"
     if not force:
         cached = toolbox._load(_CACHE, {})
-        if (cached.get("date") == date_str and cached.get("result")
+        if (cached.get("key") == ck and cached.get("result")
                 and time.time() - float(cached.get("ts") or 0) < _CACHE_TTL):
             return cached["result"]
 
@@ -113,14 +117,14 @@ def build_board(date_str: str = "", per_team: int = 5, force: int = 0) -> dict:
         games = fetch_schedule(date_str)
     except Exception as exc:
         return {"ok": False, "error": f"schedule failed: {exc}", "date": date_str,
-                "season": season, "games": [], "games_n": 0, "players_n": 0,
-                "fetched_at": ""}
+                "season": season, "games": [], "active_game": game, "rows": [],
+                "count": 0, "fetched_at": ""}
 
     if not games:
         result = {"ok": False, "error": "no_games", "date": date_str, "season": season,
-                  "games": [], "games_n": 0, "players_n": 0,
+                  "games": [], "active_game": game, "rows": [], "count": 0,
                   "fetched_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())}
-        toolbox._save(_CACHE, {"ts": time.time(), "date": date_str, "result": result})
+        toolbox._save(_CACHE, {"ts": time.time(), "key": ck, "result": result})
         return result
 
     hit_cache: dict[int, list[dict]] = {}
@@ -133,35 +137,32 @@ def build_board(date_str: str = "", per_team: int = 5, force: int = 0) -> dict:
                 hit_cache[team_id] = []
         return hit_cache[team_id]
 
-    out_games: list[dict] = []
-    players_n = 0
+    game_names: list[str] = []
+    rows: list[dict] = []
     for g in games:
-        gd: dict[str, Any] = {
-            "matchup": f"{g['away']} @ {g['home']}",
-            "away": g["away"], "home": g["home"],
-            "away_name": g["away_name"], "home_name": g["home_name"],
-            "away_pitcher": g["away_pitcher"], "home_pitcher": g["home_pitcher"],
-            "start": g["start"], "status": g["status"], "teams": [],
-        }
+        matchup = f"{g['away']} @ {g['home']}"
+        game_names.append(matchup)
         for side_abbr, side_name, team_id, opp_pitcher in (
                 (g["away"], g["away_name"], g["away_id"], g["home_pitcher"]),
                 (g["home"], g["home_name"], g["home_id"], g["away_pitcher"])):
-            rows = []
             for h in hitters(team_id):
                 rate, p = _project(h)
-                rows.append({**h, "team": side_abbr, "opp_pitcher": opp_pitcher or "TBD",
-                             "proj_hr": round(rate, 3),
-                             "prob": round(p * 100.0, 1)})
-            rows.sort(key=lambda r: (r["prob"], r["hr"]), reverse=True)
-            rows = rows[:per_team]
-            players_n += len(rows)
-            gd["teams"].append({"abbr": side_abbr, "name": side_name, "players": rows})
-        out_games.append(gd)
+                rows.append({
+                    "player": h["name"], "team": side_abbr, "team_name": side_name,
+                    "opp_pitcher": opp_pitcher or "TBD", "pos": h["pos"], "game": matchup,
+                    "hr": h["hr"], "pa": h["pa"], "avg": h["avg"], "slg": h["slg"],
+                    "proj_hr": round(rate, 3), "prob": round(p * 100.0, 1),
+                })
+
+    if game:
+        rows = [r for r in rows if r["game"] == game]
+    rows.sort(key=lambda r: (r["prob"], r["hr"]), reverse=True)
+    rows = rows[:top]
 
     result = {
         "ok": True, "error": "", "date": date_str, "season": season,
-        "games": out_games, "games_n": len(out_games), "players_n": players_n,
+        "games": game_names, "active_game": game, "rows": rows, "count": len(rows),
         "fetched_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
     }
-    toolbox._save(_CACHE, {"ts": time.time(), "date": date_str, "result": result})
+    toolbox._save(_CACHE, {"ts": time.time(), "key": ck, "result": result})
     return result

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Home Run Hunt — MLB Home-Run Projections | ScoreEdge{% endblock %}
-{% block meta_description %}MLB Home Run Hunt: every hitter on today's card ranked by an estimated home-run probability, built from the player's HR-per-plate-appearance pace on the league's public stats feed.{% endblock %}
+{% block meta_description %}MLB Home Run Hunt: the ten hitters most likely to hit a home run on today's card, ranked by an estimated HR probability built from each player's HR-per-plate-appearance pace.{% endblock %}
 {% block canonical %}/homerun-hunt{% endblock %}
 {% block og_url %}/homerun-hunt{% endblock %}
 
@@ -8,9 +8,10 @@
 <div class="mb-5 border-b border-white/5 pb-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
   <div>
     <h1 class="text-xl font-display font-bold text-white tracking-tight">HOME RUN <span class="gradient-text">HUNT</span> — MLB</h1>
-    <p class="text-xs text-slate-500 mt-0.5 font-mono">HOME-RUN PROJECTION &middot; STATS-BASED ESTIMATE &middot; NOT A MARKET PRICE</p>
+    <p class="text-xs text-slate-500 mt-0.5 font-mono">TOP 10 MOST LIKELY TO GO DEEP &middot; STATS-BASED ESTIMATE &middot; NOT A MARKET PRICE</p>
   </div>
   <form method="get" action="/homerun-hunt" class="flex items-center gap-2">
+    {% if hunt.active_game %}<input type="hidden" name="game" value="{{ hunt.active_game }}">{% endif %}
     <input type="date" name="date" value="{{ hunt.date }}" class="bg-surface-2 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-brand/40">
     <button class="chip chip-on" type="submit">Go</button>
     <a href="/homerun-hunt?date={{ today }}" class="chip">Today</a>
@@ -31,45 +32,76 @@
   {% endif %}
 </div>
 {% else %}
-<div class="glass-card rounded-xl p-4 mb-5 border-brand/15 flex items-center gap-3 flex-wrap">
-  <span class="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Home Run Hunt</span>
-  <span class="text-sm text-white font-medium">{{ hunt.date }}</span>
-  <span class="text-[10px] font-mono text-slate-500">{{ hunt.games_n }} games &middot; {{ hunt.players_n }} hitters &middot; season {{ hunt.season }}</span>
-  <div class="flex-1"></div>
-  <span class="text-[10px] font-mono text-slate-600">{{ hunt.fetched_at }}</span>
-</div>
 
-<div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-6">
+{% if hunt.games|length > 1 %}
+<div class="flex flex-wrap items-center gap-1.5 mb-5">
+  {% if hunt.active_game %}<a href="/homerun-hunt?date={{ hunt.date }}" class="chip chip-on">All games</a>{% else %}<span class="chip chip-on">All games</span>{% endif %}
   {% for g in hunt.games %}
+  <a href="/homerun-hunt?date={{ hunt.date }}&game={{ g|urlencode }}" class="chip {% if hunt.active_game == g %}chip-on{% endif %}">{{ g }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="grid lg:grid-cols-2 gap-5 mb-5">
   <div class="glass-card rounded-xl overflow-hidden">
-    <div class="px-4 py-3 border-b border-white/5 flex items-center gap-2">
-      <span class="text-sm font-semibold text-white">{{ g.matchup }}</span>
-      <span class="text-[10px] font-mono text-slate-500">{{ g.start }} UTC &middot; {{ g.status }}</span>
+    <div class="px-5 py-3 border-b border-white/5 flex items-center gap-2">
+      <svg class="w-4 h-4 text-brand" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 4a6 6 0 110 12 6 6 0 010-12z"/></svg>
+      <h2 class="font-display font-semibold text-white text-sm">Most likely to go deep</h2>
+      <span class="text-[10px] font-mono text-slate-500 ml-auto">{{ hunt.count }} hitters &middot; {{ hunt.date }}</span>
     </div>
-    <div class="grid grid-cols-2 divide-x divide-white/5">
-      {% for t in g.teams %}
-      <div class="p-3">
-        <div class="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-2">{{ t.abbr }} <span class="text-slate-600">vs {{ t.players[0].opp_pitcher if t.players else 'TBD' }}</span></div>
-        <div class="space-y-1.5">
-          {% for p in t.players %}
-          <div class="rounded-lg px-2 py-1.5 bg-surface-2/60">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs text-white truncate">{{ p.name }} <span class="text-slate-600 text-[9px]">{{ p.pos }}</span></span>
-              <span class="text-xs font-mono {% if p.prob >= 18 %}text-emerald-300{% elif p.prob >= 12 %}text-brand{% else %}text-slate-400{% endif %}">{{ "%.1f"|format(p.prob) }}%</span>
-            </div>
-            <div class="mt-1 h-1 rounded-full bg-white/5 overflow-hidden">
-              <div class="h-full rounded-full {% if p.prob >= 18 %}bg-emerald-400{% elif p.prob >= 12 %}bg-brand{% else %}bg-slate-500{% endif %}" style="width:{{ [p.prob / 25 * 100, 100]|min }}%"></div>
-            </div>
-            <div class="text-[9px] font-mono text-slate-600 mt-0.5">{{ p.hr }} HR in {{ p.pa }} PA &middot; {{ p.avg }}/{{ p.slg }} &middot; proj {{ "%.2f"|format(p.proj_hr) }}</div>
+    <div class="p-4 grid gap-2.5">
+      {% set lead = (hunt.rows[0].prob if hunt.rows else 1) or 1 %}
+      {% for r in hunt.rows %}
+      <div class="flex items-center gap-3">
+        <span class="w-5 text-right text-xs font-mono {% if loop.first %}text-brand font-bold{% else %}text-slate-500{% endif %}">{{ loop.index }}</span>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center justify-between gap-3 mb-1">
+            <span class="text-xs text-white font-medium truncate">{{ r.player }} <span class="text-slate-500 font-mono">&middot; {{ r.pos }} &middot; {{ r.team }}</span></span>
+            <span class="text-xs font-mono {% if loop.first %}text-brand font-bold{% else %}text-slate-400{% endif %}">{{ "%.1f"|format(r.prob) }}%</span>
           </div>
-          {% endfor %}
+          <div class="h-3 rounded-full bg-white/5 overflow-hidden">
+            <div class="h-full rounded-full {% if loop.first %}bg-brand{% else %}bg-brand/60{% endif %}" style="width:{{ [ (r.prob / lead * 100)|round, 100 ]|min }}%"></div>
+          </div>
         </div>
       </div>
       {% endfor %}
     </div>
   </div>
-  {% endfor %}
+
+  <div class="glass-card rounded-xl overflow-hidden">
+    <div class="px-5 py-3 border-b border-white/5 flex items-center gap-2">
+      <h2 class="font-display font-semibold text-white text-sm">Home Run Hunt — Top 10</h2>
+      <span class="text-[10px] font-mono text-slate-500 ml-auto">estimate, not a price</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-surface-2"><tr class="text-left text-[10px] font-mono uppercase tracking-wider text-slate-500">
+          <th class="px-3 py-2">#</th>
+          <th class="px-3 py-2">Hitter</th>
+          <th class="px-3 py-2">Opp SP</th>
+          <th class="px-3 py-2 text-right">HR / PA</th>
+          <th class="px-3 py-2 text-right">AVG/SLG</th>
+          <th class="px-3 py-2 text-right">Proj</th>
+          <th class="px-3 py-2 text-right">P(HR)</th>
+        </tr></thead>
+        <tbody>
+          {% for r in hunt.rows %}
+          <tr class="border-t border-white/5 {% if loop.first %}bg-brand/[0.05]{% endif %}">
+            <td class="px-3 py-2.5 font-mono text-xs {% if loop.first %}text-brand font-bold{% else %}text-slate-500{% endif %}">{{ loop.index }}</td>
+            <td class="px-3 py-2.5 text-white text-xs font-medium">{{ r.player }} <span class="text-slate-500 font-mono text-[10px]">{{ r.pos }} &middot; {{ r.team }}</span></td>
+            <td class="px-3 py-2.5 text-[10px] font-mono text-slate-400">{{ r.opp_pitcher }}</td>
+            <td class="px-3 py-2.5 text-right font-mono text-xs text-slate-300">{{ r.hr }} / {{ r.pa }}</td>
+            <td class="px-3 py-2.5 text-right font-mono text-xs text-slate-400">{{ r.avg }}/{{ r.slg }}</td>
+            <td class="px-3 py-2.5 text-right font-mono text-xs text-slate-400">{{ "%.2f"|format(r.proj_hr) }}</td>
+            <td class="px-3 py-2.5 text-right font-mono {% if r.prob >= 18 %}text-emerald-300{% elif r.prob >= 12 %}text-brand{% else %}text-slate-300{% endif %}">{{ "%.1f"|format(r.prob) }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
+<div class="text-[10px] font-mono text-slate-600 mb-5">{{ hunt.fetched_at }} &middot; season {{ hunt.season }}</div>
 
 <div class="glass-card rounded-xl p-4 border-white/5">
   <div class="text-xs text-slate-400 leading-relaxed">
