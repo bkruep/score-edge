@@ -53,6 +53,12 @@
     body { font-family: 'Inter', system-ui, sans-serif; background: #04060b; color: #cbd5e1; }
     h1, h2, h3, .font-display { font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 600; letter-spacing: -0.015em; }
     code, .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    /* cross-document View Transitions — smooth page-to-page morph */
+    @view-transition { navigation: auto; }
+    ::view-transition-old(root) { animation: vtOut .20s ease both; }
+    ::view-transition-new(root) { animation: vtIn .28s cubic-bezier(.22,1,.36,1) both; }
+    @keyframes vtOut { to { opacity: 0; transform: translateY(-4px); } }
+    @keyframes vtIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #070b12; }
     ::-webkit-scrollbar-thumb { background: #1b2540; border-radius: 3px; }
@@ -507,12 +513,35 @@
     .flash-row { animation: rowFlash 2.4s ease; }
     @keyframes rowFlash { 0% { background: rgba(0,230,118,0.22); } 65% { background: rgba(0,230,118,0.08); } 100% { background: transparent; } }
 
+    /* ---- COMMAND PALETTE (⌘K) ---- */
+    .cmdk { position: fixed; inset: 0; z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; }
+    .cmdk[hidden] { display: none; }
+    .cmdk-backdrop { position: absolute; inset: 0; background: rgba(4,6,11,0.66); backdrop-filter: blur(8px); }
+    .cmdk-panel { position: relative; width: min(560px, 92vw); border-radius: 14px; background: rgba(7,11,18,0.97); border: 1px solid rgba(148,163,184,0.14); box-shadow: 0 30px 80px rgba(0,0,0,0.6); overflow: hidden; animation: cmdkIn .26s cubic-bezier(.22,1,.36,1); }
+    @keyframes cmdkIn { from { opacity: 0; transform: translateY(-10px) scale(.98); } to { opacity: 1; transform: none; } }
+    .cmdk-input-wrap { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid rgba(148,163,184,0.1); }
+    .cmdk-input-wrap input { flex: 1; background: transparent; border: 0; outline: none; color: #fff; font-size: 0.9rem; font-family: 'JetBrains Mono', monospace; }
+    .cmdk-input-wrap input::placeholder { color: #475569; }
+    .cmdk-list { max-height: 52vh; overflow-y: auto; padding: 6px; }
+    .cmdk-group { font-size: 0.56rem; letter-spacing: .16em; text-transform: uppercase; color: #475569; font-family: 'JetBrains Mono', monospace; padding: 9px 10px 4px; }
+    .cmdk-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; color: #cbd5e1; font-size: 0.82rem; cursor: pointer; }
+    .cmdk-ico { width: 20px; text-align: center; }
+    .cmdk-item.active { background: rgba(0,230,118,0.12); color: #fff; }
+    .cmdk-item.active .cmdk-hint { color: #00e676; }
+    .cmdk-hint { margin-left: auto; font-size: .62rem; color: #64748b; font-family: 'JetBrains Mono', monospace; }
+    .cmdk-foot { display: flex; gap: 14px; padding: 8px 14px; border-top: 1px solid rgba(148,163,184,0.1); font-size: .6rem; color: #64748b; font-family: 'JetBrains Mono', monospace; }
+    .cmdk-foot kbd, .cmdk-input-wrap kbd { border: 1px solid rgba(148,163,184,0.2); border-radius: 5px; padding: 1px 5px; font-size: .58rem; }
+    .cmdk-trigger { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 9px; border: 1px solid rgba(148,163,184,0.14); background: rgba(12,17,32,0.7); color: #94a3b8; font-size: 0.78rem; cursor: pointer; transition: all .15s ease; }
+    .cmdk-trigger:hover { border-color: rgba(0,230,118,0.4); color: #fff; }
+    .cmdk-trigger kbd { margin-left: auto; border: 1px solid rgba(148,163,184,0.2); border-radius: 5px; padding: 1px 5px; font-size: .58rem; }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation-duration: .01ms !important; animation-iteration-count: 1 !important;
         transition-duration: .01ms !important;
       }
       .cursor-aura, .terminal-bg::before, .hero-spark, .cmd-hero::after, .cmd-stat::after, #ambient-bg, .hud::before, .eq, #wave-canvas, #edge-field { display: none; }
+      ::view-transition-old(root), ::view-transition-new(root) { animation: none !important; }
     }
   </style>
   {% block head %}{% endblock %}
@@ -533,6 +562,12 @@
         <div class="text-[10px] text-slate-500 font-mono mt-1 tracking-wide">BETTING · ANALYTICS</div>
       </div>
     </div>
+
+    <button type="button" class="cmdk-open cmdk-trigger mx-3 mt-3 shrink-0" aria-label="Open command palette">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"/></svg>
+      <span>Search</span>
+      <kbd>⌘K</kbd>
+    </button>
 
 <nav class="flex-1 overflow-y-auto px-3 py-2 side-scroll">
       {% set active = active_page|default('') %}
@@ -625,6 +660,9 @@
         <span class="font-display font-bold text-white text-base tracking-tight">Score<span class="text-brand">Edge</span></span>
       </a>
       <div class="flex items-center gap-2">
+        <button type="button" class="cmdk-open w-9 h-9 rounded-md border border-white/10 flex items-center justify-center text-slate-300" aria-label="Search">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"/></svg>
+        </button>
         <a href="/dfs" class="pill bg-surface-3 text-slate-300">DFS</a>
         <a href="/bets" class="pill bg-brand/10 text-brand border-brand/25">BETS</a>
         <button @click="navOpen = !navOpen" class="w-9 h-9 rounded-md border border-white/10 flex items-center justify-center text-slate-300">
@@ -684,11 +722,30 @@
             <a href="/contact" class="text-xs text-slate-500 hover:text-white transition-colors">Contact</a>
             <a href="/privacy" class="text-xs text-slate-500 hover:text-white transition-colors">Privacy</a>
             <a href="/terms" class="text-xs text-slate-500 hover:text-white transition-colors">Terms</a>
+            <a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-white transition-colors">Responsible Gambling</a>
           </div>
-          <p class="text-xs text-slate-600">&copy; {{ current_year }} ScoreEdge. Built by <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-500 hover:text-brand-light transition-colors">@BryanKruep</a>. Not affiliated with any league or sportsbook. Odds &amp; analytics for informational purposes only.</p>
+          <p class="text-xs text-slate-600">&copy; {{ current_year }} ScoreEdge. Built by <a href="https://twitter.com/BryanKruep" target="_blank" class="text-slate-500 hover:text-brand-light transition-colors">@BryanKruep</a>. Not affiliated with any league or sportsbook. Odds &amp; analytics for informational purposes only. If you or someone you know has a gambling problem, call <a href="tel:18004262537" class="text-slate-500 hover:text-brand transition-colors">1-800-GAMBLER</a>.</p>
         </div>
       </div>
     </footer>
+  </div>
+</div>
+
+<!-- ======================= COMMAND PALETTE (⌘K) ======================= -->
+<div id="cmdk" class="cmdk" hidden>
+  <div class="cmdk-backdrop" aria-hidden="true"></div>
+  <div class="cmdk-panel" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="cmdk-input-wrap">
+      <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"/></svg>
+      <input id="cmdk-input" type="text" placeholder="Jump to a tool, league, or page…" autocomplete="off" spellcheck="false" role="combobox" aria-controls="cmdk-list" aria-expanded="true">
+      <kbd>Esc</kbd>
+    </div>
+    <div id="cmdk-list" class="cmdk-list" role="listbox"></div>
+    <div class="cmdk-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>⌘K</kbd> toggle</span>
+    </div>
   </div>
 </div>
 
@@ -1283,6 +1340,122 @@
     window.addEventListener('load', reposition);
     var rz;
     window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(reposition, 120); });
+  })();
+</script>
+
+<script>
+  (function () {
+    var groups = [
+      { g: 'Tools', items: [
+        { t: 'Dashboard', h: '/', i: '⚡' },
+        { t: 'Touchdown Hunt', h: '/touchdown', i: '🏈' },
+        { t: 'DFS Optimizer', h: '/dfs', i: '🧬' },
+        { t: 'Parlay Builder', h: '/parlay', i: '🎟️' },
+        { t: 'Goal Hunt', h: '/goal-hunt', i: '🥅' },
+        { t: 'Home Run Hunt', h: '/homerun-hunt', i: '⚾' },
+        { t: 'Horse Racing', h: '/racing', i: '🏇' },
+        { t: 'Golf Top 20', h: '/golf', i: '⛳' }
+      ] },
+      { g: 'Leagues', items: [
+        { t: 'NFL', h: '/nfl', i: '🏈' }, { t: 'MLB', h: '/mlb', i: '⚾' }, { t: 'NBA', h: '/nba', i: '🏀' },
+        { t: 'NHL', h: '/nhl', i: '🏒' }, { t: 'MLS', h: '/mls', i: '⚽' }, { t: 'CFB', h: '/cfb', i: '🏈' }, { t: 'CBB', h: '/cbb', i: '🏀' }
+      ] },
+      { g: 'Labs', items: [
+        { t: 'Live Lines', h: '/bets', i: '📈' }, { t: 'Player Props', h: '/props', i: '🧩' },
+        { t: 'Edge Deck', h: '/edge-deck', i: '🎛️' }, { t: 'Line Lab', h: '/line-lab', i: '🔬' },
+        { t: 'Value Lab', h: '/value-lab', i: '💎' }, { t: 'Prop Radar', h: '/prop-radar', i: '📡' }
+      ] },
+      { g: 'Pages', items: [
+        { t: 'About', h: '/about', i: 'ℹ️' }, { t: 'Contact', h: '/contact', i: '✉️' },
+        { t: 'Privacy', h: '/privacy', i: '🔒' }, { t: 'Terms', h: '/terms', i: '📜' }
+      ] }
+    ];
+    var flat = [];
+    groups.forEach(function (grp) { grp.items.forEach(function (it) { flat.push({ g: grp.g, t: it.t, h: it.h, i: it.i }); }); });
+
+    var root = document.getElementById('cmdk');
+    if (!root) return;
+    var input = document.getElementById('cmdk-input');
+    var list = document.getElementById('cmdk-list');
+    var active = 0, view = flat.slice(), lastFocus = null;
+
+    function render() {
+      list.innerHTML = '';
+      if (!view.length) {
+        var empty = document.createElement('div');
+        empty.className = 'cmdk-item';
+        empty.style.opacity = '.55';
+        empty.style.cursor = 'default';
+        empty.textContent = 'No matches';
+        list.appendChild(empty);
+        return;
+      }
+      var lastG = null;
+      view.forEach(function (it, idx) {
+        if (it.g !== lastG) {
+          var gh = document.createElement('div');
+          gh.className = 'cmdk-group';
+          gh.textContent = it.g;
+          list.appendChild(gh);
+          lastG = it.g;
+        }
+        var row = document.createElement('a');
+        row.className = 'cmdk-item' + (idx === active ? ' active' : '');
+        row.href = it.h;
+        row.setAttribute('role', 'option');
+        row.setAttribute('data-idx', idx);
+        row.innerHTML = '<span class="cmdk-ico">' + it.i + '</span><span>' + it.t + '</span><span class="cmdk-hint">' + it.h + '</span>';
+        list.appendChild(row);
+      });
+    }
+    function setActive(n) {
+      if (!view.length) return;
+      active = (n + view.length) % view.length;
+      var rows = list.querySelectorAll('.cmdk-item');
+      for (var i = 0; i < rows.length; i++) rows[i].classList.toggle('active', i === active);
+      var el = rows[active];
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    }
+    function filter(term) {
+      term = (term || '').trim().toLowerCase();
+      view = !term ? flat.slice() : flat.filter(function (it) {
+        return it.t.toLowerCase().indexOf(term) >= 0 || it.h.indexOf(term) >= 0 || it.g.toLowerCase().indexOf(term) >= 0;
+      });
+      active = 0;
+      render();
+    }
+    function open() {
+      lastFocus = document.activeElement;
+      root.hidden = false;
+      input.value = '';
+      filter('');
+      input.focus();
+      document.body.style.overflow = 'hidden';
+    }
+    function close() {
+      root.hidden = true;
+      document.body.style.overflow = '';
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+    function toggle() { if (root.hidden) open(); else close(); }
+
+    Array.prototype.forEach.call(document.querySelectorAll('.cmdk-open'), function (b) { b.addEventListener('click', open); });
+    root.querySelector('.cmdk-backdrop').addEventListener('click', close);
+    input.addEventListener('input', function () { filter(this.value); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+      else if (e.key === 'Enter') { var it = view[active]; if (it) window.location.href = it.h; }
+      else if (e.key === 'Escape') { close(); }
+    });
+    list.addEventListener('mouseover', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('.cmdk-item[data-idx]') : null;
+      if (a) setActive(parseInt(a.getAttribute('data-idx'), 10));
+    });
+    document.addEventListener('keydown', function (e) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); toggle(); }
+      else if (e.key === 'Escape' && !root.hidden) { close(); }
+    });
   })();
 </script>
 {% block scripts %}{% endblock %}
