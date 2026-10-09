@@ -29,6 +29,7 @@ import golf
 import hockey
 import baseball
 import racing
+import track
 
 app = FastAPI(title="ScoreEdge")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -3177,6 +3178,10 @@ def goal_hunt_page(request: Request, date: str = "", game: str = "",
     """NHL Goal Hunt: the ten most-likely goal scorers on tonight's slate."""
     ensure_data()
     data = hockey.build_board(date, game, top=top, force=force)
+    try:
+        track.ingest(data, "goal_hunt")
+    except Exception:
+        pass
     return templates.TemplateResponse(request, "goal_hunt.html", {
         **_ctx(request, "nhl", active_page="goal_hunt"),
         "hunt": data,
@@ -3195,6 +3200,10 @@ def homerun_hunt_page(request: Request, date: str = "", game: str = "",
     """MLB Home Run Hunt: the ten most-likely home-run hitters on today's slate."""
     ensure_data()
     data = baseball.build_board(date, game, top=top, force=force)
+    try:
+        track.ingest(data, "homerun_hunt")
+    except Exception:
+        pass
     return templates.TemplateResponse(request, "homerun_hunt.html", {
         **_ctx(request, "mlb", active_page="homerun_hunt"),
         "hunt": data,
@@ -3266,6 +3275,54 @@ def odds_redirect(request: Request):
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/bets", status_code=301)
 
+def _recent_logged_days() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for r in track.joined():
+        src, day = r.get("source", ""), r.get("day", "")
+        if src and day > out.get(src, ""):
+            out[src] = day
+    return out
+
+
+@app.get("/calibration", response_class=HTMLResponse)
+def calibration_page(request: Request, day: str = ""):
+    """Calibration: how the model's probabilities compare to real outcomes,
+    joined from the leagues' public scoreboards. Honest, unfaked numbers."""
+    ensure_data()
+    try:
+        recent = _recent_logged_days()
+        for src in ("goal_hunt", "homerun_hunt"):
+            track.sync(src, day or recent.get(src, ""))
+    except Exception:
+        pass
+    try:
+        proof = journal.proof(_get_season())
+    except Exception:
+        proof = None
+    return templates.TemplateResponse(request, "calibration.html", {
+        **_ctx(request, "nfl", active_page="calibration"),
+        "summary": track.summary(),
+        "buckets": track.buckets(),
+        "proof": proof,
+    })
+
+
+@app.get("/api/calibration", response_class=JSONResponse)
+def api_calibration():
+    return JSONResponse({"summary": track.summary(), "buckets": track.buckets()})
+
+
+@app.get("/api/calibration/resolve", response_class=JSONResponse)
+def api_calibration_resolve(source: str = "", day: str = ""):
+    if source not in ("goal_hunt", "homerun_hunt") or not day:
+        return JSONResponse({"ok": False, "error": "source and day required"})
+    try:
+        n = track.resolve(source, day)
+    except Exception:
+        n = 0
+    return JSONResponse({"ok": True, "resolved": n, "source": source, "day": day})
+
+
 @app.get("/robots.txt")
 def robots_txt():
     return PlainTextResponse("User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /static/\n", media_type="text/plain")
@@ -3274,7 +3331,7 @@ def robots_txt():
 def sitemap_xml():
     base = "https://scoreedge.onrender.com"
     pages = ["", "/bets", "/nba", "/cfb", "/cbb", "/mlb", "/nhl", "/mls", "/golf",
-             "/goal-hunt", "/homerun-hunt", "/racing",
+             "/goal-hunt", "/homerun-hunt", "/racing", "/calibration",
              "/about", "/contact", "/privacy", "/terms"]
     urls = "\n".join(f'  <url><loc>{base}{p}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>' for p in pages)
     xml = f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{urls}\n</urlset>'

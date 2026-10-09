@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Calibration — ScoreEdge{% endblock %}
+{% block meta_description %}ScoreEdge calibration: how the model's stated probabilities compare to real outcomes, joined from the leagues' public scoreboards. Honest, unfaked numbers — logged predictions, resolved results, Brier score and log-loss.{% endblock %}
+{% block canonical %}/calibration{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 border-b border-white/5 pb-3">
+  <h1 class="text-xl font-display font-bold text-white tracking-tight">CALIBRATION</h1>
+  <p class="text-xs text-slate-500 mt-0.5 font-mono">STATED PROBABILITY vs REAL OUTCOMES</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="glass-card rounded-xl p-6 mb-5 max-w-3xl leading-relaxed text-sm text-slate-300 space-y-3">
+  <p>Every probability ScoreEdge shows is an estimate. This page checks the estimates against reality &mdash; no fudging. Each time a hunt is served we log exactly the players and percentages we printed; once those games go final we join them to the real scoreboard and mark each pick won or lost.</p>
+  <p class="text-slate-400">A perfectly calibrated 40% shot should come in about 40% of the time. The tables below let you see where we're hot (predictions land <span class="text-white">above</span> the stated rate) and where we're cold. Small samples swing hard &mdash; we label sample sizes honestly and never invent results.</p>
+  <p class="text-slate-400"><span class="text-white font-medium">Play responsibly.</span> If you or someone you know has a gambling problem, call <a href="tel:18004262537" class="text-brand hover:underline">1-800-GAMBLER</a> or visit <a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noopener" class="text-brand hover:underline">ncpgambling.org</a>.</p>
+</div>
+
+{% set srcs = [('goal_hunt', 'NHL Goal Hunt', '/goal-hunt'), ('homerun_hunt', 'MLB Home Run Hunt', '/homerun-hunt')] %}
+{% set any_logged = summary.get('goal_hunt', {}).get('logged') or summary.get('homerun_hunt', {}).get('logged') %}
+
+<div class="grid gap-5 lg:grid-cols-2 mb-5">
+  {% for key, label, href in srcs %}
+  {% set s = summary.get(key) %}
+  <div class="glass-card rounded-xl p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-display font-semibold text-white text-sm">{{ label }}</h2>
+      <a href="{{ href }}" class="text-[11px] font-mono text-brand hover:underline">open &rarr;</a>
+    </div>
+    {% if s and s.logged %}
+    <div class="grid grid-cols-3 gap-2 text-center mb-4">
+      <div class="rounded-lg bg-white/5 py-2">
+        <div class="text-lg font-display font-bold text-white">{{ s.logged }}</div>
+        <div class="text-[10px] font-mono text-slate-500 uppercase">Logged</div>
+      </div>
+      <div class="rounded-lg bg-white/5 py-2">
+        <div class="text-lg font-display font-bold text-white">{{ s.resolved }}</div>
+        <div class="text-[10px] font-mono text-slate-500 uppercase">Resolved</div>
+      </div>
+      <div class="rounded-lg bg-white/5 py-2">
+        <div class="text-lg font-display font-bold text-slate-400">{{ s.pending }}</div>
+        <div class="text-[10px] font-mono text-slate-500 uppercase">Pending</div>
+      </div>
+    </div>
+    <table class="w-full text-xs text-slate-300">
+      <tbody>
+        <tr class="border-b border-white/5">
+          <td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Record (W&ndash;L&ndash;P)</td>
+          <td class="py-1.5 text-right font-mono">
+            {% if s.resolved %}<span class="text-emerald-400">{{ s.won }}</span>&ndash;<span class="text-rose-400">{{ s.lost }}</span>&ndash;{{ s.push }}{% else %}&mdash;{% endif %}
+          </td>
+        </tr>
+        <tr class="border-b border-white/5">
+          <td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Hit rate</td>
+          <td class="py-1.5 text-right font-mono text-white">{{ s.hit_pct ~ '%' if s.hit_pct is not none else '—' }}</td>
+        </tr>
+        <tr class="border-b border-white/5">
+          <td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Brier score</td>
+          <td class="py-1.5 text-right font-mono text-white">{{ '%.4f'|format(s.brier) if s.brier is not none else '—' }} <span class="text-slate-600">(lower is better)</span></td>
+        </tr>
+        <tr class="border-b border-white/5">
+          <td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Log-loss</td>
+          <td class="py-1.5 text-right font-mono text-white">{{ '%.4f'|format(s.logloss) if s.logloss is not none else '—' }}</td>
+        </tr>
+        <tr>
+          <td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Days covered</td>
+          <td class="py-1.5 text-right font-mono text-slate-400">{{ s.days|length }}</td>
+        </tr>
+      </tbody>
+    </table>
+    {% if s.logged and not s.resolved %}
+    <p class="text-[11px] text-slate-500 mt-3">Predictions logged, no finals resolved yet. Resolution runs automatically once games go final.</p>
+    {% endif %}
+    {% else %}
+    <p class="text-sm text-slate-500">No predictions logged yet. They begin recording the moment a hunt is served.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if any_logged %}
+<div class="glass-card rounded-xl p-5 mb-5">
+  <h2 class="font-display font-semibold text-white text-sm mb-1">Probability buckets</h2>
+  <p class="text-[11px] text-slate-500 font-mono mb-4">STATED % vs ACTUAL HIT % &mdash; ALL RESOLVED PICKS</p>
+  {% if buckets %}
+  <div class="space-y-3">
+    {% for b in buckets %}
+    <div>
+      <div class="flex items-center justify-between text-[11px] font-mono mb-1">
+        <span class="text-slate-400">{{ b.label }}% <span class="text-slate-600">&middot; n={{ b.n }}</span></span>
+        <span class="{% if b.d >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.1f'|format(b.d) }} pts</span>
+      </div>
+      <div class="h-2 rounded bg-white/5 relative overflow-hidden">
+        <div class="absolute inset-y-0 left-0 rounded bg-brand/40" style="width: {{ b.pred }}%"></div>
+        <div class="absolute inset-y-0 left-0 rounded bg-emerald-400/80" style="width: {{ b.actual }}%; mix-blend-mode: screen"></div>
+      </div>
+      <div class="flex items-center justify-between text-[10px] font-mono text-slate-600 mt-0.5">
+        <span>stated {{ b.pred }}%</span>
+        <span>actual {{ b.actual }}%</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="text-[10px] text-slate-600 mt-3 font-mono">BLUE = STATED &middot; GREEN = ACTUAL. GREEN PAST BLUE = RUNNING HOT.</p>
+  {% else %}
+  <p class="text-sm text-slate-500">No resolved picks yet &mdash; buckets fill in as finals settle.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if proof and proof.logged %}
+<div class="glass-card rounded-xl p-5 max-w-3xl">
+  <h2 class="font-display font-semibold text-white text-sm mb-1">Market-edge calibration <span class="text-slate-600 font-mono text-[10px]">EDGE JOURNAL</span></h2>
+  <p class="text-[11px] text-slate-500 mb-4">The de-vigged value spots we logged, settled against real final scores. ROI is flat 1u at the recorded best price.</p>
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center mb-4">
+    <div class="rounded-lg bg-white/5 py-2">
+      <div class="text-lg font-display font-bold text-white">{{ proof.settled }}</div>
+      <div class="text-[10px] font-mono text-slate-500 uppercase">Settled</div>
+    </div>
+    <div class="rounded-lg bg-white/5 py-2">
+      <div class="text-lg font-display font-bold text-white">{{ proof.hit_pct }}%</div>
+      <div class="text-[10px] font-mono text-slate-500 uppercase">Hit rate</div>
+    </div>
+    <div class="rounded-lg bg-white/5 py-2">
+      <div class="text-lg font-display font-bold {% if proof.roi_pct >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.1f'|format(proof.roi_pct) }}%</div>
+      <div class="text-[10px] font-mono text-slate-500 uppercase">Flat ROI</div>
+    </div>
+    <div class="rounded-lg bg-white/5 py-2">
+      <div class="text-lg font-display font-bold text-slate-400">{{ proof.pending }}</div>
+      <div class="text-[10px] font-mono text-slate-500 uppercase">Pending</div>
+    </div>
+  </div>
+  <table class="w-full text-xs text-slate-300 sortable">
+    <thead>
+      <tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10">
+        <th class="text-left py-1.5">Edge bucket</th>
+        <th class="text-right">N</th>
+        <th class="text-right">W</th>
+        <th class="text-right">L</th>
+        <th class="text-right">Hit %</th>
+      </tr>
+    </thead>
+    <tbody class="stagger-in">
+      {% for b in proof.by_bucket %}
+      <tr class="border-b border-white/5">
+        <td class="py-1.5 font-mono">{{ b.label }}</td>
+        <td class="py-1.5 text-right font-mono">{{ b.n }}</td>
+        <td class="py-1.5 text-right font-mono text-emerald-400">{{ b.w }}</td>
+        <td class="py-1.5 text-right font-mono text-rose-400">{{ b.l }}</td>
+        <td class="py-1.5 text-right font-mono text-white">{{ b.hit }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="glass-card rounded-xl p-6 mt-5 max-w-3xl text-sm text-slate-400 space-y-2">
+  <h2 class="font-display font-semibold text-white text-sm mb-1">Method &amp; limits</h2>
+  <p>Predictions are logged verbatim as served and de-duplicated by day. Outcomes are joined from the NHL and MLB public scoreboards (goal scorers and home-run hitters on final-game boxscores), matched by team and player last name.</p>
+  <p>Brier score and log-loss are computed over resolved binary picks only; pushes and still-pending picks are excluded. The market-edge section settles logged moneyline/spread/total spots from real final scores.</p>
+  <p class="text-slate-500">These are honest, self-reported numbers from our own logs &mdash; not betting advice or a promise of future results.</p>
+</div>
+{% endblock %}
