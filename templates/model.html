@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Learning Model — ScoreEdge{% endblock %}
+{% block meta_description %}ScoreEdge learning model: self-calibrating from real settled outcomes. Trained on the edge journal, compared to consensus, with Brier scores and a forward read on the latest slate. Honest, unfaked numbers.{% endblock %}
+{% block canonical %}/model{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 border-b border-white/5 pb-3">
+  <h1 class="text-xl font-display font-bold text-white tracking-tight">LEARNING MODEL</h1>
+  <p class="text-xs text-slate-500 mt-0.5 font-mono">TRAINED FROM REAL OUTCOMES &middot; COMPARED TO CONSENSUS</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="glass-card rounded-xl p-6 mb-5 max-w-3xl text-sm text-slate-300 space-y-3">
+  <p>This is the final feature: a tiny, regularized logistic model that learns from the games we've already settled in the edge journal. It ingests nothing synthetic — every labeled example is a quote that we later resolved to a real win/loss.</p>
+  <p class="text-slate-400">We compare the model's probability to the consensus-implied probability (fair market read from the slate) and report OOS Brier score on a chronological holdout. Below you'll see the current weights, evaluation, and a forward read on the latest cached slate (unsettled, so no look-ahead).</p>
+  <p class="text-slate-400"><span class="text-white font-medium">Play responsibly.</span> If you or someone you know has a gambling problem, call <a href="tel:18004262537" class="text-brand hover:underline">1-800-GAMBLER</a> or visit <a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noopener" class="text-brand hover:underline">ncpgambling.org</a>.</p>
+</div>
+
+<div class="grid gap-5 lg:grid-cols-2 mb-5">
+  <div class="glass-card rounded-xl p-5">
+    <h2 class="font-display font-semibold text-white text-sm mb-3">Evaluation (OOS holdout)</h2>
+    <table class="w-full text-xs text-slate-300">
+      <tbody>
+        <tr class="border-b border-white/5"><td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Train / Test</td><td class="py-1.5 text-right font-mono">{{ state.n_train or 0 }} / {{ state.n_test or 0 }}</td></tr>
+        <tr class="border-b border-white/5"><td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Model Brier (OOS)</td><td class="py-1.5 text-right font-mono text-white">{{ '%.4f'|format(state.brier_test) if state.brier_test is not none else '—' }} <span class="text-slate-600">(lower is better)</span></td></tr>
+        <tr class="border-b border-white/5"><td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Consensus Brier (OOS)</td><td class="py-1.5 text-right font-mono text-white">{{ '%.4f'|format(state.brier_consensus) if state.brier_consensus is not none else '—' }}</td></tr>
+        <tr><td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Updated</td><td class="py-1.5 text-right font-mono text-slate-500">{{ state.ts|int if state.ts is not none else '—' }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="glass-card rounded-xl p-5">
+    <h2 class="font-display font-semibold text-white text-sm mb-3">Model weights</h2>
+    <table class="w-full text-xs text-slate-300 sortable">
+      <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Feature</th><th class="text-right">w</th></tr></thead>
+      <tbody class="stagger-in">
+        <tr class="border-b border-white/5"><td class="py-1.5 font-mono text-slate-400">intercept</td><td class="py-1.5 text-right font-mono">{{ '%.3f'|format(weights[0]) }}</td></tr>
+        <tr class="border-b border-white/5"><td class="py-1.5 font-mono text-slate-400">logit(p_consensus)</td><td class="py-1.5 text-right font-mono">{{ '%.3f'|format(weights[1]) }}</td></tr>
+        <tr class="border-b border-white/5"><td class="py-1.5 font-mono text-slate-400">edge_pts (best vs cons)</td><td class="py-1.5 text-right font-mono">{{ '%.3f'|format(weights[2]) }}</td></tr>
+        <tr class="border-b border-white/5"><td class="py-1.5 font-mono text-slate-400">is_home_side</td><td class="py-1.5 text-right font-mono">{{ '%.3f'|format(weights[3]) }}</td></tr>
+        <tr class="border-b border-white/5"><td class="py-1.5 font-mono text-slate-400">is_point_spread</td><td class="py-1.5 text-right font-mono">{{ '%.3f'|format(weights[4]) }}</td></tr>
+        <tr><td class="py-1.5 font-mono text-slate-400">is_total_points</td><td class="py-1.5 text-right font-mono">{{ '%.3f'|format(weights[5]) }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="glass-card rounded-xl p-5 mb-5">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-display font-semibold text-white text-sm">Forward read: latest slate</h2>
+    <span class="text-[10px] font-mono text-slate-600">{{ lp.preds|length }} ML/SPR/TOT quotes</span>
+  </div>
+  {% if lp.preds %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-xs text-slate-300 sortable">
+      <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Game</th><th>Market</th><th class="text-left">Side</th><th class="text-right">Best</th><th class="text-right">Edge</th><th class="text-right">P_cons</th><th class="text-right">P_model</th><th class="text-right">+/-</th></tr></thead>
+      <tbody class="stagger-in">
+        {% for r in lp.preds %}
+        <tr class="border-b border-white/5">
+          <td class="py-1.5 text-slate-400 font-mono">{{ r.game }}</td>
+          <td class="py-1.5 text-center font-mono">{{ r.market }}</td>
+          <td class="py-1.5 font-mono">{{ r.side }}</td>
+          <td class="py-1.5 text-right font-mono">{{ r.best_am }}</td>
+          <td class="py-1.5 text-right font-mono">{{ '%.1f'|format(r.edge_pct) }}</td>
+          <td class="py-1.5 text-right font-mono">{{ r.p_consensus }}%</td>
+          <td class="py-1.5 text-right font-mono text-white">{{ r.p_model }}%</td>
+          <td class="py-1.5 text-right font-mono {% if r.model_over>=0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.1f'|format(r.model_over) }}pp</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm text-slate-500">No slate predictions available (no cached slate or API key for live fetch).</p>
+  {% endif %}
+</div>
+
+<div class="glass-card rounded-xl p-6 max-w-3xl text-sm text-slate-400 space-y-2">
+  <h2 class="font-display font-semibold text-white text-sm mb-1">Method</h2>
+  <p>Features: log-odds of consensus-implied win prob, edge points (best vs consensus), home-side flag, market dummies (spread/total). Regularized logistic regression, L2=1.0, 300 iterations, random 70/30 split with fixed seed; OOS metrics only. Labels from <code>journal.settled_records</code> (real final scores). Predictions on latest slate use cached/slate data; unsettled rows have no look-ahead.</p>
+  <p class="text-slate-500">This is the last planned feature per your instructions (learning model reserved for the end). It learns from past settled outcomes to improve future accuracy. Stats-based estimate &middot; NOT a market price.</p>
+</div>
+{% endblock %}

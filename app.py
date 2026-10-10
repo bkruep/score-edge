@@ -30,6 +30,7 @@ import hockey
 import baseball
 import racing
 import track
+import model
 
 app = FastAPI(title="ScoreEdge")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -3284,26 +3285,57 @@ def _recent_logged_days() -> dict[str, str]:
     return out
 
 
-@app.get("/calibration", response_class=HTMLResponse)
-def calibration_page(request: Request, day: str = ""):
-    """Calibration: how the model's probabilities compare to real outcomes,
-    joined from the leagues' public scoreboards. Honest, unfaked numbers."""
+def _recent_logged_days() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for r in track.joined():
+        src, day = r.get('source',''), r.get('day','')
+        if src and day > out.get(src,''):
+            out[src] = day
+    return out
+
+@app.get('/calibration', response_class=HTMLResponse)
+def calibration_page(request: Request, day: str = ''):
     ensure_data()
     try:
         recent = _recent_logged_days()
-        for src in ("goal_hunt", "homerun_hunt"):
-            track.sync(src, day or recent.get(src, ""))
+        for src in ('goal_hunt','homerun_hunt'):
+            track.sync(src, day or recent.get(src,''))
     except Exception:
         pass
     try:
         proof = journal.proof(_get_season())
     except Exception:
         proof = None
-    return templates.TemplateResponse(request, "calibration.html", {
-        **_ctx(request, "nfl", active_page="calibration"),
-        "summary": track.summary(),
-        "buckets": track.buckets(),
-        "proof": proof,
+    return templates.TemplateResponse(request, 'calibration.html', {
+        **_ctx(request, 'nfl', active_page='calibration'),
+        'summary': track.summary(),
+        'buckets': track.buckets(),
+        'proof': proof,
+    })
+
+@app.get("/model", response_class=HTMLResponse)
+def model_page(request: Request):
+    """Learning model: trained from real settled outcomes, evaluated OOS,
+    with a forward read on the latest slate. Stats-based estimate · NOT a market price."""
+    ensure_data()
+    try:
+        st = model.load_state()
+        if st.get("n_train") is None or st.get("n_train") < 5:
+            try:
+                st = model._train()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+    except Exception:
+        st = {}
+    try:
+        lp = model.latest_slate_predictions()
+    except Exception:
+        lp = {"preds": [], "slate_day": ""}
+    return templates.TemplateResponse(request, "model.html", {
+        **_ctx(request, "nfl", active_page="model"),
+        "state": st,
+        "weights": st.get("w") or [0] * 6,
+        "lp": lp,
     })
 
 
@@ -3331,7 +3363,7 @@ def robots_txt():
 def sitemap_xml():
     base = "https://scoreedge.onrender.com"
     pages = ["", "/bets", "/nba", "/cfb", "/cbb", "/mlb", "/nhl", "/mls", "/golf",
-             "/goal-hunt", "/homerun-hunt", "/racing", "/calibration",
+             "/goal-hunt", "/homerun-hunt", "/racing", "/calibration", "/model",
              "/about", "/contact", "/privacy", "/terms"]
     urls = "\n".join(f'  <url><loc>{base}{p}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>' for p in pages)
     xml = f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{urls}\n</urlset>'
