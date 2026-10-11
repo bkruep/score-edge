@@ -6,7 +6,7 @@ import time
 import json
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import requests
@@ -260,6 +260,10 @@ _FB_MAP: dict[str, str] = {
     "hawaii": "G5", "nevada": "G5", "new mexico state": "G5", "new mexico": "G5",
     "san diego state": "G5", "san jose state": "G5", "unlv": "G5", "utah state": "G5",
     "wyoming": "G5",
+    # 2026 Pac-12 rebuild: the two leftover "State" members. Their full names
+    # must be explicit keys or longest-prefix matching falls through to the base
+    # school ("Oregon State" -> "Oregon", "Washington State" -> "Washington").
+    "oregon state": "G5", "washington state": "G5",
     # Group of 5 --- Sun Belt
     "appalachian state": "G5", "app state": "G5", "arkansas state": "G5",
     "coastal carolina": "G5", "georgia southern": "G5", "georgia state": "G5",
@@ -280,7 +284,8 @@ _FB_MAP: dict[str, str] = {
     "san diego st": "san diego state", "san jose st": "san jose state",
     "fresno st": "fresno state", "colorado st": "colorado state",
     "boise st": "boise state", "utah st": "utah state",
-    "washington st": "washington state", "kent st": "kent state",
+    "washington st": "washington state", "oregon st": "oregon state",
+    "kent st": "kent state", "sdsu": "san diego state",
     "ball st": "ball state", "app st": "appalachian state",
 }
 
@@ -327,8 +332,8 @@ _FB_DISPLAY = {
     "san diego st": "San Diego State", "san jose st": "San Jose State",
     "fresno st": "Fresno State", "colorado st": "Colorado State",
     "boise st": "Boise State", "utah st": "Utah State",
-    "washington st": "Washington State", "kent st": "Kent State",
-    "ball st": "Ball State",
+    "washington st": "Washington State", "oregon st": "Oregon State",
+    "kent st": "Kent State", "ball st": "Ball State", "sdsu": "San Diego State",
 }
 
 
@@ -353,6 +358,23 @@ def _norm_team(name_raw: str) -> str:
     return " ".join(toks)
 
 
+def _fb_resolve(alias: str) -> str:
+    """Walk an alias to its terminal school key.
+
+    `_FB_MAP` mixes two kinds of value: conference tags ("ohio state" -> "B1G")
+    and alias redirects ("ohio st" -> "ohio state"). Following the redirects
+    collapses short/mascot forms onto the one canonical key so "Ohio St" and
+    "Ohio State" render and group identically."""
+    key = alias
+    for _ in range(4):
+        nxt = _FB_MAP.get(key)
+        if nxt and nxt in _FB_MAP and nxt != key:
+            key = nxt
+        else:
+            break
+    return key
+
+
 def _canonical_college_team(selection: str) -> str:
     """Map any SharpAPI college label (full name, mascot variant, \"st\"/abbr,
     ranked prefix) to one canonical school name so per-team rows dedupe."""
@@ -364,7 +386,8 @@ def _canonical_college_team(selection: str) -> str:
             return selection.strip() or norm
     for alias, _ in _FB_SORTED:
         if norm.startswith(alias):
-            return _FB_DISPLAY.get(alias, alias.title())
+            key = _fb_resolve(alias)
+            return _FB_DISPLAY.get(key, key.title())
     return selection.strip() or norm
 
 
@@ -515,9 +538,9 @@ def _team_grouping(name_raw: str) -> str | None:
     for b in _FB_BLOCK:
         if norm.startswith(b):
             return None
-    for alias, grouping in _FB_SORTED:
+    for alias, _ in _FB_SORTED:
         if norm.startswith(alias):
-            return grouping
+            return _FB_MAP.get(_fb_resolve(alias))
     return None
 
 
@@ -852,6 +875,56 @@ def fetch_nfl_events(date: str) -> list[NflEvent]:
     return events
 
 
+def fetch_college_events(sport: str, league: str, week: set[str]) -> list[dict]:
+    """Every scheduled game for one college game week, from the events feed.
+
+    The best-odds board only prices a subset of the college slate on any given
+    poll, so the schedule itself comes from /events (which lists the whole
+    week's card) and odds are attached where the board has them. Returns
+    [{event_id, label}] with canonical "Away @ Home" labels, sorted by label.
+    """
+    anchor = datetime.now(timezone.utc).date().isoformat()
+    cache_key = f"college_events_{league}_{anchor}"
+    cached = _cached(cache_key)
+    if cached is not None:
+        return list(cached)
+
+    session = requests.Session()
+    try:
+        payload = _request_json(session, SHARPAPI_EVENTS_URL, {
+            "sport": sport, "league": league, "date": anchor, "limit": 200,
+        }, timeout=20)
+    except OddsError:
+        return []
+
+    out: dict[str, dict] = {}
+    seen_labels: set[str] = set()
+    for entry in payload.get("data") or []:
+        event_id = str(entry.get("id", "")).strip()
+        away = str(entry.get("away_team", "")).strip()
+        home = str(entry.get("home_team", "")).strip()
+        # Real games only: the college feed also carries pseudo-events (player
+        # props like "ncaaf__3249715archmanning_...", winning-margin and
+        # team-total markets) that have no teams or an off-pattern id.
+        if not event_id.startswith("ncaaf_") or not away or not home:
+            continue
+        # Keep the whole card the user is looking at: upcoming and in-progress
+        # games both belong on the schedule; only settled games drop off.
+        if str(entry.get("status", "")).strip().casefold() in ("final", "completed", "closed"):
+            continue
+        day = event_date(event_id)
+        if week and day and day not in week:
+            continue
+        label = _canonical_game(f"{away} @ {home}")
+        if label and label not in seen_labels:
+            seen_labels.add(label)
+            out[event_id] = {"event_id": event_id, "label": label}
+
+    result = sorted(out.values(), key=lambda e: (e["label"] or "").casefold())
+    _cache_set(cache_key, result)
+    return result
+
+
 def _parse_best_odds_rows(payload: Any, labels: dict[str, str]) -> list[BetQuote]:
     quotes: list[BetQuote] = []
     for entry in payload.get("data") or []:
@@ -1142,17 +1215,55 @@ def build_value_spots(moneylines: list[BetQuote], spreads: list[BetQuote],
     )
 
 
+_EVENT_DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
+
+
+def event_date(event_id: str) -> str:
+    """The YYYY-MM-DD embedded in a provider event id ('' if none).
+
+    SharpAPI ids look like `ncaaf_away_home_2026-10-10_b2`; the calendar day is
+    the only reliable way to tell which week a row belongs to."""
+    m = _EVENT_DATE_RE.search(event_id or "")
+    return m.group(1) if m else ""
+
+
+def college_game_week(anchor: datetime | None = None) -> set[str]:
+    """ISO dates for the current college-football game week (Thu..Tue).
+
+    The CFB feed posts several weeks of games at once, so the board is scoped to
+    the surrounding Thursday-through-Tuesday slate (the same window the NFL
+    board merges). Anything outside it (e.g. next Saturday's marquee game) is a
+    different slate and is dropped."""
+    day = (anchor or datetime.now(timezone.utc)).date()
+    back = (day.weekday() - 3) % 7  # days back to the week's Thursday
+    start = day - timedelta(days=back)
+    return {(start + timedelta(days=i)).isoformat() for i in range(6)}
+
+
 def _fetch_league_best_odds(sport: str, league: str,
                             markets: str = ",".join(COLLEGE_GAME_MARKETS),
-                            max_rows: int = 900) -> list[BetQuote]:
+                            max_rows: int = 900,
+                            main_lines_only: bool = False,
+                            date: str | None = None) -> list[BetQuote]:
     """Page the full best-odds board for a league (no event filter).
 
     The NFL path pre-filters by event ids from the events feed; college leagues
     have no canonical team map to validate against, so page every row SharpAPI
     returns for the league's main markets and keep the ones that carry lines.
     Game labels come straight from each row's event_name.
+
+    `main_lines_only` adds the provider's is_main_line filter. Without it a
+    college spread/total board carries every alternate line (thousands of rows,
+    which also trips the provider's rate limit before the page count completes);
+    the filter collapses that to the priced main lines. Moneyline has no
+    alternates, so it needs no filter.
+
+    `date` (YYYY-MM-DD) asks the provider for a calendar day's board. Without it
+    SharpAPI returns only a small "featured" set for college leagues (a handful
+    of games); passing the day lifts the board to the full slate the feed is
+    actually posting (and often bleeds into the surrounding week's games).
     """
-    cache_key = f"league_odds_{league}_{markets}"
+    cache_key = f"league_odds_{league}_{markets}{'_main' if main_lines_only else ''}{'_' + date if date else ''}"
     cached = _cached(cache_key)
     if cached is not None:
         return list(cached)
@@ -1161,10 +1272,15 @@ def _fetch_league_best_odds(sport: str, league: str,
     quotes: list[BetQuote] = []
     offset = 0
     while True:
-        payload = _request_json(session, SHARPAPI_BEST_ODDS_URL, {
+        params = {
             "sport": sport, "league": league, "market": markets,
             "limit": 200, "offset": offset,
-        }, timeout=25)
+        }
+        if main_lines_only:
+            params["is_main_line"] = "true"
+        if date:
+            params["date"] = date
+        payload = _request_json(session, SHARPAPI_BEST_ODDS_URL, params, timeout=25)
         page = _parse_best_odds_rows(payload, {})
         quotes.extend(page)
         pagination = payload.get("pagination") or {}
@@ -1200,10 +1316,51 @@ def fetch_sport_slate(tag: str, include_all: bool = False) -> dict:
     if cached is not None:
         return cached
 
+    _schedule: list[dict] = []
     try:
-        quotes = _fetch_league_best_odds(
-            cfg["sport"], cfg["league"],
-            markets=",".join(cfg.get("markets") or GAME_MARKETS))
+        if cfg.get("scoped"):
+            # CFB only. Moneyline carries no alternates (one page, complete).
+            # Spreads and totals explode into every alternate line - thousands of
+            # rows that also trip the provider's rate limit before the page walk
+            # finishes - so request only the priced main lines. The CFB feed
+            # posts several weeks at once, so keep just the current Thu..Tue game
+            # week (next Saturday's marquee games are a different slate).
+            #
+            # Without a `date` the provider returns only a small "featured"
+            # subset for college leagues (a dozen games). Requesting both the
+            # bare board and the week's dated board - and merging - lifts the
+            # slate to everything the feed has priced for the week.
+            _anchor = datetime.now(timezone.utc).date().isoformat()
+            quotes = []
+            for _mkt in ("moneyline", "point_spread", "total_points"):
+                _main = (_mkt != "moneyline")
+                for _day in (None, _anchor):
+                    quotes += _fetch_league_best_odds(
+                        cfg["sport"], cfg["league"], markets=_mkt,
+                        main_lines_only=_main, date=_day)
+            _week = college_game_week()
+            # The provider prices only part of the slate, so the schedule for
+            # the board's game list comes from the events feed; odds attach
+            # where present and the rest render as "no line yet" cards.
+            _schedule = fetch_college_events(cfg["sport"], cfg["league"], _week)
+            if not include_all:
+                _schedule = [e for e in _schedule if _game_grouping(e["label"])]
+            quotes = [q for q in quotes
+                      if not event_date(q.event_id) or event_date(q.event_id) in _week]
+            # Collapse the overlap between the bare and dated boards.
+            _seen: set[tuple] = set()
+            _merged: list[BetQuote] = []
+            for q in quotes:
+                _k = (q.event_id, q.market, (q.selection or "").casefold(), q.line, q.best_book)
+                if _k in _seen:
+                    continue
+                _seen.add(_k)
+                _merged.append(q)
+            quotes = _merged
+        else:
+            quotes = _fetch_league_best_odds(
+                cfg["sport"], cfg["league"],
+                markets=",".join(cfg.get("markets") or GAME_MARKETS))
     except OddsError:
         stale = _last_good_slate(cache_key)
         if stale is not None:
@@ -1305,11 +1462,14 @@ def fetch_sport_slate(tag: str, include_all: bool = False) -> dict:
                 best_play_by_game[q.game] = q
         value_spots = sorted(best_play_by_game.values(), key=lambda q: q.edge_pts(), reverse=True)[:12]
 
-    game_rows: dict[str, str] = {}
+    # The game list is the week's schedule (from the events feed) with any
+    # priced game the feed didn't list folded in, so the board shows the whole
+    # card and not just the subset the provider happens to have odds for.
+    event_map: dict[str, str] = {e["event_id"]: e["label"] for e in _schedule}
     for q in moneylines + spreads + totals:
-        game_rows[q.event_id] = q.game
+        event_map[q.event_id] = q.game
     events = [{"event_id": eid, "label": label}
-              for eid, label in sorted(game_rows.items(), key=lambda kv: (kv[1] or "").casefold())]
+              for eid, label in sorted(event_map.items(), key=lambda kv: (kv[1] or "").casefold())]
 
     slate = {
         "events": events,

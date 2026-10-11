@@ -11,7 +11,7 @@
 {% block content %}
 <div class="glass-card rounded-xl p-6 mb-5 max-w-3xl text-sm text-slate-300 space-y-3">
   <p>This is the final feature: a tiny, regularized logistic model that learns from the games we've already settled in the edge journal. It ingests nothing synthetic — every labeled example is a quote that we later resolved to a real win/loss.</p>
-  <p class="text-slate-400">We compare the model's probability to the consensus-implied probability (fair market read from the slate) and report OOS Brier score on a chronological holdout. Below you'll see the current weights, evaluation, and a forward read on the latest cached slate (unsettled, so no look-ahead).</p>
+  <p class="text-slate-400">We compare the model's probability to the consensus-implied probability (fair market read from the slate) and report OOS Brier score on a held-out split. Below you'll see the current weights, evaluation, and a forward read on the latest cached slate (unsettled, so no look-ahead).</p>
   <p class="text-slate-400"><span class="text-white font-medium">Play responsibly.</span> If you or someone you know has a gambling problem, call <a href="tel:18004262537" class="text-brand hover:underline">1-800-GAMBLER</a> or visit <a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noopener" class="text-brand hover:underline">ncpgambling.org</a>.</p>
 </div>
 
@@ -20,10 +20,10 @@
     <h2 class="font-display font-semibold text-white text-sm mb-3">Evaluation (OOS holdout)</h2>
     <table class="w-full text-xs text-slate-300">
       <tbody>
-        <tr class="border-b border-white/5"><td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Train / Test</td><td class="py-1.5 text-right font-mono">{{ state.n_train or 0 }} / {{ state.n_test or 0 }}</td></tr>
+        <tr class="border-b border-white/5"><td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Train / Test</td><td class="py-1.5 text-right font-mono">{{ state.n_train or 0 }} / {{ state.n_test or 0 }}{% if (state.n_train or 0) + (state.n_test or 0) < 100 %} <span class="text-amber-400" title="Metrics are provisional at this sample size">(small sample)</span>{% endif %}</td></tr>
         <tr class="border-b border-white/5"><td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Model Brier (OOS)</td><td class="py-1.5 text-right font-mono text-white">{{ '%.4f'|format(state.brier_test) if state.brier_test is not none else '—' }} <span class="text-slate-600">(lower is better)</span></td></tr>
         <tr class="border-b border-white/5"><td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Consensus Brier (OOS)</td><td class="py-1.5 text-right font-mono text-white">{{ '%.4f'|format(state.brier_consensus) if state.brier_consensus is not none else '—' }}</td></tr>
-        <tr><td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Updated</td><td class="py-1.5 text-right font-mono text-slate-500">{{ state.ts|int if state.ts is not none else '—' }}</td></tr>
+        <tr><td class="py-1.5 text-slate-500 font-mono uppercase text-[10px]">Updated</td><td class="py-1.5 text-right font-mono text-slate-500">{{ updated or (state.ts|int if state.ts is not none else '—') }}</td></tr>
       </tbody>
     </table>
   </div>

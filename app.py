@@ -1454,6 +1454,16 @@ def _full_slate_board(date: str, explicit: bool = False) -> tuple[dict, str]:
     if not odds.API_KEY:
         return slate, active_date
 
+    # Default (no explicit date) loads share one cached merged week board so the
+    # homepage, /bets and /props never each rebuild the whole week from the
+    # provider. Rebuilding is what made the first hit after the 900s TTL ~30s.
+    _merged_key = f"bets_slate_{today_iso}"
+    if not explicit:
+        _hot_merged = odds._cached(_merged_key)
+        if (isinstance(_hot_merged, dict) and _hot_merged.get("_active_date")
+                and _slate_size(_hot_merged) >= 9):
+            return _hot_merged, _hot_merged["_active_date"]
+
     # Auto-advance to the richest upcoming gameday when the requested day is thin.
     if not explicit:
         _dec_key = f"bets_active_{today_iso}"
@@ -1627,6 +1637,9 @@ def _full_slate_board(date: str, explicit: bool = False) -> tuple[dict, str]:
     slate["props"] = [_relabel_prop(p) for p in slate["props"]]
     slate["value_spots"] = odds.build_value_spots(
         slate["moneylines"], slate["spreads"], slate["totals"])
+    slate["_active_date"] = active_date
+    if not explicit:
+        odds._cache_set(_merged_key, slate)
     return slate, active_date
 
 def _td_bundle(slate: dict) -> tuple:
@@ -1745,7 +1758,7 @@ def bets_page(request: Request, date: str = "", focus: str = ""):
                 for _weather_fut in _weather_futs:
                     _row, _stadium = _weather_futs[_weather_fut]
                     try:
-                        _w = _weather_fut.result(timeout=11)[1]
+                        _w = _weather_fut.result(timeout=6)[1]
                     except Exception:
                         _w = {}
                     daily = _w.get("daily", {})
@@ -1778,11 +1791,9 @@ def bets_page(request: Request, date: str = "", focus: str = ""):
 
     double_value = double_value_players(slate)
 
-    # Mirror point the merged board for the dashboard KPI strip so the homepage
-    # surface counts exactly what this tab shows (same events/lines/value).
-    if odds.API_KEY and not error:
-        odds._cache_set(f"bets_slate_{date}", slate)
-
+    # _full_slate_board already persists the merged board under
+    # bets_slate_{today}, which the homepage KPI reads; no duplicate set here
+    # (a second set would overwrite the cached board without its _active_date).
     return templates.TemplateResponse(request, "bets.html", {
         **_ctx(request, "nfl", active_page="bets"),
         "odds": odds,
@@ -2812,6 +2823,12 @@ def _sport_best_bets(slate: dict, props: list) -> list:
 def _sport_matchups(slate: dict, props: list) -> list:
     """Per-game command cards: every market's rows plus the game's best play."""
     by_game: dict[str, dict] = {}
+    # Seed every scheduled game first so matchups the books haven't priced yet
+    # still get a card (the board lists the whole slate, odds where available).
+    for e in slate.get("events") or []:
+        label = e.get("label") if isinstance(e, dict) else None
+        if label:
+            by_game.setdefault(label, {})
     for q in slate.get("moneylines") or []:
         by_game.setdefault(q.game, {}).setdefault("ml", []).append(q)
     for q in slate.get("spreads") or []:
@@ -3331,11 +3348,19 @@ def model_page(request: Request):
         lp = model.latest_slate_predictions()
     except Exception:
         lp = {"preds": [], "slate_day": ""}
+    updated = ""
+    if st.get("ts"):
+        try:
+            from datetime import timezone
+            updated = datetime.fromtimestamp(float(st["ts"]), tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        except Exception:
+            updated = ""
     return templates.TemplateResponse(request, "model.html", {
         **_ctx(request, "nfl", active_page="model"),
         "state": st,
         "weights": st.get("w") or [0] * 6,
         "lp": lp,
+        "updated": updated,
     })
 
 
@@ -3373,6 +3398,44 @@ def sitemap_xml():
 async def not_found_handler(request: Request, exc):
     return templates.TemplateResponse(request, "404.html", {
         **_ctx(request, "nfl"), "active_page": "404"}, status_code=404)
+
+
+def _prewarm_caches():
+    """Background refresher: keep the merged week board and the sport-tab slates
+    warm so a visitor never pays the cold rebuild cost. Without this the board
+    went cold when the 900s TTL lapsed, making the first hit after idle take
+    tens of seconds (best-odds pages walked for the whole week)."""
+    import datetime as _pdt
+    import logging as _plog
+    import time as _ptime
+    _log = _plog.getLogger(__name__)
+    _ptime.sleep(6)  # let the process finish booting before the background I/O
+    while True:
+        try:
+            ensure_data()
+        except Exception:
+            pass
+        try:
+            if odds.API_KEY:
+                _full, _active = _full_slate_board(_pdt.date.today().isoformat())
+                if _full:
+                    _log.warning("prewarm: merged board -> %s (%s games)",
+                                 _active, len(_full.get("events") or []))
+        except Exception as _exc:
+            _log.warning("prewarm: merged board failed: %s", _exc)
+        for _tag in ("nhl", "nba", "mlb", "mls", "cbb", "cfb"):
+            try:
+                if odds.API_KEY:
+                    odds.fetch_sport_slate(_tag)
+            except Exception:
+                pass
+        _ptime.sleep(600)
+
+
+if os.environ.get("SCOREEDGE_PREWARM", "1") != "0":
+    import threading as _pth
+    _pth.Thread(target=_prewarm_caches, daemon=True, name="scoreedge-prewarm").start()
+
 
 if __name__ == "__main__":
     import uvicorn

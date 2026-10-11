@@ -191,6 +191,11 @@ def load_journal() -> list[dict]:
         return []
     out.sort(key=lambda r: r.get("ts", 0))
     for r in out:
+        day = str(r.get("day") or "")
+        if day.startswith("slate_"):
+            day = day[len("slate_"):]
+            r["day"] = day
+            r["year"] = day[:4]
         sig = (f'{r["day"]}|{r["game"]}|{r["mkt"]}|{r["side"]}|'
                f'{r["line"]}|{r["am"]}|{r["edge"]}')
         _seen_sigs.add(sig)
@@ -208,6 +213,8 @@ def prime_from_cache() -> int:
         entry = disk[key]
         val = entry[1] if isinstance(entry, tuple) else entry
         day = key.split("_", 1)[1] if "_" in key else None
+        if day and day.startswith("slate_"):
+            day = day[len("slate_"):]
         if not day or "-" not in day:
             continue
         if not isinstance(val, dict):
