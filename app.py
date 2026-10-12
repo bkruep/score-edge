@@ -31,6 +31,7 @@ import baseball
 import racing
 import track
 import model
+import picks
 
 app = FastAPI(title="ScoreEdge")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -1217,6 +1218,25 @@ def nfl_board(request: Request):
     if isinstance(_src_slate, dict):
         try:
             best_bets = _best_bets(_src_slate, limit=12)
+            # log best bets shown on dashboard
+            try:
+                day = __import__("datetime").date.today().isoformat()
+                for bb in best_bets[:12]:
+                    try:
+                        picks.record_pick(
+                            game=str(bb.get("game","")),
+                            mkt=str(bb.get("mkt","")),
+                            side=str(bb.get("side","")),
+                            player=str(bb.get("player_name","")) or str(bb.get("side","")),
+                            am=int(bb.get("am") or 0),
+                            edge=float(bb.get("edge_pct") or 0.0),
+                            day=str(day),
+                            source="best_bet:dashboard",
+                        )
+                    except Exception:
+                        continue
+            except Exception:
+                pass
         except Exception:
             best_bets = []
 
@@ -2549,6 +2569,29 @@ def dfs_page(request: Request, sport: str = "nfl", n: str = "1",
                     slate.get("weather_flags") or {})
                if (lineups and sport == "nfl") else [])
     portfolio = dfs.portfolio_view(lineups) if len(lineups) > 1 else {}
+    # Log top DFS lineup as suggested pick (deduped)
+    try:
+        if lineups:
+            top = lineups[0]
+            players = top.get("players") or []
+            day = top.get("day") or __import__("datetime").date.today().isoformat()
+            srcp = f"dfs_lineup:{sport}:{src}"
+            for pl in players[:8]:
+                try:
+                    picks.record_pick(
+                        game=str(pl.get("game","")) or str(top.get("game","")),
+                        mkt="dfs",
+                        side=str(pl.get("name","")),
+                        player=str(pl.get("name","")),
+                        am=0,
+                        edge=0.0,
+                        day=str(day),
+                        source=srcp,
+                    )
+                except Exception:
+                    continue
+    except Exception:
+        pass
     return templates.TemplateResponse(request, "dfs.html", {
         **_ctx(request, sport, active_page="dfs"),
         "slate": slate,
@@ -3200,6 +3243,25 @@ def goal_hunt_page(request: Request, date: str = "", game: str = "",
         track.ingest(data, "goal_hunt")
     except Exception:
         pass
+    # log hunt suggestions
+    try:
+        day = __import__("datetime").date.today().isoformat()
+        for q in (data or [])[:20]:
+            try:
+                picks.record_pick(
+                    game=str(q.get("game","")) or str(q.get("matchup","")),
+                    mkt="prop",
+                    side=str(q.get("player","")) or str(q.get("label","")),
+                    player=str(q.get("player","")) or str(q.get("label","")),
+                    am=0,
+                    edge=float(q.get("edge","") or q.get("edge_pct","") or 0.0),
+                    day=str(day),
+                    source="nhl_hunt",
+                )
+            except Exception:
+                continue
+    except Exception:
+        pass
     return templates.TemplateResponse(request, "goal_hunt.html", {
         **_ctx(request, "nhl", active_page="goal_hunt"),
         "hunt": data,
@@ -3220,6 +3282,25 @@ def homerun_hunt_page(request: Request, date: str = "", game: str = "",
     data = baseball.build_board(date, game, top=top, force=force)
     try:
         track.ingest(data, "homerun_hunt")
+    except Exception:
+        pass
+    # log hunt suggestions
+    try:
+        day = __import__("datetime").date.today().isoformat()
+        for q in (data or [])[:20]:
+            try:
+                picks.record_pick(
+                    game=str(q.get("game","")) or str(q.get("matchup","")),
+                    mkt="prop",
+                    side=str(q.get("player","")) or str(q.get("label","")),
+                    player=str(q.get("player","")) or str(q.get("label","")),
+                    am=0,
+                    edge=float(q.get("edge","") or q.get("edge_pct","") or 0.0),
+                    day=str(day),
+                    source="mlb_hunt",
+                )
+            except Exception:
+                continue
     except Exception:
         pass
     return templates.TemplateResponse(request, "homerun_hunt.html", {

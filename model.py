@@ -1,4 +1,4 @@
-import json
+﻿import json
 import math
 import os
 import time
@@ -40,7 +40,34 @@ def _save_state(state: dict[str, Any]) -> None:
 
 
 def _train() -> dict[str, Any]:
-    recs = [r for r in journal.settled_records() if r["status"] in ("won", "lost")]
+    recs_j = [r for r in journal.settled_records() if r["status"] in ("won", "lost")]
+    # Union with settled picks (converted to journal-like shape)
+    try:
+        recs_p = []
+        for pr in getattr(picks, "settled_picks", lambda: [])():
+            try:
+                prj = picks.to_journal_like(pr)
+                if prj:
+                    recs_p.append(prj)
+            except Exception:
+                continue
+        seen = set()
+        recs = []
+        for r in recs_j + recs_p:
+            key = (
+                str(r.get("day", "")),
+                str(r.get("game", "")),
+                str(r.get("mkt", "")),
+                str(r.get("side", "")),
+                int(r.get("am") or 0),
+                str(r.get("status", "")),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            recs.append(r)
+    except Exception:
+        recs = list(recs_j)
     X = []
     y = []
     for r in recs:
