@@ -1218,18 +1218,21 @@ def nfl_board(request: Request):
     if isinstance(_src_slate, dict):
         try:
             best_bets = _best_bets(_src_slate, limit=12)
-            # log best bets shown on dashboard
+            # log best bets shown on dashboard (BetQuote objects -> getattr)
             try:
                 day = __import__("datetime").date.today().isoformat()
+                _mmap = {"moneyline": "ML", "point_spread": "SPR", "total_points": "TOT"}
                 for bb in best_bets[:12]:
                     try:
+                        _raw = str(getattr(bb, "market", "") or "")
                         picks.record_pick(
-                            game=str(bb.get("game","")),
-                            mkt=str(bb.get("mkt","")),
-                            side=str(bb.get("side","")),
-                            player=str(bb.get("player_name","")) or str(bb.get("side","")),
-                            am=int(bb.get("am") or 0),
-                            edge=float(bb.get("edge_pct") or 0.0),
+                            game=str(getattr(bb, "game", "") or ""),
+                            mkt=_mmap.get(_raw, "prop"),
+                            side=str(getattr(bb, "selection", "") or ""),
+                            player=str(getattr(bb, "player_name", "") or ""),
+                            am=int(getattr(bb, "best_odds", 0) or 0),
+                            edge=float(getattr(bb, "edge_pct", 0.0) or 0.0),
+                            line=getattr(bb, "line", None),
                             day=str(day),
                             source="best_bet:dashboard",
                         )
@@ -3256,7 +3259,7 @@ def goal_hunt_page(request: Request, date: str = "", game: str = "",
                     am=0,
                     edge=float(q.get("edge","") or q.get("edge_pct","") or 0.0),
                     day=str(day),
-                    source="nhl_hunt",
+                    source="goal_hunt",
                 )
             except Exception:
                 continue
@@ -3297,7 +3300,7 @@ def homerun_hunt_page(request: Request, date: str = "", game: str = "",
                     am=0,
                     edge=float(q.get("edge","") or q.get("edge_pct","") or 0.0),
                     day=str(day),
-                    source="mlb_hunt",
+                    source="homerun_hunt",
                 )
             except Exception:
                 continue
