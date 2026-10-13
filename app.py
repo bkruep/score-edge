@@ -3495,6 +3495,47 @@ async def api_dfs_result(request: Request):
     return JSONResponse({"ok": True, "result": rec})
 
 
+@app.get("/api/dfs-players", response_class=JSONResponse)
+def api_dfs_players(sport: str = "nfl"):
+    """Player pool for the DFS result picker: names/positions/teams/salaries for
+    the slate we'd price. NFL uses our own projection-priced slate (the same
+    chain behind /dfs); other sports need the DraftKings feed."""
+    sport = (sport or "nfl").strip().lower()
+    if sport not in dfs.ROSTERS:
+        sport = "nfl"
+    players: list = []
+    note = ""
+    try:
+        if dfs.data_source() == "dk":
+            try:
+                players = (dfs.fetch_slate(sport) or {}).get("players") or []
+            except Exception:
+                players = []
+        if not players and sport == "nfl":
+            live = _filter_fantasy(_normalize_stats(data.load_player_stats(_get_season())))
+            sl, note = dfs.projection_slate(live.to_dict("records"), None)
+            players = (sl or {}).get("players") or []
+        elif not players and sport != "nfl":
+            note = f"No {sport} player pool without the DraftKings feed."
+    except Exception as e:
+        note = str(e).strip() or e.__class__.__name__
+
+    out = []
+    for p in players:
+        nm = str(p.get("name") or p.get("player_name") or "").strip()
+        if not nm:
+            continue
+        out.append({
+            "name": nm,
+            "pos": str(p.get("position") or "").upper(),
+            "team": str(p.get("team") or ""),
+            "salary": int(p.get("salary") or p.get("_salary") or 0),
+            "proj": round(float(p.get("avg_points") or p.get("proj") or 0.0), 2),
+        })
+    out.sort(key=lambda x: x["name"])
+    return JSONResponse({"sport": sport, "count": len(out), "note": note, "players": out})
+
+
 @app.get("/api/calibration", response_class=JSONResponse)
 def api_calibration():
     return JSONResponse({"summary": track.summary(), "buckets": track.buckets()})

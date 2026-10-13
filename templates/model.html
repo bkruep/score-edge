@@ -92,7 +92,7 @@
       {% if dfs_summary.decided %}{{ dfs_summary.wins }}-{{ dfs_summary.losses }} vs cash line{% if dfs_summary.hit_pct is not none %} ({{ dfs_summary.hit_pct }}%){% endif %}{% else %}{{ dfs_summary.slates or 0 }} slate{{ '' if (dfs_summary.slates or 0) == 1 else 's' }} logged{% endif %}
     </span>
   </div>
-  <p class="text-xs text-slate-500 mb-3">DFS lineups have no odds, so results are entered by hand. Paste the winning lineup and its total points (the cash line). If you also enter the score the suggested lineup posted, we mark whether it cleared. The winner's roster is compared against the lineup the site logged for that slate.</p>
+  <p class="text-xs text-slate-500 mb-3">DFS lineups have no odds, so results are entered by hand. Search for players to add the winning lineup (or paste/type names), then enter its total points (the cash line). If you also enter the score the suggested lineup posted, we mark whether it cleared. The winner's roster is compared against the lineup the site logged for that slate.</p>
   <div class="grid gap-5 md:grid-cols-2">
     <div class="space-y-2">
       <div class="flex gap-2">
@@ -102,7 +102,12 @@
           <option value="mlb">MLB</option><option value="nhl">NHL</option>
         </select>
       </div>
-      <textarea id="dfs-winning" rows="5" placeholder="Paste winning lineup — one player per line (position tags ok)" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono"></textarea>
+      <div class="flex gap-2">
+        <input id="dfs-search" placeholder="Search players (name, team or pos)..." class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white">
+        <button type="button" id="dfs-load" class="bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-mono px-3 py-2 rounded-lg">Load</button>
+      </div>
+      <div id="dfs-list" class="hidden max-h-44 overflow-y-auto rounded-lg border border-white/10 bg-slate-900/95 divide-y divide-white/5"></div>
+      <textarea id="dfs-winning" rows="5" placeholder="Winning lineup - one player per line (or pick from the search above)" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono"></textarea>
       <div class="flex gap-2">
         <label class="flex-1 block text-[10px] font-mono uppercase text-slate-500">Cash line (winner total)
           <input id="dfs-total" type="number" step="0.01" class="mt-1 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white">
@@ -144,6 +149,66 @@
 (function () {
   var d = document.getElementById('dfs-day');
   if (d && !d.value) { d.value = new Date().toISOString().slice(0, 10); }
+
+  var allPlayers = [];
+  var searchEl = document.getElementById('dfs-search');
+  var listEl = document.getElementById('dfs-list');
+  var sportEl = document.getElementById('dfs-sport');
+  var winEl = document.getElementById('dfs-winning');
+
+  function renderList() {
+    if (!listEl || !searchEl) { return; }
+    var q = (searchEl.value || '').trim().toLowerCase();
+    if (!allPlayers.length) { listEl.classList.add('hidden'); listEl.innerHTML = ''; return; }
+    var matches = allPlayers.filter(function (p) {
+      if (!q) { return true; }
+      return (p.name || '').toLowerCase().indexOf(q) >= 0
+        || (p.team || '').toLowerCase().indexOf(q) >= 0
+        || (p.pos || '').toLowerCase() === q;
+    }).slice(0, 50);
+    listEl.innerHTML = matches.map(function (p) {
+      return '<button type="button" data-nm="' + p.name.replace(/"/g, '&quot;') + '" class="w-full text-left px-3 py-1.5 hover:bg-white/10 flex items-center justify-between text-xs text-slate-200">'
+        + '<span>' + p.name + ' <span class="text-slate-500 font-mono">' + p.pos + ' ' + p.team + '</span></span>'
+        + '<span class="text-slate-500 font-mono">$' + p.salary + '</span></button>';
+    }).join('') || '<div class="px-3 py-2 text-xs text-slate-600">No match</div>';
+    listEl.classList.remove('hidden');
+  }
+
+  function addPlayer(nm) {
+    if (!winEl || !nm) { return; }
+    var lines = winEl.value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (lines.indexOf(nm) < 0) { lines.push(nm); }
+    winEl.value = lines.join('\n');
+  }
+
+  function loadPlayers() {
+    var msg = document.getElementById('dfs-msg');
+    if (!sportEl) { return; }
+    if (msg) { msg.textContent = 'Loading players...'; }
+    fetch('/api/dfs-players?sport=' + encodeURIComponent(sportEl.value || 'nfl'))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        allPlayers = (j && j.players) || [];
+        if (msg) { msg.textContent = allPlayers.length + ' players loaded' + (j && j.note ? ' - ' + j.note : ''); }
+        renderList();
+      })
+      .catch(function (e) { if (msg) { msg.textContent = 'Player load failed: ' + e; } });
+  }
+
+  if (searchEl) {
+    searchEl.addEventListener('focus', function () { if (!allPlayers.length) { loadPlayers(); } renderList(); });
+    searchEl.addEventListener('input', renderList);
+  }
+  var loadBtn = document.getElementById('dfs-load');
+  if (loadBtn) { loadBtn.addEventListener('click', loadPlayers); }
+  if (sportEl) { sportEl.addEventListener('change', function () { allPlayers = []; loadPlayers(); }); }
+  if (listEl) {
+    listEl.addEventListener('click', function (ev) {
+      var btn = ev.target.closest('button[data-nm]');
+      if (btn) { addPlayer(btn.getAttribute('data-nm')); }
+    });
+  }
+
   var b = document.getElementById('dfs-submit');
   if (!b) { return; }
   b.addEventListener('click', function () {
