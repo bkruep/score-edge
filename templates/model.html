@@ -87,6 +87,90 @@
 
 <div class="glass-card rounded-xl p-5 mb-5">
   <div class="flex items-center justify-between mb-3">
+    <h2 class="font-display font-semibold text-white text-sm">DFS results (manual)</h2>
+    <span class="text-[10px] font-mono text-slate-600">
+      {% if dfs_summary.decided %}{{ dfs_summary.wins }}-{{ dfs_summary.losses }} vs cash line{% if dfs_summary.hit_pct is not none %} ({{ dfs_summary.hit_pct }}%){% endif %}{% else %}{{ dfs_summary.slates or 0 }} slate{{ '' if (dfs_summary.slates or 0) == 1 else 's' }} logged{% endif %}
+    </span>
+  </div>
+  <p class="text-xs text-slate-500 mb-3">DFS lineups have no odds, so results are entered by hand. Paste the winning lineup and its total points (the cash line). If you also enter the score the suggested lineup posted, we mark whether it cleared. The winner's roster is compared against the lineup the site logged for that slate.</p>
+  <div class="grid gap-5 md:grid-cols-2">
+    <div class="space-y-2">
+      <div class="flex gap-2">
+        <input id="dfs-day" type="date" class="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white">
+        <select id="dfs-sport" class="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white">
+          <option value="nfl">NFL</option><option value="nba">NBA</option>
+          <option value="mlb">MLB</option><option value="nhl">NHL</option>
+        </select>
+      </div>
+      <textarea id="dfs-winning" rows="5" placeholder="Paste winning lineup — one player per line (position tags ok)" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono"></textarea>
+      <div class="flex gap-2">
+        <label class="flex-1 block text-[10px] font-mono uppercase text-slate-500">Cash line (winner total)
+          <input id="dfs-total" type="number" step="0.01" class="mt-1 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white">
+        </label>
+        <label class="flex-1 block text-[10px] font-mono uppercase text-slate-500">Our lineup total (optional)
+          <input id="dfs-our" type="number" step="0.01" class="mt-1 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white">
+        </label>
+      </div>
+      <div class="flex items-center gap-3 pt-1">
+        <button id="dfs-submit" class="bg-brand hover:bg-brand-dark text-black text-xs font-semibold px-4 py-2 rounded-lg transition-colors font-mono">Save result</button>
+        <span id="dfs-msg" class="text-[11px] font-mono text-slate-500"></span>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      {% if dfs_results %}
+      <table class="w-full text-xs text-slate-300">
+        <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Day</th><th>Sport</th><th class="text-right">Overlap</th><th class="text-right">Ours</th><th class="text-right">Cash</th><th class="text-right">Result</th></tr></thead>
+        <tbody>
+          {% for r in dfs_results[:12] %}
+          <tr class="border-b border-white/5">
+            <td class="py-1.5 font-mono text-slate-400">{{ r.day }}</td>
+            <td class="py-1.5 text-center font-mono uppercase">{{ r.sport }}</td>
+            <td class="py-1.5 text-right font-mono">{{ r.overlap_n }}/{{ r.winning_n }}</td>
+            <td class="py-1.5 text-right font-mono">{{ r.our_total if r.our_total is not none else '—' }}</td>
+            <td class="py-1.5 text-right font-mono">{{ r.winning_total if r.winning_total is not none else '—' }}</td>
+            <td class="py-1.5 text-right font-mono {% if r.status == 'won' %}text-emerald-400{% elif r.status == 'lost' %}text-rose-400{% else %}text-slate-500{% endif %}">{{ r.status }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="text-[11px] text-slate-600 mt-2">Overlap = players shared (by last name) between the winning lineup and the site's suggested lineup that day.</p>
+      {% else %}
+      <p class="text-xs text-slate-600">No results recorded yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var d = document.getElementById('dfs-day');
+  if (d && !d.value) { d.value = new Date().toISOString().slice(0, 10); }
+  var b = document.getElementById('dfs-submit');
+  if (!b) { return; }
+  b.addEventListener('click', function () {
+    var msg = document.getElementById('dfs-msg');
+    var val = function (id) { var el = document.getElementById(id); return el ? el.value : ''; };
+    var payload = {
+      day: val('dfs-day'), sport: val('dfs-sport'), winning: val('dfs-winning'),
+      winning_total: val('dfs-total'), our_total: val('dfs-our')
+    };
+    if (!payload.winning.trim()) { msg.textContent = 'Paste the winning lineup first.'; return; }
+    msg.textContent = 'Saving...';
+    fetch('/api/dfs-result', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok) { msg.textContent = 'Saved — reloading'; setTimeout(function () { location.reload(); }, 500); }
+        else { msg.textContent = 'Error: ' + ((j && j.error) || 'unknown'); }
+      })
+      .catch(function (e) { msg.textContent = 'Error: ' + e; });
+  });
+})();
+</script>
+
+<div class="glass-card rounded-xl p-5 mb-5">
+  <div class="flex items-center justify-between mb-3">
     <h2 class="font-display font-semibold text-white text-sm">Forward read: latest slate</h2>
     <span class="text-[10px] font-mono text-slate-600">{{ lp.preds|length }} ML/SPR/TOT quotes</span>
   </div>

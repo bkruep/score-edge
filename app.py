@@ -32,6 +32,7 @@ import racing
 import track
 import model
 import picks
+import contest
 
 app = FastAPI(title="ScoreEdge")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -3444,6 +3445,11 @@ def model_page(request: Request):
         ledger = picks.ledger_summary()
     except Exception:
         ledger = {}
+    try:
+        dfs_results = contest.results()
+        dfs_summary = contest.summary()
+    except Exception:
+        dfs_results, dfs_summary = [], {}
     updated = ""
     if st.get("ts"):
         try:
@@ -3459,8 +3465,34 @@ def model_page(request: Request):
         "hunts": hunts,
         "hunt_state": hunt_state,
         "ledger": ledger,
+        "dfs_results": dfs_results,
+        "dfs_summary": dfs_summary,
         "updated": updated,
     })
+
+
+@app.post("/api/dfs-result", response_class=JSONResponse)
+async def api_dfs_result(request: Request):
+    """Record a manually-entered DFS contest result: the winning lineup + its
+    total (the cash line), and optionally the score the suggested lineup posted.
+    Stored server-side so DFS can eventually be learned from."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    try:
+        rec = contest.record_result(
+            body.get("day") or "",
+            body.get("sport") or "",
+            body.get("winning") or "",
+            body.get("winning_total"),
+            body.get("our_total"),
+        )
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+    return JSONResponse({"ok": True, "result": rec})
 
 
 @app.get("/api/calibration", response_class=JSONResponse)
