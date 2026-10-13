@@ -81,6 +81,19 @@ def _write(rows: list[dict]) -> None:
         pass
 
 
+def ledger_summary() -> dict[str, dict]:
+    """Per-source counts of everything suggested + how far it has settled."""
+    per: dict[str, dict] = {}
+    for r in _read():
+        s = str(r.get("source") or "?")
+        d = per.setdefault(s, {"logged": 0, "won": 0, "lost": 0,
+                               "push": 0, "pending": 0})
+        d["logged"] += 1
+        st = str(r.get("status") or "pending")
+        d[st if st in ("won", "lost", "push") else "pending"] += 1
+    return per
+
+
 def settled_picks(season: int | None = None) -> list[dict]:
     rows = _read()
     out: list[dict] = []

@@ -3432,6 +3432,14 @@ def model_page(request: Request):
         lp = model.latest_slate_predictions()
     except Exception:
         lp = {"preds": [], "slate_day": ""}
+    try:
+        hunts = track.summary()
+    except Exception:
+        hunts = {}
+    try:
+        ledger = picks.ledger_summary()
+    except Exception:
+        ledger = {}
     updated = ""
     if st.get("ts"):
         try:
@@ -3444,6 +3452,8 @@ def model_page(request: Request):
         "state": st,
         "weights": st.get("w") or [0] * 6,
         "lp": lp,
+        "hunts": hunts,
+        "ledger": ledger,
         "updated": updated,
     })
 

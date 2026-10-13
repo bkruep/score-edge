@@ -73,9 +73,60 @@
   {% endif %}
 </div>
 
+<div class="glass-card rounded-xl p-5 mb-5">
+  <h2 class="font-display font-semibold text-white text-sm mb-2">Suggestion performance</h2>
+  <p class="text-xs text-slate-500 mb-3">Every suggestion the site serves is logged and scored as its result resolves. Best bets and this edge model learn from settled game-line outcomes; goal &amp; home-run hunts are calibrated against real finals. DFS lineups and player-prop best bets are recorded for the log but are not auto-scored (no odds/settlement path), so they are not yet part of training.</p>
+  <div class="grid gap-5 lg:grid-cols-2">
+    <div>
+      <h3 class="text-[10px] font-mono uppercase text-slate-500 mb-2">Hunt calibration (real finals)</h3>
+      {% if hunts %}
+      <table class="w-full text-xs text-slate-300">
+        <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Board</th><th class="text-right">Logged</th><th class="text-right">W-L</th><th class="text-right">Hit%</th><th class="text-right">Brier</th></tr></thead>
+        <tbody>
+          {% for src, h in hunts.items() %}
+          {% if src in ('goal_hunt', 'homerun_hunt') %}
+          <tr class="border-b border-white/5">
+            <td class="py-1.5 font-mono text-slate-400">{{ src }}</td>
+            <td class="py-1.5 text-right font-mono">{{ h.logged }}</td>
+            <td class="py-1.5 text-right font-mono">{{ h.won }}-{{ h.lost }}</td>
+            <td class="py-1.5 text-right font-mono">{{ h.hit_pct if h.hit_pct is not none else '—' }}</td>
+            <td class="py-1.5 text-right font-mono text-white">{{ h.brier if h.brier is not none else '—' }}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="text-xs text-slate-600">No hunt predictions logged yet.</p>
+      {% endif %}
+    </div>
+    <div>
+      <h3 class="text-[10px] font-mono uppercase text-slate-500 mb-2">Picks ledger (everything served)</h3>
+      {% if ledger %}
+      <table class="w-full text-xs text-slate-300">
+        <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Source</th><th class="text-right">Logged</th><th class="text-right">Won</th><th class="text-right">Lost</th><th class="text-right">Pend</th></tr></thead>
+        <tbody>
+          {% for src, c in ledger.items() %}
+          <tr class="border-b border-white/5">
+            <td class="py-1.5 font-mono text-slate-400">{{ src }}</td>
+            <td class="py-1.5 text-right font-mono">{{ c.logged }}</td>
+            <td class="py-1.5 text-right font-mono">{{ c.won }}</td>
+            <td class="py-1.5 text-right font-mono">{{ c.lost }}</td>
+            <td class="py-1.5 text-right font-mono">{{ c.pending }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="text-xs text-slate-600">No suggestions logged yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 <div class="glass-card rounded-xl p-6 max-w-3xl text-sm text-slate-400 space-y-2">
   <h2 class="font-display font-semibold text-white text-sm mb-1">Method</h2>
-  <p>Features: log-odds of consensus-implied win prob, edge points (best vs consensus), home-side flag, market dummies (spread/total). Regularized logistic regression, L2=1.0, 300 iterations, random 70/30 split with fixed seed; OOS metrics only. Labels from <code>journal.settled_records</code> (real final scores). Predictions on latest slate use cached/slate data; unsettled rows have no look-ahead.</p>
+  <p>Features: log-odds of consensus-implied win prob, edge points (best vs consensus), home-side flag, market dummies (spread/total). Regularized logistic regression, L2=1.0, 300 iterations, random 70/30 split with fixed seed; OOS metrics only. Labels are the union of <code>journal.settled_records</code> (real final scores) and settled odds-bearing picks from the suggestion ledger (<code>picks.settled_picks</code> &rarr; <code>to_journal_like</code>), deduped. Predictions on latest slate use cached/slate data; unsettled rows have no look-ahead.</p>
   <p class="text-slate-500">This is the last planned feature per your instructions (learning model reserved for the end). It learns from past settled outcomes to improve future accuracy. Stats-based estimate &middot; NOT a market price.</p>
 </div>
 {% endblock %}

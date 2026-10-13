@@ -8,6 +8,7 @@ import numpy as np
 
 import odds
 import journal
+import picks
 
 
 _DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".data_cache")
@@ -59,6 +60,8 @@ def _train() -> dict[str, Any]:
                 str(r.get("game", "")),
                 str(r.get("mkt", "")),
                 str(r.get("side", "")),
+                str(r.get("line")),
+                str(r.get("player") or ""),
                 int(r.get("am") or 0),
                 str(r.get("status", "")),
             )
