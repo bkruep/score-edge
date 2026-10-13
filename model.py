@@ -9,6 +9,7 @@ import numpy as np
 import odds
 import journal
 import picks
+import track
 
 
 _DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".data_cache")
@@ -225,6 +226,153 @@ def load_state() -> dict[str, Any]:
         except Exception:
             pass
     return st
+
+
+# ---------------------------------------------------------------------------
+# Hunt calibration model.
+#
+# Goal-hunt / home-run-hunt boards predict a player event with no market price,
+# so they can't use the consensus features above. They do carry the board's own
+# probability, and track.py resolves each pick against real finals. This fits a
+# small logistic correction on the hunt-native features (logit of the served
+# probability + a league flag) so hunts contribute to what the site learns.
+# ---------------------------------------------------------------------------
+
+_HUNT_STATE = os.path.join(_DIR, "hunt_state.json")
+
+
+def _hunt_state_read() -> dict[str, Any]:
+    try:
+        with open(_HUNT_STATE, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {"w": [0.0, 1.0, 0.0], "n": 0, "ts": 0.0}
+
+
+def _save_hunt_state(state: dict[str, Any]) -> None:
+    state["ts"] = time.time()
+    try:
+        with open(_HUNT_STATE, "w", encoding="utf-8") as fh:
+            json.dump(state, fh)
+    except OSError:
+        pass
+
+
+def _logit(p: float) -> float:
+    p = max(min(float(p), 0.999), 0.001)
+    return math.log(p / (1.0 - p))
+
+
+def _hunt_rows() -> list[dict]:
+    out: list[dict] = []
+    for src in ("goal_hunt", "homerun_hunt"):
+        try:
+            rows = track.joined(src)
+        except Exception:
+            continue
+        for r in rows:
+            if r.get("status") not in ("won", "lost"):
+                continue
+            prob = r.get("prob")
+            if prob is None:
+                continue
+            out.append({
+                "source": src, "day": r.get("day", ""), "item": r.get("item", ""),
+                "prob": float(prob), "y": 1.0 if r.get("status") == "won" else 0.0,
+                "is_hr": 1.0 if src == "homerun_hunt" else 0.0,
+            })
+    return out
+
+
+def _hunt_feat(prob: float, is_hr: float) -> list[float]:
+    return [1.0, _logit(float(prob) / 100.0), 1.0 if is_hr else 0.0]
+
+
+def train_hunts() -> dict[str, Any]:
+    rows = _hunt_rows()
+    st = _hunt_state_read()
+    if len(rows) < 5:
+        st["n"] = len(rows)
+        _save_hunt_state(st)
+        return st
+
+    import random
+    idx = list(range(len(rows)))
+    random.seed(42)
+    random.shuffle(idx)
+    n = len(idx)
+    tr = max(1, int(n * 0.7))
+    X = np.array([_hunt_feat(r["prob"], r["is_hr"]) for r in rows], dtype=float)
+    y = np.array([r["y"] for r in rows], dtype=float)
+    Xi, yi = X[idx], y[idx]
+    Xtr, ytr = Xi[:tr], yi[:tr]
+    Xte, yte = Xi[tr:], yi[tr:]
+    w = np.zeros(3, dtype=float)
+    lr, lam = 0.1, 1.0
+    for _ in range(300):
+        z = Xtr.dot(w)
+        p = 1.0 / (1.0 + np.exp(-z))
+        grad = Xtr.T.dot(p - ytr) / len(ytr) + lam * w / len(ytr)
+        w -= lr * grad
+
+    def brier(yt, pt):
+        yt = np.array(yt, dtype=float)
+        pt = np.array(pt, dtype=float)
+        return float(np.mean((yt - pt) ** 2))
+
+    by_source: dict[str, Any] = {}
+    if len(yte):
+        p_model = 1.0 / (1.0 + np.exp(-Xte.dot(w)))
+        p_raw = np.array([max(min(rows[i]["prob"] / 100.0, 0.999), 0.001) for i in idx[tr:]])
+        b_model = brier(yte, p_model)
+        b_raw = brier(yte, p_raw)
+        for src in ("goal_hunt", "homerun_hunt"):
+            sel = [k for k, i in enumerate(idx[tr:]) if rows[i]["source"] == src]
+            if len(sel) >= 3:
+                ys = [yte[k] for k in sel]
+                by_source[src] = {
+                    "n": len(sel),
+                    "brier_raw": round(brier(ys, [p_raw[k] for k in sel]), 4),
+                    "brier_model": round(brier(ys, [p_model[k] for k in sel]), 4),
+                }
+    else:
+        b_model = b_raw = None
+
+    state = {
+        "w": [float(x) for x in w],
+        "n": len(rows),
+        "n_goal": sum(1 for r in rows if r["source"] == "goal_hunt"),
+        "n_hr": sum(1 for r in rows if r["source"] == "homerun_hunt"),
+        "brier_model": b_model,
+        "brier_raw": b_raw,
+        "by_source": by_source,
+        "ts": time.time(),
+    }
+    _save_hunt_state(state)
+    return state
+
+
+def load_hunt_state() -> dict[str, Any]:
+    st = _hunt_state_read()
+    if not st.get("ts") or st.get("n") is None:
+        try:
+            st = train_hunts()
+        except Exception:
+            pass
+    return st
+
+
+def calibrated_hunt_p(source: str, prob: float) -> float:
+    """Calibrated hit probability (%) for a hunt prediction, from the fitted
+    correction. Falls back to the raw served probability before a fit exists."""
+    st = _hunt_state_read()
+    w = st.get("w") or [0.0, 1.0, 0.0]
+    if len(w) < 3 or not st.get("n"):
+        return float(prob)
+    x = _hunt_feat(prob, 1.0 if source == "homerun_hunt" else 0.0)
+    z = sum(wi * xi for wi, xi in zip(w, x))
+    p = 1.0 / (1.0 + math.exp(-z))
+    return max(min(p * 100.0, 99.9), 0.1)
 
 
 def latest_slate_predictions() -> dict[str, Any]:

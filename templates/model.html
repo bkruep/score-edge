@@ -45,6 +45,48 @@
 
 <div class="glass-card rounded-xl p-5 mb-5">
   <div class="flex items-center justify-between mb-3">
+    <h2 class="font-display font-semibold text-white text-sm">Hunt calibration model</h2>
+    <span class="text-[10px] font-mono text-slate-600">{{ hunt_state.n or 0 }} resolved hunts ({{ hunt_state.n_goal or 0 }} NHL / {{ hunt_state.n_hr or 0 }} MLB)</span>
+  </div>
+  {% if (hunt_state.n or 0) >= 5 %}
+  <p class="text-xs text-slate-500 mb-3">Goal-hunt and home-run-hunt boards carry no market odds, so they can't use the consensus features. This fits a separate logistic correction on the board's own probability (logit) plus a league flag, against real finals. <span class="text-slate-400">Raw</span> = probability the board served; <span class="text-slate-400">Model</span> = calibrated read. Lower Brier is better.</p>
+  <div class="grid gap-5 lg:grid-cols-2">
+    <div>
+      <table class="w-full text-xs text-slate-300">
+        <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Features</th><th class="text-right">w</th></tr></thead>
+        <tbody>
+          <tr class="border-b border-white/5"><td class="py-1.5 font-mono text-slate-400">intercept</td><td class="py-1.5 text-right font-mono">{{ '%.3f'|format(hunt_state.w[0]) }}</td></tr>
+          <tr class="border-b border-white/5"><td class="py-1.5 font-mono text-slate-400">logit(p_hunt)</td><td class="py-1.5 text-right font-mono">{{ '%.3f'|format(hunt_state.w[1]) }}</td></tr>
+          <tr><td class="py-1.5 font-mono text-slate-400">is_mlb_hr</td><td class="py-1.5 text-right font-mono">{{ '%.3f'|format(hunt_state.w[2]) }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <table class="w-full text-xs text-slate-300">
+        <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Board</th><th class="text-right">Raw Brier</th><th class="text-right">Model Brier</th></tr></thead>
+        <tbody>
+          {% for src, v in (hunt_state.by_source or {}).items() %}
+          <tr class="border-b border-white/5">
+            <td class="py-1.5 font-mono text-slate-400">{{ src }} <span class="text-slate-600">(n={{ v.n }})</span></td>
+            <td class="py-1.5 text-right font-mono">{{ v.brier_raw }}</td>
+            <td class="py-1.5 text-right font-mono text-white">{{ v.brier_model }}</td>
+          </tr>
+          {% endfor %}
+          <tr><td class="py-1.5 font-mono text-slate-400">pooled (OOS)</td><td class="py-1.5 text-right font-mono">{{ '%.4f'|format(hunt_state.brier_raw) if hunt_state.brier_raw is not none else '—' }}</td><td class="py-1.5 text-right font-mono text-white">{{ '%.4f'|format(hunt_state.brier_model) if hunt_state.brier_model is not none else '—' }}</td></tr>
+        </tbody>
+      </table>
+      {% if hunt_state.brier_model is not none and hunt_state.brier_raw is not none and hunt_state.brier_model >= hunt_state.brier_raw %}
+      <p class="text-[11px] text-amber-400 mt-2">Small sample: the fit does not beat the raw board probability yet, so hunt boards still show the raw figure. It updates as more finals resolve.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="text-sm text-slate-500">Not enough resolved hunting picks yet (need 5+). Resolutions accrue as past slates finalize.</p>
+  {% endif %}
+</div>
+
+<div class="glass-card rounded-xl p-5 mb-5">
+  <div class="flex items-center justify-between mb-3">
     <h2 class="font-display font-semibold text-white text-sm">Forward read: latest slate</h2>
     <span class="text-[10px] font-mono text-slate-600">{{ lp.preds|length }} ML/SPR/TOT quotes</span>
   </div>

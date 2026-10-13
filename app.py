@@ -3437,6 +3437,10 @@ def model_page(request: Request):
     except Exception:
         hunts = {}
     try:
+        hunt_state = model.load_hunt_state()
+    except Exception:
+        hunt_state = {}
+    try:
         ledger = picks.ledger_summary()
     except Exception:
         ledger = {}
@@ -3453,6 +3457,7 @@ def model_page(request: Request):
         "weights": st.get("w") or [0] * 6,
         "lp": lp,
         "hunts": hunts,
+        "hunt_state": hunt_state,
         "ledger": ledger,
         "updated": updated,
     })
