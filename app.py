@@ -3495,11 +3495,16 @@ async def api_dfs_result(request: Request):
     return JSONResponse({"ok": True, "result": rec})
 
 
+def _name_key(nm: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(nm or "").lower())
+
+
 @app.get("/api/dfs-players", response_class=JSONResponse)
 def api_dfs_players(sport: str = "nfl"):
-    """Player pool for the DFS result picker: names/positions/teams/salaries for
-    the slate we'd price. NFL uses our own projection-priced slate (the same
-    chain behind /dfs); other sports need the DraftKings feed."""
+    """Player pool for the DFS result picker. Priced players come from the slate
+    we'd build (NFL projection-priced; others need the DraftKings feed); the pool
+    is then widened with Sleeper's full NFL directory so any rostered player can
+    be found, not just the ones we price."""
     sport = (sport or "nfl").strip().lower()
     if sport not in dfs.ROSTERS:
         sport = "nfl"
@@ -3520,19 +3525,50 @@ def api_dfs_players(sport: str = "nfl"):
     except Exception as e:
         note = str(e).strip() or e.__class__.__name__
 
-    out = []
+    merged: dict[str, dict] = {}
     for p in players:
         nm = str(p.get("name") or p.get("player_name") or "").strip()
         if not nm:
             continue
-        out.append({
+        merged[_name_key(nm)] = {
             "name": nm,
             "pos": str(p.get("position") or "").upper(),
             "team": str(p.get("team") or ""),
             "salary": int(p.get("salary") or p.get("_salary") or 0),
             "proj": round(float(p.get("avg_points") or p.get("proj") or 0.0), 2),
-        })
-    out.sort(key=lambda x: x["name"])
+        }
+
+    # Widen with the full NFL directory (Sleeper) so the picker isn't capped to
+    # priced players. Priced entries win on name collisions (they carry $/proj).
+    if sport == "nfl":
+        skill = {"QB", "RB", "WR", "TE", "FB", "K", "DEF", "DST"}
+        try:
+            for v in (data.load_rosters() or {}).values():
+                if not isinstance(v, dict):
+                    continue
+                pos = str(v.get("position") or "").upper()
+                fps = {str(x).upper() for x in (v.get("fantasy_positions") or [])}
+                if pos not in skill and not (fps & skill):
+                    continue
+                nm = str(v.get("full_name") or "").strip() or (
+                    f"{v.get('first_name') or ''} {v.get('last_name') or ''}".strip())
+                if not nm:
+                    continue
+                k = _name_key(nm)
+                if k in merged:
+                    continue
+                team = str(v.get("team_abbr") or v.get("team") or "")
+                merged[k] = {
+                    "name": nm,
+                    "pos": "DST" if pos in ("DEF", "DST") else pos,
+                    "team": team,
+                    "salary": 0,
+                    "proj": 0.0,
+                }
+        except Exception:
+            pass
+
+    out = sorted(merged.values(), key=lambda x: x["name"])
     return JSONResponse({"sport": sport, "count": len(out), "note": note, "players": out})
 
 
