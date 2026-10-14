@@ -884,21 +884,28 @@ def fetch_college_events(sport: str, league: str, week: set[str]) -> list[dict]:
     [{event_id, label}] with canonical "Away @ Home" labels, sorted by label.
     """
     anchor = datetime.now(timezone.utc).date().isoformat()
-    cache_key = f"college_events_{league}_{anchor}"
+    cache_key = f"college_events_v2_{league}_{anchor}"
     cached = _cached(cache_key)
     if cached is not None:
         return list(cached)
 
     session = requests.Session()
     try:
+        # No `date` filter: asking the events feed for a single calendar day
+        # returns only that day's (often midweek, Group-of-5) games and misses
+        # the weekend card. The bare feed lists the whole multi-week slate; the
+        # caller's week window then keeps just the relevant dates.
         payload = _request_json(session, SHARPAPI_EVENTS_URL, {
-            "sport": sport, "league": league, "date": anchor, "limit": 200,
+            "sport": sport, "league": league, "limit": 500,
         }, timeout=20)
     except OddsError:
         return []
 
+    # One card per matchup. The feed lists some games several times - a
+    # placeholder row stamped with the current day plus the real weekend row,
+    # and per-book id variants (_b0/_b2) - so collapse by canonical label and
+    # keep the instance with the latest calendar day (the real game date).
     out: dict[str, dict] = {}
-    seen_labels: set[str] = set()
     for entry in payload.get("data") or []:
         event_id = str(entry.get("id", "")).strip()
         away = str(entry.get("away_team", "")).strip()
@@ -916,9 +923,11 @@ def fetch_college_events(sport: str, league: str, week: set[str]) -> list[dict]:
         if week and day and day not in week:
             continue
         label = _canonical_game(f"{away} @ {home}")
-        if label and label not in seen_labels:
-            seen_labels.add(label)
-            out[event_id] = {"event_id": event_id, "label": label}
+        if not label:
+            continue
+        cur = out.get(label)
+        if cur is None or day > (event_date(cur["event_id"]) or ""):
+            out[label] = {"event_id": event_id, "label": label}
 
     result = sorted(out.values(), key=lambda e: (e["label"] or "").casefold())
     _cache_set(cache_key, result)
@@ -1227,17 +1236,41 @@ def event_date(event_id: str) -> str:
     return m.group(1) if m else ""
 
 
+def _prune_past(slate: dict) -> dict:
+    """Drop already-played games from a slate (fresh board or stale fallback).
+
+    Provider ids embed the game's calendar day, so when the live fetch is
+    rate-limited and the board falls back to the last good slate - or a feed
+    lingers past a game's start - the deck can otherwise show "past" matchups
+    that are no longer bettable. Undated rows are kept."""
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    def keep(eid: str) -> bool:
+        d = event_date(eid or "")
+        return not d or d >= today
+
+    out = dict(slate)
+    for key in ("moneylines", "spreads", "totals", "all_sides", "props", "value_spots"):
+        rows = out.get(key)
+        if rows:
+            out[key] = [q for q in rows if keep(getattr(q, "event_id", ""))]
+    events = out.get("events")
+    if events:
+        out["events"] = [e for e in events if keep((e or {}).get("event_id", ""))]
+    return out
+
+
 def college_game_week(anchor: datetime | None = None) -> set[str]:
-    """ISO dates for the current college-football game week (Thu..Tue).
+    """ISO dates for the upcoming college-football slate (today through +6 days).
 
     The CFB feed posts several weeks of games at once, so the board is scoped to
-    the surrounding Thursday-through-Tuesday slate (the same window the NFL
-    board merges). Anything outside it (e.g. next Saturday's marquee game) is a
-    different slate and is dropped."""
+    a rolling seven-day window that opens today and reaches the coming weekend.
+    A forward window always contains exactly one Saturday (the upcoming slate)
+    and never drags in the previous week's finished games the way the old
+    backward-looking Thursday-to-Tuesday window did (which pointed at last
+    week's card for most of the week and showed Power-4 fans nothing)."""
     day = (anchor or datetime.now(timezone.utc)).date()
-    back = (day.weekday() - 3) % 7  # days back to the week's Thursday
-    start = day - timedelta(days=back)
-    return {(start + timedelta(days=i)).isoformat() for i in range(6)}
+    return {(day + timedelta(days=i)).isoformat() for i in range(7)}
 
 
 def _fetch_league_best_odds(sport: str, league: str,
@@ -1314,7 +1347,7 @@ def fetch_sport_slate(tag: str, include_all: bool = False) -> dict:
     cache_key = f"sport_slate_{tag}_all" if include_all else f"sport_slate_{tag}"
     cached = _cached(cache_key)
     if cached is not None:
-        return cached
+        return _prune_past(cached)
 
     _schedule: list[dict] = []
     try:
@@ -1365,7 +1398,7 @@ def fetch_sport_slate(tag: str, include_all: bool = False) -> dict:
         stale = _last_good_slate(cache_key)
         if stale is not None:
             _cache_set(cache_key, stale)
-            return stale
+            return _prune_past(stale)
         raise
 
     # Normalize provider-specific market types onto the canonical grouping and
@@ -1464,12 +1497,26 @@ def fetch_sport_slate(tag: str, include_all: bool = False) -> dict:
 
     # The game list is the week's schedule (from the events feed) with any
     # priced game the feed didn't list folded in, so the board shows the whole
-    # card and not just the subset the provider happens to have odds for.
-    event_map: dict[str, str] = {e["event_id"]: e["label"] for e in _schedule}
-    for q in moneylines + spreads + totals:
-        event_map[q.event_id] = q.game
+    # card and not just the subset the provider happens to have odds for. Keyed
+    # by canonical label so a matchup never renders twice, keeping the id with
+    # the latest calendar day (the feed's placeholder rows are stamped today).
+    label_to_id: dict[str, str] = {}
+    label_date: dict[str, str] = {}
+
+    def _consider(eid: str, label: str) -> None:
+        if not label:
+            return
+        d = event_date(eid) or "9999-99-99"
+        if label not in label_to_id or d > label_date.get(label, ""):
+            label_to_id[label] = eid
+            label_date[label] = d
+
+    for _e in _schedule:
+        _consider(_e["event_id"], _e["label"])
+    for _q in moneylines + spreads + totals:
+        _consider(_q.event_id, _q.game)
     events = [{"event_id": eid, "label": label}
-              for eid, label in sorted(event_map.items(), key=lambda kv: (kv[1] or "").casefold())]
+              for label, eid in sorted(label_to_id.items(), key=lambda kv: (kv[0] or "").casefold())]
 
     slate = {
         "events": events,
@@ -1491,8 +1538,8 @@ def fetch_sport_slate(tag: str, include_all: bool = False) -> dict:
     else:
         stale = _last_good_slate(cache_key)
         if stale is not None:
-            return stale
-    return slate
+            return _prune_past(stale)
+    return _prune_past(slate)
 
 
 def _fetch_league_props_quotes(sport: str, league: str, markets: str,
