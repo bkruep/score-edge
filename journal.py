@@ -55,6 +55,12 @@ def _game_result(rec: dict, season: int) -> dict | None:
 
     Returns {status: won|lost|push}, None when the game hasn't been scored.
     """
+    mkt = str(rec.get("mkt") or "")
+    if mkt.startswith("player_") or rec.get("player"):
+        import settle
+        res = settle.settle_prop(rec)
+        st = res.get("status")
+        return {"status": st} if st in ("won", "lost", "push") else None
     side_ab, over_side = _side_parts(rec)
     if side_ab is None and over_side is None:
         return None
@@ -157,14 +163,19 @@ def record_slate(slate: dict, day: str | None = None) -> int:
                 "mkt": getattr(q, "market", "") or key,
                 "side": (getattr(q, "selection", "") or
                          getattr(q, "player_name", "") or getattr(q, "label", "") or ""),
+                "player": (getattr(q, "player_name", "") or ""),
+                "ou": (getattr(q, "side", "") or getattr(q, "selection", "") or ""),
                 "line": line,
                 "am": getattr(q, "best_odds", 0),
                 "book": getattr(q, "best_book", "") or "",
                 "edge": round(e, 2),
                 "pop": getattr(q, "is_value", False),
             }
+            # Props fold the Over/Under into the signature so a board logged
+            # before the side was captured still gets a settleable row written.
+            ou_bit = rec.get("ou", "") if str(rec["mkt"]).startswith("player_") else ""
             sig = (f'{rec["day"]}|{label}|{rec["mkt"]}|{rec["side"]}|'
-                   f'{rec["line"]}|{rec["am"]}|{e:.2f}')
+                   f'{rec["line"]}|{rec["am"]}|{e:.2f}|{ou_bit}')
             if sig in _seen_sigs:
                 continue
             _seen_sigs.add(sig)
@@ -196,8 +207,9 @@ def load_journal() -> list[dict]:
             day = day[len("slate_"):]
             r["day"] = day
             r["year"] = day[:4]
+        ou_bit = r.get("ou", "") if str(r.get("mkt", "")).startswith("player_") else ""
         sig = (f'{r["day"]}|{r["game"]}|{r["mkt"]}|{r["side"]}|'
-               f'{r["line"]}|{r["am"]}|{r["edge"]}')
+               f'{r["line"]}|{r["am"]}|{r["edge"]}|{ou_bit}')
         _seen_sigs.add(sig)
     return out
 
@@ -316,8 +328,18 @@ def settle_entry(entry: dict) -> dict:
         res = _game_result(rec, int(rec["year"]) or _dt.date.today().year)
         return {"market": market, "game": game, "side": side, "line": line,
                 "status": (res or {}).get("status", "pending")}
+    # Player props settle from real weekly stats (settle.py).
+    import settle
+    raw = str(entry.get("market_raw") or entry.get("mkt") or "")
+    rec = {
+        "day": _day_from_game(game), "year": _day_from_game(game)[:4],
+        "game": game, "side": side,
+        "player": player, "ou": str(entry.get("ou") or side or ""),
+        "mkt": raw or "player_prop", "line": line,
+    }
+    res = settle.settle_prop(rec)
     return {"market": market, "game": game, "side": side, "line": line,
-            "status": "undecided", "note": "prop results settle as weekly stats post"}
+            "status": res.get("status", "pending"), "note": res.get("note", "")}
 
 
 def _ab(idx: int, game: str) -> str:

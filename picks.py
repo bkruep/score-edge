@@ -34,10 +34,13 @@ def _sig(p: dict) -> str:
     return f"{day}|{source}|{mkt}|{game}|{player}|{side}|{line}"
 
 
-def record_pick(pick: dict) -> bool:
+def record_pick(pick: dict | None = None, **kwargs) -> bool:
+    """Log a suggestion. Accepts either a single dict or field keywords, so
+    callers can pass ``record_pick({...})`` or ``record_pick(game=..., ...)``."""
     with _lock:
         rows = _read()
-        p = dict(pick)
+        p = dict(pick or {})
+        p.update(kwargs)
         p.setdefault('ts', time.time())
         p.setdefault('day', _today_iso())
         p.setdefault('year', str(p['day'])[:4])
@@ -131,6 +134,21 @@ def settle_pick(r: dict) -> dict:
     player = str(r.get("player") or r.get("item") or r.get("side") or "")
     source = str(r.get("source") or "").lower()
     day = str(r.get("day") or r.get("gameday") or "")
+    # Player props: settle from real weekly stats (market_raw carries the feed
+    # stat, side is the Over/Under). Hunts/DFS have no line and fall through.
+    if (r.get("player") and r.get("line") is not None
+            and str(r.get("side") or "").casefold() in ("over", "under")):
+        jres = journal.settle_entry({
+            "market": "PROP",
+            "game": r.get("game", ""),
+            "side": r.get("side", ""),
+            "line": r.get("line"),
+            "player": r.get("player", ""),
+            "mkt": r.get("market_raw") or r.get("mkt") or "",
+            "ou": r.get("side", ""),
+        })
+        st = jres.get("status", "pending")
+        return {"status": st, **jres}
     if source in ("goal_hunt", "homerun_hunt") and player and day:
         try:
             resmap = track.resolved_map(source)
@@ -193,7 +211,10 @@ def to_journal_like(r: dict) -> dict | None:
         "away_ab": away_ab or "",
         "home_ab": home_ab or "",
         "mkt": mkt,
+        "market_raw": str(r.get("market_raw") or ""),
         "side": side,
+        "player": str(r.get("player") or r.get("item") or ""),
+        "ou": (str(r.get("side") or "") if str(r.get("market_raw") or "").startswith("player_") else ""),
         "line": line,
         "am": am,
         "edge": round(edge, 2),

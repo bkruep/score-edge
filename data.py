@@ -277,11 +277,16 @@ def load_sleeper_recent(weeks: int = 3) -> dict:
             name_by_id[str(pid)] = nm
 
     def _pts(st: dict) -> float:
-        g = lambda k: float(st.get(k) or 0.0)
-        return (0.1 * g("pass_yds") + 4.0 * g("pass_td") - 2.0 * g("pass_int")
-                + 0.1 * g("rush_yds") + 6.0 * g("rush_td")
-                + 0.1 * g("rec_yds") + 6.0 * g("rec_td")
-                - 2.0 * g("fumbles_lost"))
+        def g(*keys) -> float:
+            for k in keys:  # 2026 feed uses *_yd; older seasons used *_yds
+                v = st.get(k)
+                if v is not None:
+                    return float(v)
+            return 0.0
+        return (0.1 * g("pass_yd", "pass_yds") + 4.0 * g("pass_td") - 2.0 * g("pass_int")
+                + 0.1 * g("rush_yd", "rush_yds") + 6.0 * g("rush_td")
+                + 0.1 * g("rec_yd", "rec_yds") + 6.0 * g("rec_td")
+                - 2.0 * g("fum_lost", "fumbles_lost"))
 
     acc: dict[str, list[float]] = {}
     for w in range(max(1, wk - weeks + 1), wk + 1):

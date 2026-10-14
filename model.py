@@ -93,6 +93,11 @@ def _train() -> dict[str, Any]:
         except Exception:
             eps = 0.0
         mkt = str(r.get("mkt", ""))
+        # Normalize pick-ledger tags to feed market names, and train only on the
+        # main markets the model actually scores (props get their own future fit).
+        mkt = {"ML": "moneyline", "SPR": "point_spread", "TOT": "total_points"}.get(mkt, mkt)
+        if mkt not in ("moneyline", "point_spread", "total_points"):
+            continue
         home = str(r.get("home_ab", ""))
         side = str(r.get("side", ""))
         is_home = 1.0 if (home and side == home) else 0.0

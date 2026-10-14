@@ -7,10 +7,10 @@ bucket, and book, plus a running bankroll curve. Nothing here is estimated:
 every row is a bet a board actually posted that has since resolved.
 
 Data is the edge journal (every value spot settled against the real final score)
-unioned with settled odds-bearing picks from the suggestion ledger and deduped —
-the same set the learning model trains on, so the numbers agree. Goal / home-run
-hunts carry no market odds, so they get hit rate only; manual DFS results are
-reported separately and are not part of the units math.
+unioned with settled odds-bearing picks from the suggestion ledger, deduped to
+one row per actual bet (best price taken). Goal / home-run hunts carry no market
+odds, so they get hit rate only; manual DFS results are reported separately and
+are not part of the units math.
 """
 from __future__ import annotations
 
@@ -58,18 +58,26 @@ def _settled() -> list[dict]:
                 recs.append(j)
     except Exception:
         pass
-    seen = set()
-    out = []
+    def _dec(r) -> float:
+        try:
+            return odds.american_to_decimal(int(r.get("am") or 0))
+        except Exception:
+            return 0.0
+
+    # Collapse to one row per actual bet — a board re-shows the same game's prop
+    # across several days, so key on (game, market, selection, line) and keep the
+    # best price taken. Counting each re-showing would double-count one bet.
+    best: dict[tuple, dict] = {}
     for r in recs:
         if not r.get("am"):
             continue
-        key = (str(r.get("day", "")), str(r.get("game", "")), str(r.get("mkt", "")),
-               str(r.get("side", "")), str(r.get("line")), str(r.get("player") or ""),
-               int(r.get("am") or 0), str(r.get("status", "")))
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(r)
+        key = (str(r.get("game", "")), str(r.get("mkt", "")),
+               str(r.get("side", "")), str(r.get("player") or ""),
+               str(r.get("line")))
+        cur = best.get(key)
+        if cur is None or _dec(r) > _dec(cur):
+            best[key] = r
+    out = list(best.values())
     out.sort(key=lambda r: (str(r.get("day") or ""), r.get("ts", 0)))
     return out
 
