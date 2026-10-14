@@ -35,6 +35,7 @@ import picks
 import contest
 import clv
 import backtest
+import staking
 
 app = FastAPI(title="ScoreEdge")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -3454,6 +3455,38 @@ def backtest_page(request: Request):
     return templates.TemplateResponse(request, 'backtest.html', {
         **_ctx(request, 'nfl', active_page='backtest'),
         'rep': rep,
+    })
+
+
+@app.get('/staking', response_class=HTMLResponse)
+def staking_page(request: Request, bankroll: float = 100.0,
+                 fraction: float = 0.25, cap: float = 0.05):
+    """Position sizing: today's value spots sized by fractional Kelly, plus a
+    replay of the settled record under the same sizing vs flat 1u. Not advice."""
+    ensure_data()
+    day = __import__("datetime").date.today().isoformat()
+    plays: list = []
+    try:
+        slate, _ = _full_slate_board(day, explicit=False)
+        if isinstance(slate, dict):
+            quotes = list(_best_bets(slate, limit=60)) + list(slate.get("props") or [])
+            plays = staking.plan(quotes, bankroll, fraction, cap, limit=20)
+    except Exception:
+        plays = []
+    try:
+        sim = staking.simulate(backtest._settled(), fraction, cap, start=bankroll)
+    except Exception:
+        sim = {"n": 0, "start": bankroll, "final": bankroll, "ret_pct": None,
+               "flat_final": bankroll, "flat_units": 0.0, "ruined_at": None,
+               "curve": [], "flat_curve": [], "kelly_polyline": "",
+               "flat_polyline": "", "y_start": 100.0}
+    return templates.TemplateResponse(request, 'staking.html', {
+        **_ctx(request, 'nfl', active_page='staking'),
+        'plays': plays,
+        'sim': sim,
+        'bankroll': bankroll,
+        'fraction': fraction,
+        'cap': cap,
     })
 
 

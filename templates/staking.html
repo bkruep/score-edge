@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Staking — ScoreEdge{% endblock %}
+{% block meta_description %}ScoreEdge staking: today's value spots sized by fractional Kelly, capped at a share of bankroll, plus how the same sizing would have played out over the settled record.{% endblock %}
+{% block canonical %}/staking{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 border-b border-white/5 pb-3">
+  <h1 class="text-xl font-display font-bold text-white tracking-tight">STAKING</h1>
+  <p class="text-xs text-slate-500 mt-0.5 font-mono">FRACTIONAL KELLY &middot; CAPPED &middot; BET SIZING, NOT ADVICE</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="glass-card rounded-xl p-6 mb-5 max-w-3xl text-sm text-slate-300 space-y-3">
+  <p>Every board posts a <span class="text-white">best price</span> that beats the consensus line. That gap <em>is</em> the edge, so the consensus price is our probability estimate and the best price is what we can take. Kelly sizes a bet as edge&nbsp;/&nbsp;(decimal&minus;1); we scale it down (default quarter Kelly) and cap it, because one edge estimate is noisy and a slate's spots rise and fall together.</p>
+  <p class="text-slate-400">Sizing does not create edge — it only decides how much of a real edge to risk. A bigger stake on a fake edge just loses faster.</p>
+  <p class="text-slate-400"><span class="text-white font-medium">Play responsibly.</span> If you or someone you know has a gambling problem, call <a href="tel:18004262537" class="text-brand hover:underline">1-800-GAMBLER</a> or visit <a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noopener" class="text-brand hover:underline">ncpgambling.org</a>.</p>
+</div>
+
+<form method="get" action="/staking" class="glass-card rounded-xl p-4 mb-5 flex flex-wrap items-end gap-3 text-xs">
+  <label class="flex flex-col gap-1">
+    <span class="font-mono uppercase text-slate-500 text-[10px]">Bankroll (units)</span>
+    <input type="number" name="bankroll" value="{{ '%.0f'|format(bankroll) }}" min="1" step="1" class="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-white w-28">
+  </label>
+  <label class="flex flex-col gap-1">
+    <span class="font-mono uppercase text-slate-500 text-[10px]">Kelly fraction</span>
+    <select name="fraction" class="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-white">
+      {% for f, lbl in [(1.0,'Full'),(0.5,'Half'),(0.25,'Quarter'),(0.1,'Tenth')] %}
+      <option value="{{ f }}" {% if fraction == f %}selected{% endif %}>{{ lbl }} ({{ f }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="flex flex-col gap-1">
+    <span class="font-mono uppercase text-slate-500 text-[10px]">Max stake / bet</span>
+    <select name="cap" class="bg-white/5 border border-white/10 rounded-md px-2 py-1 text-white">
+      {% for c, lbl in [(0.02,'2%'),(0.05,'5%'),(0.10,'10%')] %}
+      <option value="{{ c }}" {% if cap == c %}selected{% endif %}>{{ lbl }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit" class="rounded-md bg-brand/20 border border-brand/40 text-brand px-3 py-1.5 font-medium hover:bg-brand/30">Resize</button>
+</form>
+
+<div class="glass-card rounded-xl p-5 mb-5">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-display font-semibold text-white text-sm">Today's sizing</h2>
+    <span class="text-[10px] font-mono text-slate-500">{{ plays|length }} play{{ '' if plays|length == 1 else 's' }} with a positive stake</span>
+  </div>
+  {% if plays %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-xs text-slate-300">
+      <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10">
+        <th class="text-left py-1.5">Game</th><th class="text-left">Selection</th><th class="text-left">Mkt</th>
+        <th class="text-right">Line</th><th class="text-right">Best</th><th class="text-left">Book</th>
+        <th class="text-right">Cons</th><th class="text-right">Edge</th><th class="text-right">Stake</th><th class="text-right">%</th>
+      </tr></thead>
+      <tbody>
+        {% for p in plays %}
+        <tr class="border-b border-white/5">
+          <td class="py-1.5 text-slate-400">{{ p.game }}</td>
+          <td class="py-1.5 text-white">{{ p.player or p.side }}</td>
+          <td class="py-1.5 font-mono text-slate-400">{{ p.market.replace('player_','') }}</td>
+          <td class="py-1.5 text-right font-mono">{{ p.line if p.line is not none else '—' }}</td>
+          <td class="py-1.5 text-right font-mono text-emerald-400">{{ '%+d'|format(p.best_am) }}</td>
+          <td class="py-1.5 text-slate-500">{{ p.book }}</td>
+          <td class="py-1.5 text-right font-mono text-slate-500">{{ '%+d'|format(p.cons_am) }}</td>
+          <td class="py-1.5 text-right font-mono">{{ '%.2f'|format(p.edge_pct) }}%</td>
+          <td class="py-1.5 text-right font-mono text-white">{{ '%.2f'|format(p.stake_units) }}u</td>
+          <td class="py-1.5 text-right font-mono text-slate-500">{{ '%.2f'|format(p.stake_pct) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm text-slate-500">No positive-edge spots on the current slate (or the board is thin right now). Nothing to size.</p>
+  {% endif %}
+</div>
+
+<div class="glass-card rounded-xl p-5 mb-5">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-display font-semibold text-white text-sm">Fractional Kelly vs flat, over the settled record</h2>
+    {% if sim.ruined_at %}<span class="text-[10px] font-mono text-rose-400">ruin on {{ sim.ruined_at }}</span>{% endif %}
+  </div>
+  {% if sim.n %}
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Bets replayed</div>
+      <div class="font-mono text-white">{{ sim.n }}</div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Kelly final</div>
+      <div class="font-mono {% if sim.final >= sim.start %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%.1f'|format(sim.final) }}u <span class="text-slate-500 text-xs">({{ '%+.1f'|format(sim.ret_pct) if sim.ret_pct is not none else '—' }}%)</span></div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Flat final</div>
+      <div class="font-mono {% if sim.flat_final >= sim.start %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%.1f'|format(sim.flat_final) }}u <span class="text-slate-500 text-xs">({{ '%+.1f'|format(sim.flat_units) }}u)</span></div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Sizing</div>
+      <div class="font-mono text-white">{{ '%.0f'|format(fraction*100) }}% Kelly &middot; {{ '%.0f'|format(cap*100) }}% cap</div>
+    </div>
+  </div>
+  {% if sim.kelly_polyline %}
+  <div class="flex items-center gap-4 mb-1 text-[10px] font-mono">
+    <span class="text-slate-500">Start {{ '%.0f'|format(sim.start) }}u</span>
+    <span class="text-brand">— Kelly</span>
+    <span class="text-slate-400">— Flat</span>
+  </div>
+  <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-36 bg-white/5 rounded-lg">
+    <line x1="0" y1="{{ sim.y_start }}" x2="100" y2="{{ sim.y_start }}" stroke="rgba(255,255,255,0.15)" stroke-width="0.5" stroke-dasharray="2 2"/>
+    <polyline points="{{ sim.flat_polyline }}" fill="none" stroke="#94a3b8" stroke-width="1" vector-effect="non-scaling-stroke" opacity="0.7"/>
+    <polyline points="{{ sim.kelly_polyline }}" fill="none" stroke="#00e676" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+  </svg>
+  {% endif %}
+  {% else %}
+  <p class="text-sm text-slate-500">No settled, odds-bearing bets to replay yet.</p>
+  {% endif %}
+</div>
+
+<div class="glass-card rounded-xl p-6 max-w-3xl text-sm text-slate-400 space-y-2">
+  <h2 class="font-display font-semibold text-white text-sm mb-1">Method</h2>
+  <p>Consensus implied probability <code>p = 1/decimal(consensus)</code>; full Kelly <code>f = (p&middot;d &minus; 1)/(d &minus; 1)</code> with <code>d</code> the decimal price taken; the stake is <code>f &times; fraction</code>, capped at the max-stake setting, applied to the bankroll. The replay compounds Kelly stakes off the running bankroll and compares to a flat 1u stake on the same settled bets. Sizing math only &middot; no bet is certain &middot; past results do not guarantee future returns.</p>
+</div>
+{% endblock %}
