@@ -33,6 +33,7 @@ import track
 import model
 import picks
 import contest
+import clv
 
 app = FastAPI(title="ScoreEdge")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -1219,7 +1220,9 @@ def nfl_board(request: Request):
     if isinstance(_src_slate, dict):
         try:
             best_bets = _best_bets(_src_slate, limit=12)
-            # log best bets shown on dashboard (BetQuote objects -> getattr)
+            # log best bets shown on dashboard (BetQuote objects -> getattr).
+            # Carry the quote identity (event_id + feed market + book) so the
+            # closing-line-value pass can rejoin the same selection later.
             try:
                 day = __import__("datetime").date.today().isoformat()
                 _mmap = {"moneyline": "ML", "point_spread": "SPR", "total_points": "TOT"}
@@ -1228,10 +1231,13 @@ def nfl_board(request: Request):
                         _raw = str(getattr(bb, "market", "") or "")
                         picks.record_pick(
                             game=str(getattr(bb, "game", "") or ""),
+                            event_id=str(getattr(bb, "event_id", "") or ""),
+                            market_raw=_raw,
                             mkt=_mmap.get(_raw, "prop"),
                             side=str(getattr(bb, "selection", "") or ""),
                             player=str(getattr(bb, "player_name", "") or ""),
                             am=int(getattr(bb, "best_odds", 0) or 0),
+                            book=str(getattr(bb, "best_book", "") or ""),
                             edge=float(getattr(bb, "edge_pct", 0.0) or 0.0),
                             line=getattr(bb, "line", None),
                             day=str(day),
@@ -1243,6 +1249,18 @@ def nfl_board(request: Request):
                 pass
         except Exception:
             best_bets = []
+
+    # Record this slate's main-line prices into the rolling series so the
+    # closing-line-value pass has an entry/latest number to compare against.
+    # Cheap and idempotent (at most one point per quote per 30s).
+    try:
+        marketfeed.record_quotes(
+            (_src_slate.get("moneylines") or [])
+            + (_src_slate.get("spreads") or [])
+            + (_src_slate.get("totals") or []))
+        marketfeed.save_history()
+    except Exception:
+        pass
 
     # Touchdown-hunt promos live on the /bets tab only; the dashboard keeps its
     # own slate for the market map and playbook. (context keys kept for /bets)
@@ -1745,6 +1763,11 @@ def bets_page(request: Request, date: str = "", focus: str = ""):
     _game_quotes = slate["moneylines"] + slate["spreads"] + slate["totals"]
     odds.record_line_baselines(_game_quotes)
     odds.record_line_history(_game_quotes)
+    try:
+        marketfeed.record_quotes(_game_quotes)
+        marketfeed.save_history()
+    except Exception:
+        pass
     steam_map = odds.line_moves(_game_quotes)
 
     # Unique game labels for the in-page game filter. Include both the games with
@@ -3450,6 +3473,11 @@ def model_page(request: Request):
         dfs_summary = contest.summary()
     except Exception:
         dfs_results, dfs_summary = [], {}
+    try:
+        clv_summary = clv.summary()
+        clv_rows = clv.rows(limit=20)
+    except Exception:
+        clv_summary, clv_rows = {}, []
     updated = ""
     if st.get("ts"):
         try:
@@ -3467,6 +3495,8 @@ def model_page(request: Request):
         "ledger": ledger,
         "dfs_results": dfs_results,
         "dfs_summary": dfs_summary,
+        "clv_summary": clv_summary,
+        "clv_rows": clv_rows,
         "updated": updated,
     })
 

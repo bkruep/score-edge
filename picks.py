@@ -81,6 +81,11 @@ def _write(rows: list[dict]) -> None:
         pass
 
 
+def all_picks() -> list[dict]:
+    """Every logged suggestion (raw rows), newest last."""
+    return _read()
+
+
 def ledger_summary() -> dict[str, dict]:
     """Per-source counts of everything suggested + how far it has settled."""
     per: dict[str, dict] = {}

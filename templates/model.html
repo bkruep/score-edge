@@ -315,6 +315,63 @@
   </div>
 </div>
 
+<div class="glass-card rounded-xl p-5 mb-5">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-display font-semibold text-white text-sm">Closing line value</h2>
+    <span class="text-[10px] font-mono text-slate-600">
+      {% if clv_summary.graded %}{{ clv_summary.beat }}/{{ clv_summary.graded }} beat the close{% else %}{{ clv_summary.priced or 0 }} priced pick{{ '' if (clv_summary.priced or 0) == 1 else 's' }}{% endif %}
+    </span>
+  </div>
+  <p class="text-xs text-slate-500 mb-3">Did the picks we logged take a better number than the one that closed? Beating the close is the least-noisy evidence an edge is real — at small samples win/loss is mostly variance, but consistently beating the number is not. Moneyline is scored in implied-probability points; spreads/OU in line points (positive = we got the best of it). <span class="text-slate-400">Coverage starts now — there is no historical backfill</span>, so this is thin at first and grows as the same selections are seen again.</p>
+  {% if clv_summary.graded %}
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Graded</div>
+      <div class="font-mono text-white">{{ clv_summary.graded }}<span class="text-slate-600 text-xs"> / {{ clv_summary.priced }} priced</span></div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Beat close</div>
+      <div class="font-mono {% if clv_summary.beat_pct and clv_summary.beat_pct >= 50 %}text-emerald-400{% else %}text-amber-400{% endif %}">{{ clv_summary.beat_pct }}%</div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Avg ML (pp)</div>
+      <div class="font-mono {% if clv_summary.avg_pp and clv_summary.avg_pp > 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.2f'|format(clv_summary.avg_pp) if clv_summary.avg_pp is not none else '—' }}<span class="text-slate-600 text-xs"> n={{ clv_summary.n_ml }}</span></div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Avg line (pts)</div>
+      <div class="font-mono {% if clv_summary.avg_pts and clv_summary.avg_pts > 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.1f'|format(clv_summary.avg_pts) if clv_summary.avg_pts is not none else '—' }}<span class="text-slate-600 text-xs"> n={{ clv_summary.n_line }}</span></div>
+    </div>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-xs text-slate-300 sortable">
+      <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Day</th><th class="text-left">Source</th><th>Mkt</th><th class="text-left">Side</th><th class="text-right">Entry</th><th class="text-right">Close</th><th class="text-right">CLV</th></tr></thead>
+      <tbody class="stagger-in">
+        {% for r in clv_rows %}
+        {% if r.ok %}
+        <tr class="border-b border-white/5">
+          <td class="py-1.5 font-mono text-slate-400">{{ r.day }}</td>
+          <td class="py-1.5 font-mono text-slate-400">{{ r.source }}</td>
+          <td class="py-1.5 text-center font-mono">{{ r.mkt }}</td>
+          <td class="py-1.5 font-mono">{{ r.side }}{% if r.line is not none %} <span class="text-slate-600">{{ r.line }}</span>{% endif %}</td>
+          <td class="py-1.5 text-right font-mono">{{ r.am }}</td>
+          <td class="py-1.5 text-right font-mono">{{ r.close }}</td>
+          <td class="py-1.5 text-right font-mono {% if (r.clv_pp if r.clv_pp is defined else r.clv_pts) > 0 %}text-emerald-400{% elif (r.clv_pp if r.clv_pp is defined else r.clv_pts) < 0 %}text-rose-400{% else %}text-slate-500{% endif %}">
+            {% if r.clv_pp is defined %}{{ '%+.2f'|format(r.clv_pp) }}pp{% else %}{{ '%+.1f'|format(r.clv_pts) }}pt{% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if clv_summary.priced > clv_summary.graded %}
+  <p class="text-[11px] text-slate-600 mt-2">{{ clv_summary.priced - clv_summary.graded }} priced pick(s) not graded yet — they need a second observation of the same selection (or a genuine line move) before there is an entry-to-close read.</p>
+  {% endif %}
+  {% else %}
+  <p class="text-sm text-slate-500">No closing-line reads yet. Best bets logged with odds are matched to the price series once that selection is seen again. {% if clv_summary.priced %}{{ clv_summary.priced }} priced pick(s) waiting on a second observation.{% endif %}</p>
+  {% endif %}
+</div>
+
 <div class="glass-card rounded-xl p-6 max-w-3xl text-sm text-slate-400 space-y-2">
   <h2 class="font-display font-semibold text-white text-sm mb-1">Method</h2>
   <p>Features: log-odds of consensus-implied win prob, edge points (best vs consensus), home-side flag, market dummies (spread/total). Regularized logistic regression, L2=1.0, 300 iterations, random 70/30 split with fixed seed; OOS metrics only. Labels are the union of <code>journal.settled_records</code> (real final scores) and settled odds-bearing picks from the suggestion ledger (<code>picks.settled_picks</code> &rarr; <code>to_journal_like</code>), deduped. Predictions on latest slate use cached/slate data; unsettled rows have no look-ahead.</p>
