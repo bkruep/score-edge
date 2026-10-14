@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Backtest — ScoreEdge{% endblock %}
+{% block meta_description %}ScoreEdge backtest: replay every settled suggestion at a flat 1-unit stake and see units, ROI and hit rate by market, edge bucket and book. Real outcomes only.{% endblock %}
+{% block canonical %}/backtest{% endblock %}
+{% block breadcrumb %}
+<div class="mb-5 border-b border-white/5 pb-3">
+  <h1 class="text-xl font-display font-bold text-white tracking-tight">BACKTEST</h1>
+  <p class="text-xs text-slate-500 mt-0.5 font-mono">IF YOU BET EVERY SUGGESTION &middot; FLAT 1U &middot; REAL OUTCOMES</p>
+</div>
+{% endblock %}
+{% block content %}
+<div class="glass-card rounded-xl p-6 mb-5 max-w-3xl text-sm text-slate-300 space-y-3">
+  <p>Every value spot a board posts is journaled and, once the game finishes, settled against the real final score. This page replays that record as if you had bet each one for one flat unit, and reports what actually happened — no estimates, no look-ahead.</p>
+  <p class="text-slate-400">The replay universe is the edge journal unioned with settled odds-bearing picks from the suggestion ledger (deduped, the same set the learning model trains on). Hunts have no market odds and DFS has no standard payout, so both get hit-rate only and stay out of the units math.</p>
+  <p class="text-slate-400"><span class="text-white font-medium">Play responsibly.</span> If you or someone you know has a gambling problem, call <a href="tel:18004262537" class="text-brand hover:underline">1-800-GAMBLER</a> or visit <a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noopener" class="text-brand hover:underline">ncpgambling.org</a>.</p>
+</div>
+
+<div class="glass-card rounded-xl p-5 mb-5">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-display font-semibold text-white text-sm">Flat-stake replay</h2>
+    {% if rep.small_sample %}<span class="text-[10px] font-mono text-amber-400">small sample — provisional</span>{% endif %}
+  </div>
+  {% if rep.overall.n %}
+  <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Settled</div>
+      <div class="font-mono text-white">{{ rep.overall.n }}<span class="text-slate-600 text-xs"> bets</span></div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Record</div>
+      <div class="font-mono text-white">{{ rep.overall.w }}-{{ rep.overall.l }}{% if rep.overall.p %}<span class="text-slate-500 text-xs">-{{ rep.overall.p }}</span>{% endif %}</div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Hit rate</div>
+      <div class="font-mono text-white">{{ rep.overall.hit_pct if rep.overall.hit_pct is not none else '—' }}%</div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Units (1u flat)</div>
+      <div class="font-mono {% if rep.overall.units >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.2f'|format(rep.overall.units) }}u</div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">ROI</div>
+      <div class="font-mono {% if rep.overall.roi_pct and rep.overall.roi_pct >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.1f'|format(rep.overall.roi_pct) if rep.overall.roi_pct is not none else '—' }}%</div>
+    </div>
+  </div>
+
+  {% if rep.curve.points %}
+  <div class="mt-5">
+    <div class="flex items-center justify-between mb-1">
+      <h3 class="text-[10px] font-mono uppercase text-slate-500">Bankroll curve (cumulative units)</h3>
+      <span class="text-[10px] font-mono text-slate-600">{{ rep.curve.points|length }} days &middot; final {{ '%+.2f'|format(rep.curve.final) }}u</span>
+    </div>
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-32 bg-white/5 rounded-lg">
+      <line x1="0" y1="{{ (rep.curve.max / ((rep.curve.max - rep.curve.min) or 1) * 100) }}" x2="100" y2="{{ (rep.curve.max / ((rep.curve.max - rep.curve.min) or 1) * 100) }}" stroke="rgba(255,255,255,0.15)" stroke-width="0.5" stroke-dasharray="2 2"/>
+      <polyline points="{{ rep.curve.polyline }}" fill="none" stroke="{% if rep.curve.final >= 0 %}#34d399{% else %}#fb7185{% endif %}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+    </svg>
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="text-sm text-slate-500">No settled bets to replay yet. The journal fills as boards are posted and their games finish.</p>
+  {% endif %}
+</div>
+
+{% if rep.overall.n %}
+<div class="grid gap-5 lg:grid-cols-3 mb-5">
+  <div class="glass-card rounded-xl p-5">
+    <h2 class="font-display font-semibold text-white text-sm mb-3">By market</h2>
+    <table class="w-full text-xs text-slate-300">
+      <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Mkt</th><th class="text-right">N</th><th class="text-right">W-L</th><th class="text-right">Hit%</th><th class="text-right">Units</th><th class="text-right">ROI</th></tr></thead>
+      <tbody>
+        {% for m, s in rep.by_market.items() %}
+        <tr class="border-b border-white/5">
+          <td class="py-1.5 font-mono text-slate-400">{{ m }}</td>
+          <td class="py-1.5 text-right font-mono">{{ s.n }}</td>
+          <td class="py-1.5 text-right font-mono">{{ s.w }}-{{ s.l }}</td>
+          <td class="py-1.5 text-right font-mono">{{ s.hit_pct if s.hit_pct is not none else '—' }}</td>
+          <td class="py-1.5 text-right font-mono {% if s.units >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.2f'|format(s.units) }}</td>
+          <td class="py-1.5 text-right font-mono">{{ '%+.1f'|format(s.roi_pct) if s.roi_pct is not none else '—' }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="glass-card rounded-xl p-5">
+    <h2 class="font-display font-semibold text-white text-sm mb-3">By edge bucket</h2>
+    <table class="w-full text-xs text-slate-300">
+      <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Edge</th><th class="text-right">N</th><th class="text-right">W-L</th><th class="text-right">Hit%</th><th class="text-right">Units</th><th class="text-right">ROI</th></tr></thead>
+      <tbody>
+        {% for b, s in rep.by_bucket.items() %}
+        <tr class="border-b border-white/5">
+          <td class="py-1.5 font-mono text-slate-400">{{ b }}</td>
+          <td class="py-1.5 text-right font-mono">{{ s.n }}</td>
+          <td class="py-1.5 text-right font-mono">{{ s.w }}-{{ s.l }}</td>
+          <td class="py-1.5 text-right font-mono">{{ s.hit_pct if s.hit_pct is not none else '—' }}</td>
+          <td class="py-1.5 text-right font-mono {% if s.units >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.2f'|format(s.units) }}</td>
+          <td class="py-1.5 text-right font-mono">{{ '%+.1f'|format(s.roi_pct) if s.roi_pct is not none else '—' }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="glass-card rounded-xl p-5">
+    <h2 class="font-display font-semibold text-white text-sm mb-3">By book (best price taken)</h2>
+    {% if rep.by_book %}
+    <table class="w-full text-xs text-slate-300">
+      <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Book</th><th class="text-right">N</th><th class="text-right">Hit%</th><th class="text-right">Units</th></tr></thead>
+      <tbody>
+        {% for bk, s in rep.by_book.items() %}
+        <tr class="border-b border-white/5">
+          <td class="py-1.5 font-mono text-slate-400">{{ bk }}</td>
+          <td class="py-1.5 text-right font-mono">{{ s.n }}</td>
+          <td class="py-1.5 text-right font-mono">{{ s.hit_pct if s.hit_pct is not none else '—' }}</td>
+          <td class="py-1.5 text-right font-mono {% if s.units >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.2f'|format(s.units) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-xs text-slate-600">No book detail recorded yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="glass-card rounded-xl p-5 mb-5">
+  <h2 class="font-display font-semibold text-white text-sm mb-2">Boards without odds</h2>
+  <p class="text-xs text-slate-500 mb-3">Hunts and DFS can't be scored in units (no market price / no standard payout), so they show rate only. They still feed the model through their own calibration paths.</p>
+  <div class="grid gap-5 lg:grid-cols-2">
+    <div>
+      <h3 class="text-[10px] font-mono uppercase text-slate-500 mb-2">Goal &amp; home-run hunts</h3>
+      {% if rep.hunts %}
+      <table class="w-full text-xs text-slate-300">
+        <thead><tr class="text-[10px] font-mono uppercase text-slate-500 border-b border-white/10"><th class="text-left py-1.5">Board</th><th class="text-right">Logged</th><th class="text-right">W-L</th><th class="text-right">Hit%</th><th class="text-right">Brier</th></tr></thead>
+        <tbody>
+          {% for src, h in rep.hunts.items() %}
+          <tr class="border-b border-white/5">
+            <td class="py-1.5 font-mono text-slate-400">{{ src }}</td>
+            <td class="py-1.5 text-right font-mono">{{ h.logged }}</td>
+            <td class="py-1.5 text-right font-mono">{{ h.won }}-{{ h.lost }}</td>
+            <td class="py-1.5 text-right font-mono">{{ h.hit_pct if h.hit_pct is not none else '—' }}</td>
+            <td class="py-1.5 text-right font-mono text-white">{{ h.brier if h.brier is not none else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="text-xs text-slate-600">No hunt predictions logged yet.</p>
+      {% endif %}
+    </div>
+    <div>
+      <h3 class="text-[10px] font-mono uppercase text-slate-500 mb-2">DFS (manual results)</h3>
+      {% if rep.dfs and rep.dfs.decided %}
+      <p class="text-xs text-slate-300">Cleared the cash line <span class="font-mono text-white">{{ rep.dfs.wins }}-{{ rep.dfs.losses }}</span>{% if rep.dfs.hit_pct is not none %} ({{ rep.dfs.hit_pct }}%){% endif %} across {{ rep.dfs.slates }} slate{{ '' if rep.dfs.slates == 1 else 's' }}.</p>
+      {% else %}
+      <p class="text-xs text-slate-600">No DFS results recorded yet (enter them on the <a href="/model" class="text-brand hover:underline">Learning Model</a> page).</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="glass-card rounded-xl p-6 max-w-3xl text-sm text-slate-400 space-y-2">
+  <h2 class="font-display font-semibold text-white text-sm mb-1">Method</h2>
+  <p>Universe = settled edge-journal records (value spots resolved to real finals) &cup; settled odds-bearing picks (<code>picks.to_journal_like</code>), deduped. Stake 1u per bet; win pays <code>decimal-1</code>, loss pays -1, push 0. ROI = units / (wins + losses); pushes return stake and are excluded from the denominator. Splits are by market, by the edge bucket at post time, and by the book whose best price was taken. Stats-based replay &middot; NOT a market forecast &middot; past results do not guarantee future returns.</p>
+</div>
+{% endblock %}

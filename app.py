@@ -34,6 +34,7 @@ import model
 import picks
 import contest
 import clv
+import backtest
 
 app = FastAPI(title="ScoreEdge")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -3437,6 +3438,24 @@ def calibration_page(request: Request, day: str = ''):
         'buckets': track.buckets(),
         'proof': proof,
     })
+
+@app.get('/backtest', response_class=HTMLResponse)
+def backtest_page(request: Request):
+    """Replay: if you had bet every settled suggestion at flat 1u, what happened?
+    Units, ROI, and hit rate split by market / edge bucket / book, with a
+    running bankroll curve. Real outcomes only."""
+    ensure_data()
+    try:
+        rep = backtest.report()
+    except Exception:
+        rep = {"overall": {}, "by_market": {}, "by_bucket": {}, "by_book": {},
+               "curve": {"points": [], "polyline": "", "min": 0.0, "max": 0.0, "final": 0.0},
+               "hunts": {}, "dfs": {}, "small_sample": True}
+    return templates.TemplateResponse(request, 'backtest.html', {
+        **_ctx(request, 'nfl', active_page='backtest'),
+        'rep': rep,
+    })
+
 
 @app.get("/model", response_class=HTMLResponse)
 def model_page(request: Request):
