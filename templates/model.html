@@ -372,6 +372,54 @@
   {% endif %}
 </div>
 
+<div class="glass-card rounded-xl p-5 mb-5">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-display font-semibold text-white text-sm">Does beating the close pay?</h2>
+    {% if clv_val.n %}<span class="text-[10px] font-mono text-slate-600">{{ clv_val.n }} judged bet{{ '' if clv_val.n == 1 else 's' }}{% if clv_val.small_sample %} &middot; provisional{% endif %}</span>{% endif %}
+  </div>
+  <p class="text-xs text-slate-500 mb-3">The headline test: bet the number that beat the close and see whether it actually wins. Each settled bet that had a scorable entry-to-close read is bucketed by the sign of its CLV, then replayed at a flat unit. If the model is reading the market, the <span class="text-emerald-400">beat-the-close</span> bucket should out-earn the <span class="text-rose-400">got-a-worse-number</span> bucket — that is the edge, priced.</p>
+  {% if clv_val.n %}
+  {% set bv = clv_val.beat_vs_not %}
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+    <div class="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-emerald-400/80">Beat close &middot; win</div>
+      <div class="font-mono text-white">{{ bv.beat.win_pct ~ '%' if bv.beat.win_pct is not none else '—' }}<span class="text-slate-500 text-xs"> n={{ bv.beat.n }}</span></div>
+    </div>
+    <div class="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-emerald-400/80">Beat close &middot; ROI</div>
+      <div class="font-mono {% if bv.beat.roi_pct is not none and bv.beat.roi_pct >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.1f'|format(bv.beat.roi_pct) if bv.beat.roi_pct is not none else '—' }}%</div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Not beat &middot; win</div>
+      <div class="font-mono text-white">{{ bv.not.win_pct ~ '%' if bv.not.win_pct is not none else '—' }}<span class="text-slate-500 text-xs"> n={{ bv.not.n }}</span></div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Not beat &middot; ROI</div>
+      <div class="font-mono {% if bv.not.roi_pct is not none and bv.not.roi_pct >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.1f'|format(bv.not.roi_pct) if bv.not.roi_pct is not none else '—' }}%</div>
+    </div>
+  </div>
+  {% set units = clv_val.buckets | map(attribute='units') | list %}
+  {% set umax = (units | map('abs') | list | max) or 1 %}
+  <div class="space-y-2 mb-4">
+    {% for b in clv_val.buckets %}
+    {% if b.n %}
+    <div class="flex items-center gap-3 text-xs">
+      <span class="w-16 font-mono {% if b.key == 'beat' %}text-emerald-400{% elif b.key == 'worse' %}text-rose-400{% else %}text-slate-400{% endif %}">{{ {'beat':'Beat close','even':'At close','worse':'Worse'}[b.key] }}</span>
+      <span class="w-24 text-right font-mono text-slate-400">{{ b.w }}-{{ b.l }} <span class="text-slate-600">({{ b.win_pct }}%)</span></span>
+      <div class="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+        <div class="h-full rounded-full {% if b.units >= 0 %}bg-emerald-500/70{% else %}bg-rose-500/70{% endif %}" style="width: {{ (b.units|abs / umax * 100) | round(1) }}%"></div>
+      </div>
+      <span class="w-16 text-right font-mono {% if b.units >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.2f'|format(b.units) }}u</span>
+      <span class="w-14 text-right font-mono text-slate-500">{{ '%+.1f'|format(b.roi_pct) if b.roi_pct is not none else '—' }}%</span>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-sm text-slate-500">No judged bets yet — this fills in as logged picks with a scorable number settle. Right now {{ clv_summary.priced or 0 }} priced pick(s) are waiting on both a second observation <em>and</em> a final score.</p>
+  {% endif %}
+</div>
+
 <div class="glass-card rounded-xl p-6 max-w-3xl text-sm text-slate-400 space-y-2">
   <h2 class="font-display font-semibold text-white text-sm mb-1">Method</h2>
   <p>Features: log-odds of consensus-implied win prob, edge points (best vs consensus), home-side flag, market dummies (spread/total). Regularized logistic regression, L2=1.0, 300 iterations, random 70/30 split with fixed seed; OOS metrics only. Labels are the union of <code>journal.settled_records</code> (real final scores) and settled odds-bearing picks from the suggestion ledger (<code>picks.settled_picks</code> &rarr; <code>to_journal_like</code>), deduped. Predictions on latest slate use cached/slate data; unsettled rows have no look-ahead.</p>

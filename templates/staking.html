@@ -121,3 +121,33 @@
   <p>Consensus implied probability <code>p = 1/decimal(consensus)</code>; full Kelly <code>f = (p&middot;d &minus; 1)/(d &minus; 1)</code> with <code>d</code> the decimal price taken; the stake is <code>f &times; fraction</code>, capped at the max-stake setting, applied to the bankroll. The replay compounds Kelly stakes off the running bankroll and compares to a flat 1u stake on the same settled bets. Sizing math only &middot; no bet is certain &middot; past results do not guarantee future returns.</p>
 </div>
 {% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var KEY = 'scoreedge_staking_v1';
+    var form = document.querySelector('form[action="/staking"]');
+    if (!form) return;
+    var qs = new URLSearchParams(location.search);
+    var hasAny = ['bankroll', 'fraction', 'cap'].some(function (k) { return qs.has(k); });
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+    // No explicit settings in the URL -> restore the last-used sizing once.
+    if (saved && !hasAny) {
+      qs.set('bankroll', saved.bankroll);
+      qs.set('fraction', saved.fraction);
+      qs.set('cap', saved.cap);
+      location.replace('/staking?' + qs.toString());
+      return;
+    }
+    form.addEventListener('submit', function () {
+      try {
+        localStorage.setItem(KEY, JSON.stringify({
+          bankroll: form.bankroll.value,
+          fraction: form.fraction.value,
+          cap: form.cap.value
+        }));
+      } catch (e) {}
+    });
+  })();
+</script>
+{% endblock %}

@@ -139,6 +139,91 @@ def rows(limit: int = 25) -> list[dict]:
     return out[:limit]
 
 
+def _decimal(am) -> float:
+    try:
+        return odds.american_to_decimal(int(am))
+    except Exception:
+        return 0.0
+
+
+def _blank() -> dict:
+    return {"n": 0, "w": 0, "l": 0, "p": 0, "units": 0.0}
+
+
+def _finish(d: dict) -> dict:
+    staked = d["w"] + d["l"]
+    return {
+        **d,
+        "units": round(d["units"], 2),
+        "win_pct": round(100.0 * d["w"] / staked, 1) if staked else None,
+        "roi_pct": round(100.0 * d["units"] / staked, 1) if staked else None,
+    }
+
+
+def validation() -> dict:
+    """Join graded CLV to the actual result: when we beat the close, do we win?
+
+    A bet counts only if it (a) settled won/lost/push and (b) carries a scorable
+    entry-to-close read, so this is a read on the bets we can actually judge —
+    not the whole ledger. Buckets are by the sign of CLV (beat / even / worse),
+    which is the one cut that is valid across both moneyline (probability
+    points) and spread/OU (line points) without mixing units.
+    """
+    import picks
+    buckets = {"beat": _blank(), "even": _blank(), "worse": _blank()}
+    by_market: dict[str, dict] = {}
+    rows: list[dict] = []
+    total_units = 0.0
+    for p in picks.all_picks():
+        st = str(p.get("status") or "")
+        if st not in ("won", "lost", "push"):
+            continue
+        if not p.get("am"):
+            continue
+        r = evaluate(p)
+        if not r.get("ok"):
+            continue
+        if "clv_pp" in r:
+            score, kind = r["clv_pp"], "pp"
+        elif "clv_pts" in r:
+            score, kind = r["clv_pts"], "pt"
+        else:
+            continue
+        dec = _decimal(p.get("am"))
+        if dec <= 1.0:
+            continue
+        units = 0.0 if st == "push" else (-1.0 if st == "lost" else dec - 1.0)
+        key = "beat" if score > 0 else ("worse" if score < 0 else "even")
+        b = buckets[key]
+        b["n"] += 1
+        b["units"] += units
+        b[{"won": "w", "lost": "l", "push": "p"}[st]] += 1
+        total_units += units
+        mkt = str(p.get("mkt") or "?").upper()
+        md = by_market.setdefault(mkt, _blank())
+        md["n"] += 1
+        md["units"] += units
+        md[{"won": "w", "lost": "l", "push": "p"}[st]] += 1
+        rows.append({
+            "day": p.get("day"), "source": p.get("source"), "mkt": mkt,
+            "side": p.get("side") or p.get("player"), "line": p.get("line"),
+            "clv": score, "kind": kind, "status": st, "units": round(units, 2),
+        })
+    n = sum(v["n"] for v in buckets.values())
+    beat, worse, even = buckets["beat"], buckets["worse"], buckets["even"]
+    beat_not = _finish({k: even[k] + worse[k] for k in ("n", "w", "l", "p", "units")})
+    return {
+        "n": n,
+        "units": round(total_units, 2),
+        "buckets": [{"key": k, **_finish(buckets[k])}
+                    for k in ("beat", "even", "worse")],
+        "by_market": {k: _finish(v) for k, v in sorted(by_market.items())},
+        "beat_vs_not": {"beat": _finish(beat), "not": beat_not},
+        "rows": rows[:20],
+        "small_sample": n < 30,
+    }
+
+
 def summary() -> dict:
     """Coverage + how often we beat the close, split by market."""
     priced = _priced()

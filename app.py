@@ -3451,7 +3451,7 @@ def backtest_page(request: Request):
     except Exception:
         rep = {"overall": {}, "by_market": {}, "by_bucket": {}, "by_book": {},
                "curve": {"points": [], "polyline": "", "min": 0.0, "max": 0.0, "final": 0.0},
-               "hunts": {}, "dfs": {}, "small_sample": True}
+               "risk": {"n": 0}, "hunts": {}, "dfs": {}, "small_sample": True}
     return templates.TemplateResponse(request, 'backtest.html', {
         **_ctx(request, 'nfl', active_page='backtest'),
         'rep': rep,
@@ -3530,6 +3530,11 @@ def model_page(request: Request):
         clv_rows = clv.rows(limit=20)
     except Exception:
         clv_summary, clv_rows = {}, []
+    try:
+        clv_val = clv.validation()
+    except Exception:
+        clv_val = {"n": 0, "buckets": [], "by_market": {},
+                   "beat_vs_not": {}, "rows": [], "small_sample": True}
     updated = ""
     if st.get("ts"):
         try:
@@ -3549,6 +3554,7 @@ def model_page(request: Request):
         "dfs_summary": dfs_summary,
         "clv_summary": clv_summary,
         "clv_rows": clv_rows,
+        "clv_val": clv_val,
         "updated": updated,
     })
 

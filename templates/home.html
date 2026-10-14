@@ -71,6 +71,7 @@
         <span x-text="refreshing ? 'RE-SCANNING…' : 'RE-SCAN NOW'"></span>
       </button>
       <template x-if="justScanned"><span class="text-[10px] font-mono text-brand animate-pulse">✓ SYNCED</span></template>
+      <template x-if="justMoved"><span class="text-[10px] font-mono text-amber-400 animate-pulse" x-text="moveCount + ' LINE MOVE' + (moveCount === 1 ? '' : 'S')"></span></template>
     </div>
     <div class="ml-auto flex items-center gap-2">
       <span class="tick-label">POOL</span>
@@ -421,7 +422,12 @@
                   </div>
                 </template>
               </td>
-              <td class="px-4 py-2.5 text-right text-sm font-mono text-emerald-400" x-text="p.best"></td>
+              <td class="px-4 py-2.5 text-right text-sm font-mono text-emerald-400">
+                <span class="inline-flex items-center gap-1 rounded px-1" :class="moveCls(p)">
+                  <span x-text="p.best"></span>
+                  <span x-show="moveArrow(p)" class="text-[10px]" :class="moveArrow(p) === '▲' ? 'text-emerald-400' : 'text-rose-400'" x-text="moveArrow(p)"></span>
+                </span>
+              </td>
               <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-400" x-text="p.cons"></td>
               <td class="px-4 py-2.5 text-right">
                 <span class="inline-flex items-center gap-2">
@@ -634,6 +640,13 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+  @keyframes priceUp { 0% { background: rgba(0,230,118,0.32); } 100% { background: transparent; } }
+  @keyframes priceDn { 0% { background: rgba(244,63,94,0.32); } 100% { background: transparent; } }
+  .price-up { animation: priceUp 1.6s ease-out; }
+  .price-dn { animation: priceDn 1.6s ease-out; }
+  @media (prefers-reduced-motion: reduce) { .price-up, .price-dn { animation: none; } }
+</style>
 <script>
   window.deck = function (seed) {
     seed = seed || {};
@@ -651,6 +664,11 @@
       ok: seed.ok,
       updatedTs: seed.updated_ts || Math.floor(Date.now() / 1000),
       justScanned: false,
+      moves: {},
+      moveCount: 0,
+      justMoved: false,
+      _prev: null,
+      _moveTimer: null,
 
       // --- ui state ---
       q: '',
@@ -704,7 +722,34 @@
         this.refreshing = false;
       },
       apply(d) {
-        this.rows = d.rows || [];
+        const rows = d.rows || [];
+        // Flag any best price that moved since it was last shown so the board
+        // can flash it. Snapshot the rows currently on screen the first time,
+        // so even the first re-scan can flag moves against the server render.
+        const prev = this._prev || this._snapshot(this.rows);
+        const next = {};
+        const moves = {};
+        for (const p of rows) {
+          const k = this.pkey(p);
+          next[k] = p.best;
+          if (k in prev) {
+            const ob = oddsNum(prev[k]);
+            const nb = oddsNum(p.best);
+            if (ob !== -9999 && nb !== -9999 && nb !== ob) {
+              moves[k] = nb > ob ? 'up' : 'down';
+            }
+          }
+        }
+        this._prev = next;
+        const nMoves = Object.keys(moves).length;
+        if (nMoves) {
+          this.moves = moves;
+          this.moveCount = nMoves;
+          this.justMoved = true;
+          clearTimeout(this._moveTimer);
+          this._moveTimer = setTimeout(() => { this.justMoved = false; this.moves = {}; }, 6000);
+        }
+        this.rows = rows;
         this.edges = d.edges || [];
         this.books = d.books || [];
         this.map = d.map ? Object.assign({ rows: d.map.rows || [] }, d.map) : { rows: [], slots: [] };
@@ -712,6 +757,21 @@
         this.counts = d.counts || this.counts;
         this.maxEdge = d.max || 0;
         this.updatedTs = d.updated_ts || Math.floor(Date.now() / 1000);
+      },
+
+      pkey(p) { return p.game + '|' + p.type + '|' + p.sel + '|' + (p.player || ''); },
+      _snapshot(rows) {
+        const out = {};
+        (rows || []).forEach((p) => { out[this.pkey(p)] = p.best; });
+        return out;
+      },
+      moveCls(p) {
+        const m = this.moves[this.pkey(p)];
+        return m === 'up' ? 'price-up' : (m === 'down' ? 'price-dn' : '');
+      },
+      moveArrow(p) {
+        const m = this.moves[this.pkey(p)];
+        return m === 'up' ? '▲' : (m === 'down' ? '▼' : '');
       },
 
       // --- market map helpers ---

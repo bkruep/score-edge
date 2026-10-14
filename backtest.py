@@ -153,6 +153,83 @@ def _curve(rows: list[dict]) -> dict:
             "max": round(hi, 2), "final": round(cums[-1], 2)}
 
 
+def risk(rows: list[dict] | None = None) -> dict:
+    """Risk profile of the flat-1u replay: drawdown, streaks, per-bet dispersion.
+
+    The bankroll curve says *how much* the record made; this says how bumpy the
+    ride was. Max drawdown is the deepest peak-to-trough drop in cumulative
+    units, and the underwater curve is that drop over time — where the record
+    sat below its prior best. Sharpe-like = mean per-bet units / std of per-bet
+    units (undiscounted, no risk-free rate); a rough signal-to-noise read.
+    """
+    rows = _settled() if rows is None else rows
+    eq = peak = 0.0
+    cur_dd = 0.0
+    max_dd = 0.0
+    max_dd_day = None
+    under: list[dict] = []
+    per_bet: list[float] = []
+    win_streak = lose_streak = 0
+    longest_win = longest_lose = 0
+    day_pnl: dict[str, float] = defaultdict(float)
+    for r in rows:
+        u = _units(r)
+        per_bet.append(u)
+        eq += u
+        if eq > peak:
+            peak = eq
+        cur_dd = eq - peak
+        if cur_dd < max_dd:
+            max_dd = cur_dd
+            max_dd_day = str(r.get("day") or "")
+        under.append({"day": str(r.get("day") or ""), "dd": round(cur_dd, 2)})
+        st = r.get("status")
+        if st == "won":
+            win_streak += 1
+            lose_streak = 0
+            longest_win = max(longest_win, win_streak)
+        elif st == "lost":
+            lose_streak += 1
+            win_streak = 0
+            longest_lose = max(longest_lose, lose_streak)
+        day_pnl[str(r.get("day") or "")] += u
+
+    n = len(per_bet)
+    mean_u = sum(per_bet) / n if n else 0.0
+    var = sum((x - mean_u) ** 2 for x in per_bet) / n if n else 0.0
+    std = var ** 0.5
+    best = max(day_pnl.items(), key=lambda kv: kv[1]) if day_pnl else ("", 0.0)
+    worst = min(day_pnl.items(), key=lambda kv: kv[1]) if day_pnl else ("", 0.0)
+
+    dd_vals = [p["dd"] for p in under]
+    lo = min(dd_vals) if dd_vals else 0.0
+    poly = ""
+    if len(under) >= 2 and lo < 0:
+        poly = " ".join(
+            f"{i / (len(under) - 1) * 100:.1f},{(p['dd'] / lo) * 100:.1f}"
+            for i, p in enumerate(under))
+    return {
+        "n": n,
+        "units": round(eq, 2),
+        "max_dd": round(max_dd, 2),
+        "max_dd_day": max_dd_day,
+        "current_dd": round(cur_dd, 2),
+        "recovered": cur_dd >= -1e-9,
+        "longest_win": longest_win,
+        "longest_lose": longest_lose,
+        "avg_u": round(mean_u, 3),
+        "std_u": round(std, 3),
+        "sharpe": round(mean_u / std, 3) if std > 0 else None,
+        "best_day": best[0],
+        "best_day_u": round(best[1], 2),
+        "worst_day": worst[0],
+        "worst_day_u": round(worst[1], 2),
+        "dd_polyline": poly,
+        "dd_min": round(lo, 2),
+        "small_sample": n < 100,
+    }
+
+
 def report() -> dict:
     rows = _settled()
     overall = _stats(rows)
@@ -183,6 +260,7 @@ def report() -> dict:
         "by_bucket": by_bucket,
         "by_book": by_book,
         "curve": _curve(rows),
+        "risk": risk(rows),
         "hunts": hunts,
         "dfs": dfs,
         "small_sample": overall["n"] < 100,

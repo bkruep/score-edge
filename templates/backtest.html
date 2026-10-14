@@ -61,6 +61,57 @@
   {% endif %}
 </div>
 
+{% if rep.risk and rep.risk.n %}
+<div class="glass-card rounded-xl p-5 mb-5">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-display font-semibold text-white text-sm">Risk &amp; drawdown</h2>
+    <span class="text-[10px] font-mono text-slate-600">flat 1u &middot; peak-to-trough, in units</span>
+  </div>
+  <p class="text-xs text-slate-500 mb-3">The curve above says how much the record made; this says how bumpy the ride was. Drawdown is the drop from the record's prior best — the number that decides whether you could actually hold on through a cold stretch.</p>
+  <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+    <div class="rounded-lg bg-rose-500/10 border border-rose-500/20 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-rose-400/80">Max drawdown</div>
+      <div class="font-mono text-rose-400">{{ '%.2f'|format(rep.risk.max_dd) }}u{% if rep.risk.max_dd_day %}<span class="text-slate-500 text-[10px]"> {{ rep.risk.max_dd_day }}</span>{% endif %}</div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Now vs peak</div>
+      <div class="font-mono {% if rep.risk.recovered %}text-emerald-400{% else %}text-amber-400{% endif %}">{{ '%.2f'|format(rep.risk.current_dd) }}u{% if rep.risk.recovered %} <span class="text-emerald-400 text-[10px]">at high</span>{% else %} <span class="text-amber-400 text-[10px]">underwater</span>{% endif %}</div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Longest losing run</div>
+      <div class="font-mono text-white">{{ rep.risk.longest_lose }}<span class="text-slate-600 text-xs"> bets</span></div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Longest winning run</div>
+      <div class="font-mono text-white">{{ rep.risk.longest_win }}<span class="text-slate-600 text-xs"> bets</span></div>
+    </div>
+    <div class="rounded-lg bg-white/5 px-3 py-2">
+      <div class="text-[10px] font-mono uppercase text-slate-500">Signal / noise</div>
+      <div class="font-mono {% if rep.risk.sharpe and rep.risk.sharpe > 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">{{ '%+.3f'|format(rep.risk.sharpe) if rep.risk.sharpe is not none else '—' }}<span class="text-slate-600 text-xs"> /bet</span></div>
+    </div>
+  </div>
+  {% if rep.risk.dd_polyline %}
+  <div class="mt-3">
+    <div class="flex items-center justify-between mb-1">
+      <h3 class="text-[10px] font-mono uppercase text-slate-500">Underwater curve (below prior high)</h3>
+      <span class="text-[10px] font-mono text-slate-600">worst {{ '%.2f'|format(rep.risk.dd_min) }}u</span>
+    </div>
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="w-full h-28 bg-white/5 rounded-lg">
+      <line x1="0" y1="0" x2="100" y2="0" stroke="rgba(255,255,255,0.15)" stroke-width="0.5" stroke-dasharray="2 2"/>
+      <polygon points="{{ rep.risk.dd_polyline }} 100,0 0,0" fill="rgba(251,113,133,0.15)" stroke="none"/>
+      <polyline points="{{ rep.risk.dd_polyline }}" fill="none" stroke="#fb7185" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+    </svg>
+  </div>
+  {% endif %}
+  <div class="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-[11px] font-mono text-slate-500">
+    <span>Avg per bet <span class="text-slate-300">{{ '%+.3f'|format(rep.risk.avg_u) }}u</span></span>
+    <span>Std per bet <span class="text-slate-300">{{ '%.3f'|format(rep.risk.std_u) }}u</span></span>
+    {% if rep.risk.best_day %}<span>Best day <span class="text-emerald-400">{{ '%+.2f'|format(rep.risk.best_day_u) }}u</span> <span class="text-slate-600">{{ rep.risk.best_day }}</span></span>{% endif %}
+    {% if rep.risk.worst_day %}<span>Worst day <span class="text-rose-400">{{ '%+.2f'|format(rep.risk.worst_day_u) }}u</span> <span class="text-slate-600">{{ rep.risk.worst_day }}</span></span>{% endif %}
+  </div>
+</div>
+{% endif %}
+
 {% if rep.overall.n %}
 <div class="grid gap-5 lg:grid-cols-3 mb-5">
   <div class="glass-card rounded-xl p-5">
