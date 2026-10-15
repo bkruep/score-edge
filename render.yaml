@@ -3,7 +3,7 @@ services:
     name: edgelab
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free
+    plan: 0.5c-512mb
     healthCheckPath: /healthz
     envVars:
       - key: PYTHON_VERSION
