@@ -1,8 +1,8 @@
 @echo off
 setlocal
-title Parlay and Pray server restart
+title Parlay and Panic server restart
 cd /d "%~dp0"
-echo [go] Parlay and Pray - restarting uvicorn on 8512 ...
+echo [go] Parlay and Panic - restarting uvicorn on 8512 ...
 set LOGS=server.log
 set ELOGS=server_err.log
 for /f "tokens=2 delims==" %%V in ('wmic process where "CommandLine like '%%uvicorn%%app:app%%8512%%'" get processid /value 2^>nul') do (

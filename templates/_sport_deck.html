@@ -8,7 +8,7 @@
    deep-links 404 on it, so rewire them and swap the footer's board pill set. #}
 {% set is_nfl = active_sport == 'nfl' %}
 {% set props_board = '/props' if is_nfl else '/' ~ active_sport ~ '/props' %}
-{% block title %}{{ sport_cfg.name }} — Command Deck | Parlay & Pray{% endblock %}
+{% block title %}{{ sport_cfg.name }} — Command Deck | Parlay & Panic{% endblock %}
 {% block meta_description %}{{ sport_cfg.name }} betting command deck — moneyline, spread, totals and player props with real edge detection, market motion and portfolio math in one scrolly board.{% endblock %}
 
 {% macro edge_dial(q, size=34) %}
@@ -102,7 +102,7 @@
 <section class="deck-hero glass-card rounded-2xl p-6 md:p-8 mb-8 rv">
   <div class="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-8 items-center relative z-10">
     <div>
-      <div class="deck-eyebrow text-[11px] font-mono text-brand/80 uppercase mb-3">Parlay & Pray · {% block deck_eyebrow %}Command Deck{% endblock %}</div>
+      <div class="deck-eyebrow text-[11px] font-mono text-brand/80 uppercase mb-3">Parlay & Panic · {% block deck_eyebrow %}Command Deck{% endblock %}</div>
       <h1 class="text-4xl md:text-5xl font-display font-bold text-white tracking-tight leading-none">
         <span class="mr-2">{{ sport_cfg.icon }}</span><span class="gradient-text">{{ sport_cfg.name|upper }}</span>
       </h1>

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: parlayandpray
+    name: parlayandpanic
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: 0.5c-512mb

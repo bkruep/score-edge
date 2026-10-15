@@ -1,5 +1,5 @@
 ﻿{% extends "base.html" %}
-{% block title %}NFL Edge — Live Lines & Value Spots | Parlay & Pray{% endblock %}
+{% block title %}NFL Edge — Live Lines & Value Spots | Parlay & Panic{% endblock %}
 {% block meta_description %}Best NFL betting odds across sportsbooks with real edge detection, value spots, and weather-aware totals.{% endblock %}
 {% block canonical %}/bets{% endblock %}
 {% block og_url %}/bets{% endblock %}
@@ -500,7 +500,7 @@
       slipText() {
         const picks = this.slipDraft();
         if (!picks.length) return 'No +EV plays on this board yet. Check back when lines post.';
-        const header = ['PARLAY & PRAY BET SLIP · ' + {{ active_date|tojson }},
+        const header = ['PARLAY & PANIC BET SLIP · ' + {{ active_date|tojson }},
                         this.active.length ? '(' + this.active[0] + ')' : '(all games)',
                         'best price beats consensus', '----------------------------------'];
         const lines = picks.map((p, i) =>
@@ -551,7 +551,7 @@
         ctx.fillStyle = '#34d399'; ctx.fillRect(0, 0, W, 6);
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#ffffff'; ctx.font = '700 24px ' + mono(24);
-        ctx.fillText('PARLAY & PRAY BET SLIP', PAD, 40);
+        ctx.fillText('PARLAY & PANIC BET SLIP', PAD, 40);
         ctx.fillStyle = '#7dd3fc'; ctx.font = '600 15px ' + mono(15);
         ctx.fillText({{ active_date|tojson }}, PAD, 66);
         ctx.fillStyle = '#94a3b8'; ctx.font = '12px ' + mono(12);
