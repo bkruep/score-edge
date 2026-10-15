@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: edgelab
+    name: parlay-and-pray
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: 0.5c-512mb
