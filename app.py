@@ -1110,6 +1110,11 @@ def _overview_board() -> dict:
     return board
 
 
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     try:
