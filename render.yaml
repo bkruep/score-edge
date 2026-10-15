@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: score-edge
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: ODDS_API_KEY
+        sync: false
+      - key: DFS_DATA_SOURCE
+        value: dk
