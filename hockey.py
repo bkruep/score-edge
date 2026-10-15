@@ -46,7 +46,7 @@ def _prev_season(season: str) -> str:
 
 
 def _get(url: str) -> Any:
-    r = requests.get(url, timeout=25, headers={"User-Agent": "ParlayAndPanic/1.0"})
+    r = requests.get(url, timeout=25, headers={"User-Agent": "ParlayAndPray/1.0"})
     r.raise_for_status()
     return r.json()
 

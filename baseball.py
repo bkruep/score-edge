@@ -35,7 +35,7 @@ def _today() -> str:
 
 def _get(path: str, params: dict) -> Any:
     r = requests.get(f"{_BASE}/{path}", params=params, timeout=25,
-                     headers={"User-Agent": "ParlayAndPanic/1.0"})
+                     headers={"User-Agent": "ParlayAndPray/1.0"})
     r.raise_for_status()
     return r.json()
 

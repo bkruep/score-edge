@@ -63,7 +63,7 @@ def _get(path: str, params: dict) -> tuple[int, Any]:
     try:
         r = requests.get(f"{_BASE}/{path}", params=params, timeout=25,
                          headers={"X-API-Key": get_key(),
-                                  "User-Agent": "ParlayAndPanic/1.0"})
+                                  "User-Agent": "ParlayAndPray/1.0"})
     except Exception as exc:
         return 0, f"request failed: {exc}"
     if r.status_code != 200:
