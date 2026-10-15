@@ -3687,7 +3687,7 @@ def robots_txt():
 
 @app.get("/sitemap.xml")
 def sitemap_xml():
-    base = "https://edgelab.onrender.com"
+    base = "https://edgelab-bpjb.onrender.com"
     pages = ["", "/bets", "/nba", "/cfb", "/cbb", "/mlb", "/nhl", "/mls", "/golf",
              "/goal-hunt", "/homerun-hunt", "/racing", "/calibration", "/model",
              "/about", "/contact", "/privacy", "/terms"]
