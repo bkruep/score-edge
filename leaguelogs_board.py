@@ -3,7 +3,7 @@ LeagueLogs 2026-27 redraft ADP board.
 
 LeagueLogs (developer.leaguelogs.com) aggregates real 2026 Sleeper redraft
 drafts and exposes the resulting ADP as a free, no-key developer API. This
-module turns that market data into the same contract the rest of ScoreEdge
+module turns that market data into the same contract the rest of EdgeLab
 expects, so the draft board reflects the *current season's* market rather than
 last year's stat totals.
 

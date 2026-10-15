@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Calibration — ScoreEdge{% endblock %}
-{% block meta_description %}ScoreEdge calibration: how the model's stated probabilities compare to real outcomes, joined from the leagues' public scoreboards. Honest, unfaked numbers — logged predictions, resolved results, Brier score and log-loss.{% endblock %}
+{% block title %}Calibration — EdgeLab{% endblock %}
+{% block meta_description %}EdgeLab calibration: how the model's stated probabilities compare to real outcomes, joined from the leagues' public scoreboards. Honest, unfaked numbers — logged predictions, resolved results, Brier score and log-loss.{% endblock %}
 {% block canonical %}/calibration{% endblock %}
 {% block breadcrumb %}
 <div class="mb-5 border-b border-white/5 pb-3">
@@ -10,7 +10,7 @@
 {% endblock %}
 {% block content %}
 <div class="glass-card rounded-xl p-6 mb-5 max-w-3xl leading-relaxed text-sm text-slate-300 space-y-3">
-  <p>Every probability ScoreEdge shows is an estimate. This page checks the estimates against reality &mdash; no fudging. Each time a hunt is served we log exactly the players and percentages we printed; once those games go final we join them to the real scoreboard and mark each pick won or lost.</p>
+  <p>Every probability EdgeLab shows is an estimate. This page checks the estimates against reality &mdash; no fudging. Each time a hunt is served we log exactly the players and percentages we printed; once those games go final we join them to the real scoreboard and mark each pick won or lost.</p>
   <p class="text-slate-400">A perfectly calibrated 40% shot should come in about 40% of the time. The tables below let you see where we're hot (predictions land <span class="text-white">above</span> the stated rate) and where we're cold. Small samples swing hard &mdash; we label sample sizes honestly and never invent results.</p>
   <p class="text-slate-400"><span class="text-white font-medium">Play responsibly.</span> If you or someone you know has a gambling problem, call <a href="tel:18004262537" class="text-brand hover:underline">1-800-GAMBLER</a> or visit <a href="https://www.ncpgambling.org/help-treatment/" target="_blank" rel="noopener" class="text-brand hover:underline">ncpgambling.org</a>.</p>
 </div>

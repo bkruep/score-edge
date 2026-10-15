@@ -1,8 +1,8 @@
 @echo off
 setlocal
-title ScoreEdge server restart
+title EdgeLab server restart
 cd /d "%~dp0"
-echo [go] ScoreEdge - restarting uvicorn on 8512 ...
+echo [go] EdgeLab - restarting uvicorn on 8512 ...
 set LOGS=server.log
 set ELOGS=server_err.log
 for /f "tokens=2 delims==" %%V in ('wmic process where "CommandLine like '%%uvicorn%%app:app%%8512%%'" get processid /value 2^>nul') do (

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: score-edge
+    name: edgelab
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free

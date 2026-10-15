@@ -37,7 +37,7 @@ import clv
 import backtest
 import staking
 
-app = FastAPI(title="ScoreEdge")
+app = FastAPI(title="EdgeLab")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
@@ -886,9 +886,9 @@ def ensure_data():
         journal.load_journal()
         journal.prime_from_cache()
         _data_loaded = True
-        log.warning(f"ScoreEdge data loaded in {time.time()-t0:.1f}s (season {season})")
+        log.warning(f"EdgeLab data loaded in {time.time()-t0:.1f}s (season {season})")
     except Exception as e:
-        log.error(f"ScoreEdge data load FAILED: {e}")
+        log.error(f"EdgeLab data load FAILED: {e}")
 
 def _filter_fantasy(df: pd.DataFrame) -> pd.DataFrame:
     if "position" in df.columns:
@@ -3682,7 +3682,7 @@ def robots_txt():
 
 @app.get("/sitemap.xml")
 def sitemap_xml():
-    base = "https://scoreedge.onrender.com"
+    base = "https://edgelab.onrender.com"
     pages = ["", "/bets", "/nba", "/cfb", "/cbb", "/mlb", "/nhl", "/mls", "/golf",
              "/goal-hunt", "/homerun-hunt", "/racing", "/calibration", "/model",
              "/about", "/contact", "/privacy", "/terms"]

@@ -1,4 +1,4 @@
-"""ScoreEdge toolbox: persistence plus the compute for the secondary tools.
+"""EdgeLab toolbox: persistence plus the compute for the secondary tools.
 
 Currently the parlay builder (fair-odds compounding of de-vigged legs). The
 heavier tools (golf, and the new best-bets / hunt / racing boards) live in
