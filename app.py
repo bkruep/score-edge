@@ -3687,7 +3687,7 @@ def robots_txt():
 
 @app.get("/sitemap.xml")
 def sitemap_xml():
-    base = "https://parlay-and-pray.onrender.com"
+    base = "https://parlayandpray.onrender.com"
     pages = ["", "/bets", "/nba", "/cfb", "/cbb", "/mlb", "/nhl", "/mls", "/golf",
              "/goal-hunt", "/homerun-hunt", "/racing", "/calibration", "/model",
              "/about", "/contact", "/privacy", "/terms"]
