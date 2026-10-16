@@ -1237,21 +1237,63 @@ def event_date(event_id: str) -> str:
     return m.group(1) if m else ""
 
 
+# How long after its start time a game is assumed finished (NFL games run
+# ~3h10m; the buffer keeps a still-live 4th quarter from being yanked).
+_FINISH_HOURS = 3.5
+
+
+def _start_dt(start_time: str, today: date) -> datetime | None:
+    """Parse an NflEvent start_time into a naive UTC datetime, or None.
+
+    `_parse_start_time` formats the value in UTC but labels it "ET", so the
+    clock digits are UTC. The string carries no year, so the nearest year to
+    `today` is used (handles the Dec->Jan playoff rollover)."""
+    if not start_time:
+        return None
+    try:
+        base = datetime.strptime(str(start_time).strip(), "%b %d, %I:%M %p ET")
+    except ValueError:
+        return None
+    best = None
+    for year in (today.year - 1, today.year, today.year + 1):
+        cand = base.replace(year=year)
+        gap = abs((cand.date() - today).days)
+        if gap <= 183 and (best is None or gap < abs((best.date() - today).days)):
+            best = cand
+    return best
+
+
 def _prune_past(slate: dict) -> dict:
     """Drop already-played games from a slate (fresh board or stale fallback).
 
     Provider ids embed the game's calendar day, so when the live fetch is
     rate-limited and the board falls back to the last good slate - or a feed
     lingers past a game's start - the deck can otherwise show "past" matchups
-    that are no longer bettable. Undated rows are kept."""
-    today = datetime.now(timezone.utc).date().isoformat()
-
-    def keep(eid: str) -> bool:
-        d = event_date(eid or "")
-        return not d or d >= today
+    that are no longer bettable. Undated rows are kept. Events that carry a
+    start_time (NFL) are also dropped once the game has almost certainly
+    finished, so same-day 1pm games disappear from the board by the evening."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    today = now.date()
+    today_iso = today.isoformat()
 
     def _eid(e) -> str:
         return str(e.get("event_id") or "") if isinstance(e, dict) else str(getattr(e, "event_id", "") or "")
+
+    def _start(e) -> str:
+        return str(e.get("start_time") or "") if isinstance(e, dict) else str(getattr(e, "start_time", "") or "")
+
+    finished: set[str] = set()
+    for e in (slate.get("events") or []):
+        eid = _eid(e)
+        start = _start_dt(_start(e), today)
+        if eid and start is not None and now > start + timedelta(hours=_FINISH_HOURS):
+            finished.add(eid)
+
+    def keep(eid: str) -> bool:
+        d = event_date(eid or "")
+        if d and d < today_iso:
+            return False
+        return (eid or "") not in finished
 
     out = dict(slate)
     for key in ("moneylines", "spreads", "totals", "all_sides", "props", "value_spots"):
