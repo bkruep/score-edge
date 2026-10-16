@@ -5,4 +5,4 @@ numpy==2.5.2
 jinja2==3.1.6
 requests>=2.31.0
 python-dotenv>=1.0.1
-pulp>=3.0
+pulp==3.3.2
