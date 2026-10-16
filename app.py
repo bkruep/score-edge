@@ -1686,6 +1686,11 @@ def _full_slate_board(date: str, explicit: bool = False) -> tuple[dict, str]:
     slate["props"] = [_relabel_prop(p) for p in slate["props"]]
     slate["value_spots"] = odds.build_value_spots(
         slate["moneylines"], slate["spreads"], slate["totals"])
+    # The Thu..Tue merge deliberately reaches back to the week's Thursday, which
+    # drags an already-played card onto the board for most of the week. Drop any
+    # game whose calendar day is behind us so finished games leave the deck,
+    # best-bets tape and props (and, via the shared slate, Touchdown Hunt).
+    slate = odds._prune_past(slate)
     slate["_active_date"] = active_date
     if not explicit:
         odds._cache_set(_merged_key, slate)
@@ -2905,8 +2910,15 @@ def _sport_matchups(slate: dict, props: list) -> list:
     by_game: dict[str, dict] = {}
     # Seed every scheduled game first so matchups the books haven't priced yet
     # still get a card (the board lists the whole slate, odds where available).
+    # CFB/CBB events arrive as dicts; NFL events are NflEvent objects whose
+    # label is a method -- handle both or the NFL week board silently drops
+    # every game that has no quotes yet.
     for e in slate.get("events") or []:
-        label = e.get("label") if isinstance(e, dict) else None
+        if isinstance(e, dict):
+            label = e.get("label")
+        else:
+            _lab = getattr(e, "label", None)
+            label = _lab() if callable(_lab) else (_lab or getattr(e, "game", None))
         if label:
             by_game.setdefault(label, {})
     for q in slate.get("moneylines") or []:

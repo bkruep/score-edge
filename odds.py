@@ -1250,6 +1250,9 @@ def _prune_past(slate: dict) -> dict:
         d = event_date(eid or "")
         return not d or d >= today
 
+    def _eid(e) -> str:
+        return str(e.get("event_id") or "") if isinstance(e, dict) else str(getattr(e, "event_id", "") or "")
+
     out = dict(slate)
     for key in ("moneylines", "spreads", "totals", "all_sides", "props", "value_spots"):
         rows = out.get(key)
@@ -1257,7 +1260,7 @@ def _prune_past(slate: dict) -> dict:
             out[key] = [q for q in rows if keep(getattr(q, "event_id", ""))]
     events = out.get("events")
     if events:
-        out["events"] = [e for e in events if keep((e or {}).get("event_id", ""))]
+        out["events"] = [e for e in events if keep(_eid(e))]
     return out
 
 
