@@ -131,10 +131,13 @@ def projection_slate(stats: "list[dict]", games: "list[dict]" | None = None,
         base, slope = curve.get(slot, curve["FLEX"])
         sal = int(round(base + slope * proj))
         sal = max(2900, min(sal, max_sal.get(slot, 8000)))
+        nm = str(s.get("player_name") or s.get("name") or "")
+        tm = str(s.get("recent_team") or s.get("team_name") or s.get("team") or "")
         rows.append({
-            "name": str(s.get("player_name") or s.get("name") or ""),
+            "player_id": re.sub(r"[^a-z0-9]", "", f"{tm}{nm}{pos}".lower()) or f"proj-{len(rows)}",
+            "name": nm,
             "position": pos,
-            "team": str(s.get("recent_team") or s.get("team_name") or s.get("team") or ""),
+            "team": tm,
             "salary": sal,
             "avg_points": round(proj, 2),
             "value_per_1k": round(proj / sal * 1000.0, 2) if sal else 0.0,
@@ -156,6 +159,7 @@ def projection_slate(stats: "list[dict]", games: "list[dict]" | None = None,
         teams = ["QB " + str(r.get("team") or "") for r in rows]  # placeholder
     for t in teams:
         rows.append({
+            "player_id": re.sub(r"[^a-z0-9]", "", f"{t}dst".lower()) or f"dst-{t}",
             "name": f"{t} DEFENSE",
             "position": "DST",
             "team": t,
@@ -488,6 +492,11 @@ def _norm_players(players: list[dict], sport: str = "nfl") -> list[dict]:
         rec["_i"] = i
         rec["_positions"] = positions
         rec["_slot"] = "DST" if "DST" in positions else raw
+        pid = str(rec.get("player_id") or "").strip()
+        if not pid:
+            pid = re.sub(r"[^a-z0-9]", "",
+                         f"{rec.get('team', '')}{rec.get('name', '')}{rec['_slot']}".lower()) or f"n{i}"
+        rec["player_id"] = pid
         rec["_proj"] = float(p.get("proj") or p.get("avg_points") or 0.0)
         rec["_salary"] = int(p.get("salary") or 0)
         rec["_valid"] = bool(positions & eligible_slots) and rec["_salary"] > 0
