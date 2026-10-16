@@ -2659,18 +2659,6 @@ def dfs_page(request: Request, sport: str = "nfl", n: str = "1",
         "roster": cfg,
     })
 
-
-@app.get("/debug/dfs", response_class=PlainTextResponse)
-def debug_dfs(request: Request, n: str = "3"):
-    import traceback
-    try:
-        resp = dfs_page(request, sport="nfl", n=n)
-        body = getattr(resp, "body", b"")
-        return f"OK {type(resp).__name__} len={len(body)}"
-    except Exception:
-        return traceback.format_exc()
-
-
 @app.get("/api/player-search", response_class=HTMLResponse)
 def player_search_api(request: Request, q: str = ""):
     ensure_data()
