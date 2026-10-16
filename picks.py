@@ -13,7 +13,8 @@ from typing import Any
 import journal
 import track
 
-_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".data_cache")
+_DATA_DIR = os.environ.get("SCOREEDGE_DATA_DIR") or os.path.dirname(os.path.abspath(__file__))
+_DIR = os.path.join(_DATA_DIR, ".data_cache")
 os.makedirs(_DIR, exist_ok=True)
 _PICKS = os.path.join(_DIR, "picks.jsonl")
 _lock = threading.Lock()

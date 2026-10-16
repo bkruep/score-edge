@@ -18,7 +18,8 @@ from collections import defaultdict
 from typing import Any
 
 _DIR = os.environ.get("SCOREEDGE_TRACK_DIR") or os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), ".data_cache")
+    os.environ.get("SCOREEDGE_DATA_DIR") or os.path.dirname(os.path.abspath(__file__)),
+    ".data_cache")
 os.makedirs(_DIR, exist_ok=True)
 _PRED = os.path.join(_DIR, "pred_log.jsonl")
 _RES = os.path.join(_DIR, "pred_results.jsonl")

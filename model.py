@@ -12,7 +12,8 @@ import picks
 import track
 
 
-_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".data_cache")
+_DATA_DIR = os.environ.get("SCOREEDGE_DATA_DIR") or os.path.dirname(os.path.abspath(__file__))
+_DIR = os.path.join(_DATA_DIR, ".data_cache")
 os.makedirs(_DIR, exist_ok=True)
 _STATE = os.path.join(_DIR, "model_state.json")
 

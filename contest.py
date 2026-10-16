@@ -17,7 +17,8 @@ import threading
 import time
 import datetime as _dt
 
-_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".data_cache")
+_DATA_DIR = os.environ.get("SCOREEDGE_DATA_DIR") or os.path.dirname(os.path.abspath(__file__))
+_DIR = os.path.join(_DATA_DIR, ".data_cache")
 os.makedirs(_DIR, exist_ok=True)
 _FILE = os.path.join(_DIR, "dfs_results.jsonl")
 _lock = threading.Lock()

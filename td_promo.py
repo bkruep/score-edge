@@ -10,6 +10,7 @@ import data
 import odds
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_DATA_DIR = os.environ.get("SCOREEDGE_DATA_DIR") or SCRIPT_DIR
 SKILL_POSITIONS = ("QB", "RB", "WR", "TE")
 
 # How much the live season's own scoring rate is shrunk toward the prior
@@ -42,7 +43,7 @@ def _stats_for(season: int) -> pd.DataFrame:
         return _STATS_CACHE[season]
     df = pd.DataFrame()
     try:
-        with open(os.path.join(SCRIPT_DIR, ".data_cache", f"nfl_stats_{season}.json"),
+        with open(os.path.join(_DATA_DIR, ".data_cache", f"nfl_stats_{season}.json"),
                   "r", encoding="utf-8") as fh:
             disk = data._materialize(json.load(fh))
         if disk is not None and len(disk):
@@ -77,7 +78,7 @@ def _rosters_any() -> dict:
     if _ROSTERS:
         return _ROSTERS
     try:
-        with open(os.path.join(SCRIPT_DIR, ".data_cache", "sleeper_rosters.json"),
+        with open(os.path.join(_DATA_DIR, ".data_cache", "sleeper_rosters.json"),
                   "r", encoding="utf-8") as fh:
             _ROSTERS = json.load(fh)
         if _ROSTERS:
