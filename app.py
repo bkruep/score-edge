@@ -2983,6 +2983,9 @@ def _sport_ctx(request: Request, tag: str, tab: str = "lines", include_all: bool
                                  key=lambda q: q.edge_pts(), reverse=True) for mk in prop_groups}
     prop_group_top = {mk: round(max((q.edge_pts() for q in rows), default=0.0), 2)
                       for mk, rows in prop_groups_group.items()}
+    conf_present = {v for v in (slate.get("conferences") or {}).values() if v}
+    _conf_order = {"ACC": 0, "B1G": 1, "B12": 2, "SEC": 3, "BE": 4, "P12": 5, "G5": 6}
+    conf_labels = sorted(conf_present, key=lambda c: (_conf_order.get(c, 99), c))
     return {
         **_ctx(request, tag),
         "odds": odds,
@@ -2996,6 +2999,7 @@ def _sport_ctx(request: Request, tag: str, tab: str = "lines", include_all: bool
         "total_lines": total_lines,
         "market_names": market_names,
         "prop_labels": odds.PROP_LABELS,
+        "conf_labels": conf_labels,
         "tabs": SPORT_TABS,
         "active_tab": tab,
         "scope_all": include_all,

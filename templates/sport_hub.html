@@ -52,7 +52,8 @@
 
 {% include "_sport_tabs.html" %}
 
-{% if active_sport == 'cfb' and active_tab == 'lines' %}
+{% if active_sport in ('cfb', 'cbb') and active_tab == 'lines' %}
+{% if active_sport == 'cfb' %}
 <div class="mb-3 -mt-1 flex items-center gap-2 flex-wrap">
   {% if scope_all %}
   <span class="pill bg-surface-3 text-slate-300">all games (incl. FCS)</span>
@@ -63,15 +64,16 @@
   <a href="/cfb?all=1" class="pill bg-surface-3 text-slate-400 hover:bg-surface-2 transition-colors">show all games</a>
   {% endif %}
 </div>
+{% endif %}
+{% if conf_labels %}
 <div class="mb-5 -mt-1 flex items-center gap-1.5 flex-wrap" id="conf-bar">
   <span class="text-[10px] font-mono uppercase tracking-wider text-slate-600 mr-1">Conf</span>
   <button type="button" data-conf="" class="conf-chip chip chip-on">All</button>
-  <button type="button" data-conf="ACC" class="conf-chip chip">ACC</button>
-  <button type="button" data-conf="B1G" class="conf-chip chip">B1G</button>
-  <button type="button" data-conf="B12" class="conf-chip chip">B12</button>
-  <button type="button" data-conf="SEC" class="conf-chip chip">SEC</button>
-  <button type="button" data-conf="G5" class="conf-chip chip">G5</button>
+  {% for c in conf_labels %}
+  <button type="button" data-conf="{{ c }}" class="conf-chip chip">{{ c }}</button>
+  {% endfor %}
 </div>
+{% endif %}
 {% endif %}
 {% endblock %}
 
@@ -549,7 +551,7 @@
 
 {% endif %}
 
-{% if active_sport == 'cfb' and active_tab == 'lines' and not scope_all %}
+{% if active_sport in ('cfb', 'cbb') and active_tab == 'lines' and not scope_all %}
 <script>
 (function () {
   var rows = Array.prototype.slice.call(document.querySelectorAll('tr.conf-row'));

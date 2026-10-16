@@ -11,6 +11,14 @@ from typing import Any
 
 import requests
 
+# College-basketball team -> conference map (data module generated from ESPN's
+# standings feed). Guarded: a missing module just means CBB games aren't
+# conference-labelled, never a crash.
+try:
+    from ncaab_confs import TEAM_CONF as _BB_TEAM_CONF
+except Exception:  # pragma: no cover - defensive
+    _BB_TEAM_CONF = {}
+
 # Make .env authoritative before reading API keys. The app is sometimes
 # launched from a shell that already exports ODDS_API_KEY="" (or a stale
 # value); without an explicit override, python-dotenv will not replace it and
@@ -559,6 +567,44 @@ def _game_grouping(label_raw: str) -> str | None:
         if g in _FB_P4:
             return g
     return "G5"
+
+
+# ---- CBB board conference labelling ---------------------------------------
+# Basketball has ~31 D1 conferences and the feed posts names but no conference
+# metadata. Unlike CFB (which *drops* non-P4/G5 games), CBB only LABELS each
+# game — mid-majors still show — so the map is a pure lookup and an unmatched
+# school simply lands under "All".
+_BB_POWER = {"ACC", "B1G", "B12", "SEC", "BE", "P12"}
+_BB_SORTED = sorted(_BB_TEAM_CONF.items(), key=lambda kv: len(kv[0]), reverse=True)
+
+
+def _bb_team_grouping(name_raw: str) -> str | None:
+    """Conference label for one college-basketball team string, or None."""
+    norm = _norm_team(name_raw)
+    if not norm:
+        return None
+    for alias, conf in _BB_SORTED:
+        if norm.startswith(alias):
+            return conf
+    return None
+
+
+def _game_grouping_bb(label_raw: str) -> str | None:
+    """Conference label for a full \"Away @ Home\" basketball game.
+
+    Prefers a power-conference side (so a cross-conference game reads as the
+    marquee school's league), else whichever side resolves."""
+    parts = [p.strip() for p in (label_raw or "").split("@")]
+    if len(parts) != 2:
+        return None
+    groups = [g for g in (_bb_team_grouping(parts[0]), _bb_team_grouping(parts[1])) if g]
+    if not groups:
+        return None
+    for g in groups:
+        if g in _BB_POWER:
+            return g
+    return groups[0]
+
 
 def edge_pts(best_american: int, consensus_american: int) -> float:
     """True betting value: points of implied probability the best price buys
@@ -1479,6 +1525,12 @@ def fetch_sport_slate(tag: str, include_all: bool = False) -> dict:
             if q.game and q.game not in conferences:
                 conferences[q.game] = _game_grouping(q.game)
         quotes = [q for q in quotes if conferences.get(q.game)]
+    elif tag == "cbb":
+        # Basketball keeps every game; conference is a label for the filter
+        # chips only (never a filter that drops mid-majors).
+        for q in quotes:
+            if q.game and q.game not in conferences:
+                conferences[q.game] = _game_grouping_bb(q.game) or ""
 
     # Per-team rows collapse across the provider's label variants (full name,
     # mascot, "st"/abbr, ranked prefix) so each school is one row per game.

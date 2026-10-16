@@ -180,13 +180,23 @@
     {% endif %}
   </div>
   {% endif %}
+  {% if conf_labels %}
+  <div class="mb-3 -mt-1 flex items-center gap-1.5 flex-wrap" id="conf-bar">
+    <span class="text-[10px] font-mono uppercase tracking-widest text-slate-600 mr-1">Conf</span>
+    <button type="button" data-conf="" class="conf-chip chip chip-on">All</button>
+    {% for c in conf_labels %}
+    <button type="button" data-conf="{{ c }}" class="conf-chip chip">{{ c }}</button>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% if matchups %}
   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
     {% for m in matchups %}
-    <article class="glass-card deck-box scan rv rounded-xl p-4 flex flex-col" data-box style="--rd:{{ loop.index0 * 55 }}ms">
+    <article class="glass-card deck-box scan rv rounded-xl p-4 flex flex-col" data-box data-conf="{{ (slate.get('conferences') or {}).get(m.game, '') }}" style="--rd:{{ loop.index0 * 55 }}ms">
       <header class="flex items-center gap-2 pb-3 mb-3 border-b border-white/5">
         <span class="w-1.5 h-1.5 rounded-full bg-brand animate-pulse"></span>
         <h3 class="font-display font-semibold text-white text-sm truncate" title="{{ m.game }}">{{ m.game }}</h3>
+        {% if (slate.get('conferences') or {}).get(m.game) %}<span class="pill bg-brand/10 text-brand border-brand/25">{{ (slate.get('conferences') or {}).get(m.game) }}</span>{% endif %}
         <span class="ml-auto pill bg-surface-3 text-slate-400">{{ m.n_markets }} mkts</span>
       </header>
 
@@ -681,6 +691,25 @@
       });
     }
   }
+
+  /* conference filter chips (CFB / CBB game board) */
+  (function () {
+    var bar = document.getElementById('conf-bar');
+    if (!bar) return;
+    var chips = Array.prototype.slice.call(bar.querySelectorAll('button.conf-chip'));
+    var cards = Array.prototype.slice.call(document.querySelectorAll('#deck-games [data-box][data-conf]'));
+    if (!chips.length || !cards.length) return;
+    function apply(conf) {
+      cards.forEach(function (c) {
+        c.style.display = (!conf || c.getAttribute('data-conf') === conf) ? '' : 'none';
+      });
+      chips.forEach(function (c) { c.classList.toggle('chip-on', c.getAttribute('data-conf') === conf); });
+    }
+    bar.addEventListener('click', function (e) {
+      var t = e.target && e.target.closest ? e.target.closest('[data-conf]') : null;
+      if (t) apply(t.getAttribute('data-conf') || '');
+    });
+  })();
 
   /* hash deep-link */
   if (location.hash) { var h = document.getElementById(location.hash.slice(1)); if (h) setTimeout(function () { h.scrollIntoView({ behavior: 'auto', block: 'start' }); }, 120); }
