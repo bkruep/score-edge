@@ -2563,6 +2563,9 @@ def dfs_page(request: Request, sport: str = "nfl", n: str = "1",
                              "fetched_at": ""}
         except Exception as e:
             detail = str(e).strip() or e.__class__.__name__
+            detail_low = detail.lower()
+            if "403" in detail_low or "forbidden" in detail_low or "draftkings" in detail_low:
+                detail = "DFS provider API is not available in this environment (rate/licensing restrictions)."
             note = detail if sport != "nfl" else (
                 f"{detail} — falling back to our own projection pricing.")
             slate = {"players": [], "slate_name": "", "start_time": "", "fetched_at": ""}
