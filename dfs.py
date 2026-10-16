@@ -548,14 +548,16 @@ def build_lineups(players: list[dict], sport: str = "nfl", count: int = 1,
         qb_stack = True
         bring_back = True
 
+    _pulp_ver = "?"
     try:
         import pulp as _pulp
+        _pulp_ver = getattr(_pulp, "__version__", "?")
         from pulp import (
             LpProblem, LpVariable, LpMaximize, LpBinary, LpStatusOptimal,
             PULP_CBC_CMD, value as lp_value,
         )
     except Exception as _pulp_err:
-        return {"error": f"MILP solver unavailable (pulp {getattr(_pulp, '__version__', '?')}: {_pulp_err})",
+        return {"error": f"MILP solver unavailable (pulp {_pulp_ver}: {_pulp_err})",
                 "lineups": [], "requested": count, "built": 0}
 
     FADE_COUNT = 5           # most-chalky players faded by the fade toggle
