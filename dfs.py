@@ -102,6 +102,128 @@ def _parse_dk_time(raw) -> str:
         return ""
 
 
+_NAME_SUFFIXES = ("jr", "sr", "ii", "iii", "iv", "v", "vi")
+_IR_STATUS = {"ir", "injured reserve", "pup", "nfi", "non football injury",
+              "physically unable to perform", "reserved"}
+_OUT_STATUS = {"out", "suspended", "sus"}
+
+
+def _name_key_nm(raw: str) -> str:
+    """Lowercased, punctuation-free name with trailing suffixes dropped so
+    nflverse ("Jahmyr Gibbs") and Sleeper spellings line up."""
+    parts = [p for p in re.sub(r"[^a-z0-9 ]", " ", str(raw or "").lower()).split() if p]
+    while parts and parts[-1] in _NAME_SUFFIXES:
+        parts.pop()
+    return " ".join(parts)
+
+
+def _injury_code(raw) -> str:
+    """Map a Sleeper injury/status string onto a DraftKings-style code
+    (Q / D / OUT / IR) so the projection fallback keeps the same Q-flag and
+    ruled-out behaviour the DraftKings feed provides."""
+    s = str(raw or "").strip().lower()
+    if not s or s in ("none", "na", "active", "practice squad", "cov", "dnr", "unknown"):
+        return ""
+    if "questionable" in s or s == "q":
+        return "Q"
+    if "doubtful" in s or s == "d":
+        return "D"
+    if s in _OUT_STATUS:
+        return "OUT"
+    if s in _IR_STATUS:
+        return "IR"
+    return ""
+
+
+def _projection_status_map() -> dict[str, str]:
+    """Lowercased player name -> DK-style status code, sourced from Sleeper's
+    public injury field (used only when the DraftKings feed is unavailable)."""
+    try:
+        import data as _data
+        roster = _data.load_rosters() or {}
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for meta in roster.values():
+        if not isinstance(meta, dict):
+            continue
+        nm = str(meta.get("full_name") or "").strip() or (
+            f"{meta.get('first_name') or ''} {meta.get('last_name') or ''}".strip())
+        key = _name_key_nm(nm)
+        if not key:
+            continue
+        code = _injury_code(meta.get("injury_status"))
+        if not code and str(meta.get("status") or "").strip().lower() in _IR_STATUS:
+            code = "IR"
+        if code:
+            out.setdefault(key, code)
+    return out
+
+
+def main_slate_map(sport: str = "nfl", season: int | None = None) -> dict:
+    """Teams and games of the upcoming main slate (the big Sunday window for NFL).
+
+    Keeps the projection fallback honest: only players whose team actually plays
+    in the next main slate enter the pool, so a Thursday/Monday player can never
+    leak into a Sunday lineup, and teams already finished are dropped.
+
+    Returns {"teams": set, "game_of": {team: label}, "game_id_of": {team: id},
+             "day": "YYYY-MM-DD"} or {} when it cannot be resolved.
+    """
+    if sport != "nfl":
+        return {}
+    try:
+        import data as _data
+        from datetime import date as _date
+        today = _date.today()
+        if season is None:
+            season = today.year if today.month >= 8 else today.year - 1
+        sched = _data.load_schedule(season)
+        if sched is None or len(sched) == 0 or "gameday" not in sched.columns:
+            return {}
+        df = sched
+        if "game_type" in df.columns:
+            df = df[df["game_type"].astype(str).str.upper().eq("REG")]
+        if len(df) == 0:
+            return {}
+        upcoming = df[df["gameday"].astype(str) >= today.isoformat()]
+        if "home_score" in upcoming.columns:
+            upcoming = upcoming[upcoming["home_score"].isna()]
+        if len(upcoming) == 0:
+            return {}
+        counts = upcoming["gameday"].astype(str).value_counts()
+        # Nearest *full* slate, not the biggest one on the calendar: picking the
+        # max-game day would jump weeks ahead (Week 17 can have 13 games and
+        # beat out the coming Sunday). Scan chronologically for the first day
+        # with a real slate, else take the earliest day carrying the most games
+        # (postseason rounds never reach that many).
+        days = sorted(counts.index)
+        day = next((d for d in days if int(counts[d]) >= 6), None)
+        if day is None:
+            best = max(int(counts[d]) for d in days)
+            day = next(d for d in days if int(counts[d]) == best)
+        day_games = upcoming[upcoming["gameday"].astype(str) == day]
+        teams: set[str] = set()
+        game_of: dict[str, str] = {}
+        game_id_of: dict[str, str] = {}
+        for _, g in day_games.iterrows():
+            home = str(g.get("home_team") or "").strip().upper()
+            away = str(g.get("away_team") or "").strip().upper()
+            gid = str(g.get("game_id") or "")
+            label = f"{away}@{home}" if away and home else (home or away)
+            for t in (home, away):
+                if not t:
+                    continue
+                teams.add(t)
+                game_of[t] = label
+                game_id_of[t] = gid
+        if len(teams) < 4:
+            return {}
+        return {"teams": teams, "game_of": game_of, "game_id_of": game_id_of, "day": day}
+    except Exception:
+        return {}
+
+
 def projection_slate(stats: "list[dict]", games: "list[dict]" | None = None,
                      slate_label: str = "projection-priced", sport: str = "nfl") -> tuple[dict, str]:
     """Build a DFS DFS slate from our own live-fantasy projections.
@@ -116,24 +238,47 @@ def projection_slate(stats: "list[dict]", games: "list[dict]" | None = None,
     ({draftgroup_id/slate_name/start_time/players[...]/fetched_at}) so the
     template renders identically.
     """
-    # Per-position salary curve (salary = base + slope * proj) chosen so the
-    # $50K cap stays binding and every slot resolves to something real.
+    # Per-position salary curve (salary = base + slope * per-game proj). Tuned
+    # so a stud-heavy build prices above the $50K cap — the cap has to actually
+    # bind or the optimizer just grabs the top nine projections for free.
     curve = {
-        "QB": (4000, 46.0), "RB": (3400, 42.0), "WR": (3400, 44.0),
-        "TE": (3200, 52.0), "FLEX": (3200, 44.0),
+        "QB": (2200, 225.0), "RB": (1840, 232.0), "WR": (1740, 252.0),
+        "TE": (1332, 392.0), "FLEX": (1740, 252.0),
     }
     max_sal = {"QB": 9700, "RB": 8800, "WR": 8800, "TE": 7600, "FLEX": 8000}
+
+    slate_map = main_slate_map(sport) if sport == "nfl" else {}
+    allowed = set(slate_map.get("teams") or ())
+    status_map = _projection_status_map() if sport == "nfl" else {}
+
     rows: list[dict] = []
+    excluded: dict[str, str] = {}
+    off_slate = 0
     for s in stats:
-        proj = float(s.get("pts_ppr") or s.get("fantasy_points_ppr") or s.get("proj") or 0.0)
         pos = str(s.get("position") or "").strip().upper()
+        nm = str(s.get("player_name") or s.get("name") or "")
+        full = str(s.get("player_display_name") or "")
+        tm = str(s.get("recent_team") or s.get("team_name") or s.get("team") or "").strip().upper()
+        if allowed and tm and tm not in allowed:
+            off_slate += 1
+            continue
+        # stats carry SEASON totals; a DFS lineup is one game, so project per game.
+        g = float(s.get("games") or 0)
+        total = float(s.get("pts_ppr") or s.get("fantasy_points_ppr") or 0.0)
+        proj = float(s.get("proj") or 0.0)
+        if not proj:
+            proj = (total / g) if g >= 1 else total
+        if proj <= 0:
+            continue
+        code = (status_map.get(_name_key_nm(full)) or status_map.get(_name_key_nm(nm)) or "")
+        if code in INELIGIBLE_STATUSES:
+            excluded[nm or full] = code
+            continue
         slot = {"QB": "QB", "RB": "RB", "WR": "WR", "TE": "TE"}.get(pos, "FLEX")
         base, slope = curve.get(slot, curve["FLEX"])
         sal = int(round(base + slope * proj))
         sal = max(2900, min(sal, max_sal.get(slot, 8000)))
-        nm = str(s.get("player_name") or s.get("name") or "")
-        tm = str(s.get("recent_team") or s.get("team_name") or s.get("team") or "")
-        rows.append({
+        rec = {
             "player_id": re.sub(r"[^a-z0-9]", "", f"{tm}{nm}{pos}".lower()) or f"proj-{len(rows)}",
             "name": nm,
             "position": pos,
@@ -141,11 +286,17 @@ def projection_slate(stats: "list[dict]", games: "list[dict]" | None = None,
             "salary": sal,
             "avg_points": round(proj, 2),
             "value_per_1k": round(proj / sal * 1000.0, 2) if sal else 0.0,
+            "game_id": slate_map.get("game_id_of", {}).get(tm, ""),
+            "game": slate_map.get("game_of", {}).get(tm, ""),
+            "dk_status": code or "",
+            "news": "",
             "_valid": True,
             "_slot": slot,
             "_proj": proj,
             "_salary": sal,
-        })
+        }
+        rec["est_own"] = _est_ownership(rec)
+        rows.append(rec)
 
     # A neutral DST row per team: our chain tracks skill players, not defenses,
     # so give every team's DST the league-mean projection (labeled as such) so
@@ -153,12 +304,14 @@ def projection_slate(stats: "list[dict]", games: "list[dict]" | None = None,
     if games is not None:
         teams = sorted({str(g.get("team") or g.get("team_name") or "").strip().upper()
                         for g in games if (g.get("team") or g.get("team_name"))})
+    elif allowed:
+        teams = sorted(allowed)
     else:
-        teams = sorted({str(r.get("team") or "").strip().upper() for r in rows if r.get("team")})
+        teams = sorted({r["team"] for r in rows if r.get("team")})
     if not teams:
         teams = ["QB " + str(r.get("team") or "") for r in rows]  # placeholder
     for t in teams:
-        rows.append({
+        dst = {
             "player_id": re.sub(r"[^a-z0-9]", "", f"{t}dst".lower()) or f"dst-{t}",
             "name": f"{t} DEFENSE",
             "position": "DST",
@@ -166,24 +319,55 @@ def projection_slate(stats: "list[dict]", games: "list[dict]" | None = None,
             "salary": 2500,
             "avg_points": 8.0,
             "value_per_1k": round(8.0 / 2500 * 1000.0, 2),
+            "game_id": slate_map.get("game_id_of", {}).get(t, ""),
+            "game": slate_map.get("game_of", {}).get(t, ""),
+            "dk_status": "",
+            "news": "",
             "_valid": True,
             "_slot": "DST",
             "_proj": 8.0,
             "_salary": 2500,
-        })
+        }
+        dst["est_own"] = _est_ownership(dst)
+        rows.append(dst)
 
     if not rows:
         return {}, "Not enough projection data yet to price a slate."
 
+    cfg = roster(sport)
+    exc_counts = Counter(excluded.values())
+    flagged_q = sorted({r["name"] for r in rows if r.get("dk_status") == "Q"})
     slate = {
         "draftgroup_id": "projection",
         "slate_name": "Projection-Priced Slate",
-        "start_time": "by projection",
+        "start_time": (f"Main slate {slate_map['day']}" if slate_map.get("day") else "by projection"),
+        "sport": sport, "label": cfg["label"],
         "players": rows,
-        "fetched_at": "local projections",
+        "games": sorted({r["game"] for r in rows if r.get("game")}),
+        "home_of_game": {},
+        "weather_flags": {},
+        "form_note": "",
+        "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "excluded": {
+            "total": len(excluded),
+            "counts": dict(exc_counts),
+            "names": sorted(excluded),
+            "questionable": flagged_q,
+            "qb_backups": [],
+        },
+        "excluded_note": (
+            f"Dropped {len(excluded)} player entries before building ("
+            + ", ".join(f"{k} x{v}" for k, v in sorted(exc_counts.items())) + ")."
+            if excluded else ""
+        ),
     }
-    return slate, ("Projection-priced slate — salaries derived from our own live "
-                   "fantasy projections, NOT official DraftKings pricing.")
+
+    bits = ["Projection-priced slate — our own projections, not official DraftKings pricing."]
+    if slate_map.get("day"):
+        bits.append(f"Main slate {slate_map['day']} ({len(teams)} teams).")
+    if off_slate:
+        bits.append(f"Excluded {off_slate} players not on that slate.")
+    return slate, " ".join(bits)
 
 def _find_main_slate(sport: str = "nfl") -> tuple[int, str, str]:
     cfg = roster(sport)
