@@ -16,6 +16,7 @@ self-heals over a few minutes instead of tripping the limiter.
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -27,7 +28,8 @@ import odds
 # kept alive by their existing cache but never enter the refresh rotation.
 PRIORITY_LEAGUES = ("nfl", "mlb", "nba", "nhl", "mls")
 
-HISTORY_PATH = Path(__file__).with_name("price_history.json")
+_DATA_DIR = Path(os.environ["SCOREEDGE_DATA_DIR"]) if os.environ.get("SCOREEDGE_DATA_DIR") else Path(__file__).parent
+HISTORY_PATH = _DATA_DIR / "price_history.json"
 HISTORY_TTL = 6 * 3600          # hours to keep a series before trimming
 HISTORY_SAVE_EVERY = 300        # seconds between disk writes
 HISTORY_MIN_POINTS = 2          # a series needs 2+ points to show any move

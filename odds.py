@@ -92,7 +92,8 @@ MAX_LINE_HISTORY = 24  # rolling per-market sample cap for the line-move charts
 import pickle
 import threading
 
-_DISK_CACHE_FILE = os.path.join(os.path.dirname(__file__), "odds_cache.pkl")
+_DATA_DIR = os.environ.get("SCOREEDGE_DATA_DIR") or os.path.dirname(os.path.abspath(__file__))
+_DISK_CACHE_FILE = os.path.join(_DATA_DIR, "odds_cache.pkl")
 _DISK_KEYS = ("slate_", "bets_active_", "props_", "line_", "bets_slate_", "sport_slate_", "league_odds_")
 
 GAME_MARKETS = ["moneyline", "point_spread", "total_points"]
@@ -1837,7 +1838,7 @@ def steam(q, moves: dict[tuple, dict]):
 # trend sparklines (edge counts, avg edge, board size) as snapshots accrue.
 # ---------------------------------------------------------------------------
 
-_SNAPSHOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".data_cache")
+_SNAPSHOT_DIR = os.path.join(_DATA_DIR, ".data_cache")
 os.makedirs(_SNAPSHOT_DIR, exist_ok=True)
 _SNAPSHOT_FILE = os.path.join(_SNAPSHOT_DIR, "nfl_odds_history.jsonl")
 _snapshot_lock = threading.Lock()

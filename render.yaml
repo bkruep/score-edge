@@ -5,6 +5,10 @@ services:
     dockerfilePath: ./Dockerfile
     plan: 0.5c-512mb
     healthCheckPath: /healthz
+    disk:
+      name: parlayandpray-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.12"
@@ -12,3 +16,5 @@ services:
         sync: false
       - key: DFS_DATA_SOURCE
         value: dk
+      - key: SCOREEDGE_DATA_DIR
+        value: /var/data

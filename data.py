@@ -11,7 +11,8 @@ import requests
 _CACHE: dict[str, tuple[float, object]] = {}
 CACHE_TTL = 1800  # 30 min in memory
 
-_DISK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".data_cache")
+_DATA_DIR = os.environ.get("SCOREEDGE_DATA_DIR") or os.path.dirname(os.path.abspath(__file__))
+_DISK_DIR = os.path.join(_DATA_DIR, ".data_cache")
 _DISK_TTL = 86400 * 7  # 7 days on disk
 os.makedirs(_DISK_DIR, exist_ok=True)
 

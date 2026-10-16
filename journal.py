@@ -18,7 +18,8 @@ from typing import Any
 
 import odds
 
-_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".data_cache")
+_DATA_DIR = os.environ.get("SCOREEDGE_DATA_DIR") or os.path.dirname(os.path.abspath(__file__))
+_DIR = os.path.join(_DATA_DIR, ".data_cache")
 os.makedirs(_DIR, exist_ok=True)
 _EDGE_FILE = os.path.join(_DIR, "nfl_edge_journal.jsonl")
 _lock = threading.Lock()
