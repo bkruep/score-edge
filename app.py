@@ -2574,7 +2574,7 @@ def dfs_page(request: Request, sport: str = "nfl", n: str = "1",
     if sport == "nfl" and not slate.get("players"):
         try:
             live = _filter_fantasy(_normalize_stats(data.load_player_stats(_get_season())))
-            sl, pnote = dfs.projection_slate(live.to_dict("records"), None)
+            sl, pnote = dfs.projection_slate(live.to_dict("records"), None, sport=sport)
             if sl.get("players"):
                 slate = sl
                 build_err = _build(slate.get("players") or [])

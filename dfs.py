@@ -103,7 +103,7 @@ def _parse_dk_time(raw) -> str:
 
 
 def projection_slate(stats: "list[dict]", games: "list[dict]" | None = None,
-                     slate_label: str = "projection-priced") -> tuple[dict, str]:
+                     slate_label: str = "projection-priced", sport: str = "nfl") -> tuple[dict, str]:
     """Build a DFS DFS slate from our own live-fantasy projections.
 
     Used when DFS_DATA_SOURCE != dk (no licensed DK pricing feed): we price
