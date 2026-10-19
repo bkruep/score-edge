@@ -75,6 +75,15 @@
         </div>
         {% endif %}
       </div>
+      {% else %}
+      <div class="mb-3 rounded-lg px-3 py-2.5 text-center {% if m.top_plays %}border border-white/10 bg-white/[0.03]{% else %}border border-amber-500/25 bg-amber-500/10{% endif %}">
+        <div class="text-[9px] font-mono uppercase tracking-widest {% if m.top_plays %}text-slate-500{% else %}text-amber-400{% endif %}">
+          {%- if m.top_plays %}No main line posted{% else %}No line posted · not a target{% endif -%}
+        </div>
+        <div class="text-[10px] text-slate-500 mt-1">
+          {%- if m.top_plays %}Main markets aren't priced yet — the prop edges below are still live.{% else %}The books haven't priced this game yet. It stays on the board and picks up automatically once odds drop.{% endif -%}
+        </div>
+      </div>
       {% endif %}
 
       <div class="text-[9px] font-mono uppercase tracking-widest text-slate-600 mb-1.5">Top 5 edges</div>

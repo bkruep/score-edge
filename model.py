@@ -42,7 +42,13 @@ def _save_state(state: dict[str, Any]) -> None:
         pass
 
 
-def _train() -> dict[str, Any]:
+_MAIN_MKTS = ("moneyline", "point_spread", "total_points")
+_TAGGED = {"ML": "moneyline", "SPR": "point_spread", "TOT": "total_points"}
+# Don't touch the fit more often than this when settled data is quiet.
+RETRAIN_SECS = 3 * 3600
+
+
+def _collect_main_records() -> list[dict[str, Any]]:
     recs_j = [r for r in journal.settled_records() if r["status"] in ("won", "lost")]
     # Union with settled picks (converted to journal-like shape)
     try:
@@ -71,8 +77,34 @@ def _train() -> dict[str, Any]:
                 continue
             seen.add(key)
             recs.append(r)
+        return recs
     except Exception:
-        recs = list(recs_j)
+        return list(recs_j)
+
+
+def settled_count() -> int:
+    """Settled main-market records the fit would actually consume. Used as the
+    cheap "did training data move?" signal for the retrain gate."""
+    n = 0
+    for r in _collect_main_records():
+        best = int(r.get("am") or 0)
+        if not best:
+            continue
+        raw = str(r.get("mkt", ""))
+        if _TAGGED.get(raw, raw) not in _MAIN_MKTS:
+            continue
+        try:
+            dec_cons = odds.american_to_decimal(best) / (1.0 + float(r.get("edge") or 0) / 100.0)
+        except Exception:
+            continue
+        if dec_cons <= 0:
+            continue
+        n += 1
+    return n
+
+
+def _train() -> dict[str, Any]:
+    recs = _collect_main_records()
     X = []
     y = []
     for r in recs:
@@ -96,8 +128,8 @@ def _train() -> dict[str, Any]:
         mkt = str(r.get("mkt", ""))
         # Normalize pick-ledger tags to feed market names, and train only on the
         # main markets the model actually scores (props get their own future fit).
-        mkt = {"ML": "moneyline", "SPR": "point_spread", "TOT": "total_points"}.get(mkt, mkt)
-        if mkt not in ("moneyline", "point_spread", "total_points"):
+        mkt = _TAGGED.get(mkt, mkt)
+        if mkt not in _MAIN_MKTS:
             continue
         home = str(r.get("home_ab", ""))
         side = str(r.get("side", ""))
@@ -119,6 +151,7 @@ def _train() -> dict[str, Any]:
     if len(X) < 5:
         st = _state()
         st["n_train"] = len(y)
+        st["n_settled"] = len(y)
         _save_state(st)
         return st
 
@@ -177,6 +210,7 @@ def _train() -> dict[str, Any]:
         "brier_consensus": b_c,
         "n_train": len(trY),
         "n_test": len(teY),
+        "n_settled": len(y),
         "ts": time.time(),
     }
     _save_state(state)
@@ -224,9 +258,24 @@ def predict_p(best_am: int, edge_pct: float, home_ab: str = "", side: str = "", 
     return max(min(float(p), 0.999), 0.001)
 
 
+def _needs_retrain_main(st: dict[str, Any]) -> bool:
+    if not st.get("w") or st.get("n_train") is None or st.get("n_train") < 5:
+        return True
+    if time.time() - float(st.get("ts") or 0) < RETRAIN_SECS:
+        return False
+    # State is old enough to poke. Only pay for a fit when settled data moved.
+    prev = st.get("n_settled")
+    if prev is None:
+        return True
+    try:
+        return settled_count() != int(prev)
+    except Exception:
+        return False
+
+
 def load_state() -> dict[str, Any]:
     st = _state()
-    if st.get("n_train") is None or st.get("n_train") < 5:
+    if _needs_retrain_main(st):
         try:
             st = _train()
         except Exception:
@@ -358,14 +407,42 @@ def train_hunts() -> dict[str, Any]:
     return state
 
 
+def _needs_retrain_hunt(st: dict[str, Any]) -> bool:
+    if not st.get("ts") or st.get("n") is None:
+        return True
+    if time.time() - float(st.get("ts") or 0) < RETRAIN_SECS:
+        return False
+    try:
+        return len(_hunt_rows()) != int(st.get("n") or 0)
+    except Exception:
+        return False
+
+
 def load_hunt_state() -> dict[str, Any]:
     st = _hunt_state_read()
-    if not st.get("ts") or st.get("n") is None:
+    if _needs_retrain_hunt(st):
         try:
             st = train_hunts()
         except Exception:
             pass
     return st
+
+
+def retrain(force: bool = False) -> dict[str, Any]:
+    """Retrain both fits when settled data has moved, or always if force.
+    Called by the app's learn tick so prod keeps learning between visits."""
+    out: dict[str, Any] = {"main": None, "hunt": None}
+    try:
+        st = _state()
+        out["main"] = _train() if (force or _needs_retrain_main(st)) else st
+    except Exception:
+        pass
+    try:
+        st = _hunt_state_read()
+        out["hunt"] = train_hunts() if (force or _needs_retrain_hunt(st)) else st
+    except Exception:
+        pass
+    return out
 
 
 def calibrated_hunt_p(source: str, prob: float) -> float:

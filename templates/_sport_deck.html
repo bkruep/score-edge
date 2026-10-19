@@ -51,7 +51,8 @@
 
 {% block head %}
 <style>
-  .deck-nav { position: sticky; top: 60px; z-index: 45; }
+  .deck-nav { position: sticky; top: 60px; z-index: 45; padding: 7px 9px; border-radius: 14px;
+    background: rgba(7,11,21,0.92); border: 1px solid rgba(255,255,255,0.06); backdrop-filter: blur(10px); }
   .deck-nav .chip { background: rgba(12,17,32,0.85); }
   .deck-hero { position: relative; overflow: hidden; }
   .deck-hero::before { content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -73,18 +74,30 @@
 {% endblock %}
 
 {% block breadcrumb %}
-<nav class="deck-nav mb-6 flex items-center gap-1.5 flex-wrap" aria-label="Deck sections">
-  <a href="#deck-field" class="chip deck-spy" data-spy="deck-field">Field</a>
-  {% if has_values %}<a href="#deck-values" class="chip deck-spy" data-spy="deck-values">Value</a>{% endif %}
-  {% if has_tape %}<a href="#deck-tape" class="chip deck-spy" data-spy="deck-tape">Best Bets</a>{% endif %}
-  <a href="#deck-games" class="chip deck-spy" data-spy="deck-games">Box</a>
-  {% if has_props %}<a href="#deck-props" class="chip deck-spy" data-spy="deck-props">Props</a>{% endif %}
-  {% if has_edge %}<a href="#deck-edge" class="chip deck-spy" data-spy="deck-edge">Deep Edge</a>{% endif %}
-  <span class="ml-auto flex items-center gap-2">
-    <span class="pill bg-brand/15 text-brand border-brand/25">LIVE</span>
-    <span class="text-[10px] font-mono text-slate-600">{{ slate.events|length }} games · {{ total_lines }} lines · refreshed {{ slate.fetched_at|truncate(12, True, '') }}</span>
-  </span>
-</nav>
+<div class="deck-nav mb-6">
+  <nav class="flex items-center gap-1.5 flex-wrap" aria-label="Deck sections">
+    <a href="#deck-field" class="chip deck-spy" data-spy="deck-field">Field</a>
+    {% if has_values %}<a href="#deck-values" class="chip deck-spy" data-spy="deck-values">Value</a>{% endif %}
+    {% if has_tape %}<a href="#deck-tape" class="chip deck-spy" data-spy="deck-tape">Best Bets</a>{% endif %}
+    <a href="#deck-games" class="chip deck-spy" data-spy="deck-games">Box</a>
+    {% if has_props %}<a href="#deck-props" class="chip deck-spy" data-spy="deck-props">Props</a>{% endif %}
+    {% if has_edge %}<a href="#deck-edge" class="chip deck-spy" data-spy="deck-edge">Deep Edge</a>{% endif %}
+    <span class="ml-auto flex items-center gap-2">
+      <span class="pill bg-brand/15 text-brand border-brand/25">LIVE</span>
+      <span class="text-[10px] font-mono text-slate-600">{{ slate.events|length }} games · {{ total_lines }} lines · refreshed {{ slate.fetched_at|truncate(12, True, '') }}</span>
+    </span>
+  </nav>
+  {% if conf_labels %}
+  <div class="mt-2 flex items-center gap-1.5 flex-wrap rounded-xl border border-white/5 bg-black/40 px-3 py-2" id="conf-bar">
+    <span class="text-[10px] font-mono uppercase tracking-widest text-slate-600 mr-1">Conf</span>
+    <button type="button" data-conf="" class="conf-chip chip chip-on">All</button>
+    {% for c in conf_labels %}
+    <button type="button" data-conf="{{ c }}" class="conf-chip chip">{{ c }}</button>
+    {% endfor %}
+    <span class="ml-auto text-[10px] font-mono text-slate-500" id="conf-state"></span>
+  </div>
+  {% endif %}
+</div>
 {% endblock %}
 
 {% block content %}
@@ -167,7 +180,7 @@
   <div class="flex items-center gap-2 mb-3">
     <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
     <h2 class="font-display font-semibold text-white text-sm">Game Board — Matchups &amp; Best Price</h2>
-    <span class="text-xs text-slate-600 font-mono">{{ playable_games }}/{{ matchups|length }} games with a playable edge · best price across books</span>
+    <span class="text-xs text-slate-600 font-mono" id="deck-games-count">{{ playable_games }}/{{ matchups|length }} games with a playable edge · best price across books</span>
   </div>
   {% if active_sport == 'cfb' %}
   <div class="mb-3 -mt-1 flex items-center gap-2 flex-wrap">
@@ -178,15 +191,6 @@
     <span class="pill bg-brand/10 text-brand border-brand/25">Power-4 + Group of 5 only</span>
     <a href="/cfb?all=1" class="pill bg-surface-3 text-slate-400 hover:bg-surface-2 transition-colors">show all games (incl. FCS)</a>
     {% endif %}
-  </div>
-  {% endif %}
-  {% if conf_labels %}
-  <div class="mb-3 -mt-1 flex items-center gap-1.5 flex-wrap" id="conf-bar">
-    <span class="text-[10px] font-mono uppercase tracking-widest text-slate-600 mr-1">Conf</span>
-    <button type="button" data-conf="" class="conf-chip chip chip-on">All</button>
-    {% for c in conf_labels %}
-    <button type="button" data-conf="{{ c }}" class="conf-chip chip">{{ c }}</button>
-    {% endfor %}
   </div>
   {% endif %}
   {% if matchups %}
@@ -215,6 +219,16 @@
         </div>
         {% endif %}
         {% endfor %}
+        {% if m.no_line %}
+        <div class="rounded-lg px-3 py-2.5 text-center {% if m.top_props %}border border-white/10 bg-white/[0.03]{% else %}border border-amber-500/25 bg-amber-500/10{% endif %}">
+          <div class="text-[9px] font-mono uppercase tracking-widest {% if m.top_props %}text-slate-500{% else %}text-amber-400{% endif %}">
+            {%- if m.top_props %}No main line posted{% else %}No line posted · not a target{% endif -%}
+          </div>
+          <div class="text-[10px] text-slate-500 mt-1">
+            {%- if m.top_props %}Main markets aren't priced yet — the prop edges below are still live.{% else %}The books haven't priced this game yet. It stays on the board and picks up automatically once odds drop.{% endif -%}
+          </div>
+        </div>
+        {% endif %}
       </div>
 
       {% if m.top_props %}
@@ -244,6 +258,7 @@
     </article>
     {% endfor %}
   </div>
+  <div class="glass-card rounded-xl p-8 text-center text-xs text-slate-500 hidden" id="deck-games-empty">No games in this conference have a playable edge right now.</div>
   {% else %}
   <div class="glass-card rounded-xl p-10 text-center">
     <div class="text-3xl mb-3">{{ sport_cfg.icon }}</div>
@@ -261,11 +276,11 @@
   <div class="flex items-center gap-2 mb-3">
     <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
     <h2 class="font-display font-semibold text-white text-sm">Value Spots — Mispriced Main Lines</h2>
-    <span class="text-xs text-slate-600 font-mono">{{ value_spots|length }} lines where best price beats consensus</span>
+    <span class="text-xs text-slate-600 font-mono" id="deck-values-count">{{ value_spots|length }} lines where best price beats consensus</span>
   </div>
   <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
     {% for q in value_spots[:12] %}
-    <article class="glass-card deck-box rounded-xl p-4 flex flex-col" data-box style="--rd:{{ loop.index0 * 50 }}ms">
+    <article class="glass-card deck-box rounded-xl p-4 flex flex-col" data-box data-conf="{{ (slate.get('conferences') or {}).get(q.game, '') }}" style="--rd:{{ loop.index0 * 50 }}ms">
       <div class="flex items-center gap-2">
         <span class="text-[9px] font-mono uppercase tracking-widest text-slate-500 truncate">{{ market_names.get(q.market, q.market) }}</span>
         {{ edge_dial(q, 26) }}
@@ -281,8 +296,9 @@
     </article>
     {% endfor %}
   </div>
+  <div class="glass-card rounded-xl p-8 text-center text-xs text-slate-500 hidden" id="deck-values-empty">No mispriced main lines in this conference right now.</div>
   {% if value_spots|length > 12 %}
-  <div class="mt-3 text-center text-[11px] font-mono text-slate-600">+{{ value_spots|length - 12 }} more in the feed · ranked into Best Bets below</div>
+  <div class="mt-3 text-center text-[11px] font-mono text-slate-600" id="deck-values-more">+{{ value_spots|length - 12 }} more in the feed · ranked into Best Bets below</div>
   {% endif %}
 </section>
 {% endif %}
@@ -293,7 +309,7 @@
   <div class="flex items-center gap-2 mb-3">
     <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
     <h2 class="font-display font-semibold text-white text-sm">Best Bets — Ranked by True Edge</h2>
-    <span class="text-xs text-slate-600 font-mono">{{ best_bets|length }} plays · {{ best_markets }} markets · avg +{{ avg_edge }} pts</span>
+    <span class="text-xs text-slate-600 font-mono" id="deck-tape-count">{{ best_bets|length }} plays · {{ best_markets }} markets · avg +{{ avg_edge }} pts</span>
   </div>
   <div class="glass-card rounded-xl overflow-hidden">
     <div class="overflow-x-auto">
@@ -311,7 +327,7 @@
         </thead>
         <tbody class="divide-y divide-white/5">
           {% for q in best_bets %}
-          <tr class="row {% if loop.index <= 2 %}shimmer-row{% endif %}" data-txt="{{ q.selection ~ ' ' ~ (q.player_name or '') ~ ' ' ~ q.game }}">
+          <tr class="row {% if loop.index <= 2 %}shimmer-row{% endif %}" data-conf="{{ (slate.get('conferences') or {}).get(q.game, '') }}" data-txt="{{ q.selection ~ ' ' ~ (q.player_name or '') ~ ' ' ~ q.game }}">
             <td class="px-4 py-2.5 text-sm text-white">
               <span>{{ q.player_name or q.selection }}{% if not q.player_name and q.line is not none %} <span class="text-slate-500 text-xs">{{ q.line }}</span>{% endif %}</span>
               <span class="text-slate-600 text-xs">· {{ q.game }}</span>
@@ -326,7 +342,7 @@
             <td class="px-4 py-2.5 text-right"><div class="flex items-center justify-end gap-2">{{ gap_bar(q) }}{{ edge_dial(q, 30) }}</div></td>
             <td class="px-4 py-2.5 text-center">{{ slip_btn(q) }}</td>
           </tr>
-          <tr class="row-detail" style="display:none">
+          <tr class="row-detail" data-conf="{{ (slate.get('conferences') or {}).get(q.game, '') }}" style="display:none">
             <td colspan="7" class="px-4 py-3 bg-black/25">
               <div class="flex flex-wrap items-center gap-3">
                 <span class="text-[10px] font-mono uppercase tracking-widest text-slate-600">Book ladder — best price vs consensus</span>
@@ -337,6 +353,7 @@
             </td>
           </tr>
           {% endfor %}
+          <tr id="deck-tape-empty" class="hidden"><td colspan="7" class="px-4 py-8 text-center text-xs text-slate-500">No best bets in this conference right now.</td></tr>
         </tbody>
       </table>
     </div>
@@ -349,7 +366,7 @@
   <div class="flex items-center gap-2 mb-3">
     <div class="w-2 h-2 rounded-full bg-brand animate-pulse"></div>
     <h2 class="font-display font-semibold text-white text-sm">Props</h2>
-    <span class="text-xs text-slate-600 font-mono">{{ props_players }} players · {{ props_markets }} markets · top +{{ top_prop_edge }} pts</span>
+    <span class="text-xs text-slate-600 font-mono" id="deck-props-count">{{ props_players }} players · {{ props_markets }} markets · top +{{ top_prop_edge }} pts</span>
   </div>
   <div class="flex items-center gap-1.5 flex-wrap mb-3" id="deck-prop-chips">
     <button type="button" data-mmkt="" class="mmkt-chip chip chip-on">All</button>
@@ -358,11 +375,11 @@
     {% endfor %}
   </div>
   {% for mk, label in prop_groups %}
-  <div class="mmkt-group mb-4 rv {% if not loop.first %}hidden{% endif %}" data-mmkt="{{ mk }}" style="--rd:{{ loop.index0 * 55 }}ms">
+  <div class="mmkt-group mb-4 rv" data-mmkt="{{ mk }}" style="--rd:{{ loop.index0 * 55 }}ms">
     <div class="glass-card rounded-xl overflow-hidden">
       <div class="px-5 py-3 border-b border-white/5 flex items-center gap-2">
         <h3 class="font-display font-semibold text-white text-sm">{{ label }}</h3>
-        <span class="text-xs text-slate-500 font-mono">{{ prop_groups_group[mk]|length }} plays · best +{{ '%.1f'|format(prop_group_top[mk]) }} pts</span>
+        <span class="text-xs text-slate-500 font-mono" id="pg-count-{{ mk }}">{{ prop_groups_group[mk]|length }} plays · best +{{ '%.1f'|format(prop_group_top[mk]) }} pts</span>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full stat-table">
@@ -379,7 +396,7 @@
           </thead>
           <tbody class="divide-y divide-white/5">
             {% for q in prop_groups_group[mk][:40] %}
-            <tr class="row">
+            <tr class="row" data-conf="{{ (slate.get('conferences') or {}).get(q.game, '') }}">
               <td class="px-4 py-2.5 text-sm text-white">{{ q.player_name }} <span class="text-slate-600 text-xs">· {{ q.game }}</span></td>
               <td class="px-4 py-2.5 text-right text-sm font-mono text-slate-300">{{ q.line }}{% if q.side %} <span class="text-slate-500 text-xs">{{ q.side }}</span>{% endif %}</td>
               <td class="px-4 py-2.5 text-right">
@@ -442,12 +459,14 @@
       {% if analytics.sharp_books %}
       <div class="space-y-2">
         {% for r in analytics.sharp_books %}
-        <div class="flex items-center justify-between text-xs font-mono">
-          <span class="text-slate-300">{{ r.book }} <span class="text-slate-600">· {{ r.tier }}</span></span>
-          <span class="text-slate-300">{{ r.price }}</span>
-          <span class="text-brand">+{{ r.residual_pts }}</span>
+        <div data-conf="{{ (slate.get('conferences') or {}).get(r.game, '') }}">
+          <div class="flex items-center justify-between text-xs font-mono">
+            <span class="text-slate-300">{{ r.book }} <span class="text-slate-600">· {{ r.tier }}</span></span>
+            <span class="text-slate-300">{{ r.price }}</span>
+            <span class="text-brand">+{{ r.residual_pts }}</span>
+          </div>
+          <div class="text-[10px] text-slate-600 leading-none">{{ r.game }} · {{ market_names.get(r.market, r.market) }}</div>
         </div>
-        <div class="text-[10px] text-slate-600 leading-none">{{ r.game }} · {{ market_names.get(r.market, r.market) }}</div>
         {% endfor %}
       </div>
       {% else %}<div class="text-xs text-slate-500">No 3-book price divergences on this slate.</div>{% endif %}
@@ -471,11 +490,13 @@
       {% if analytics.movers %}
       <div class="space-y-2">
         {% for m in analytics.movers %}
-        <div class="flex items-center justify-between text-xs font-mono">
-          <span class="text-slate-300 truncate max-w-[170px]">{{ m.label }}</span>
-          <span class="{% if m.movement and m.movement.change < 0 %}text-amber-400{% else %}text-brand{% endif %}">{{ m.movement.change if m.movement else '' }}</span>
+        <div data-conf="{{ (slate.get('conferences') or {}).get(m.game, '') }}">
+          <div class="flex items-center justify-between text-xs font-mono">
+            <span class="text-slate-300 truncate max-w-[170px]">{{ m.label }}</span>
+            <span class="{% if m.movement and m.movement.change < 0 %}text-amber-400{% else %}text-brand{% endif %}">{{ m.movement.change if m.movement else '' }}</span>
+          </div>
+          <div class="text-[10px] text-slate-600 leading-none">{{ m.movement.open_price if m.movement else '' }} → {{ m.movement.current_price if m.movement else '' }}{% if m.movement and m.movement.is_sharp_move %} <span class="text-brand">· sharp</span>{% endif %}</div>
         </div>
-        <div class="text-[10px] text-slate-600 leading-none">{{ m.movement.open_price if m.movement else '' }} → {{ m.movement.current_price if m.movement else '' }}{% if m.movement and m.movement.is_sharp_move %} <span class="text-brand">· sharp</span>{% endif %}</div>
         {% endfor %}
       </div>
       {% else %}<div class="text-xs text-slate-500">No 15+ price-step moves on this slate yet.</div>{% endif %}
@@ -606,14 +627,88 @@
     });
   });
 
-  /* prop market filter */
+  /* prop-market + conference filters. They cascade: picking a conference
+     empties prop groups with no games in it, and picking a market empties
+     groups outside it. Both drive one apply pass so the two never fight. */
   var mk = null;
-  var groups = document.querySelectorAll('.mmkt-group');
+  var conf = '';
+  var groups = Array.prototype.slice.call(document.querySelectorAll('.mmkt-group'));
+  var confChips = Array.prototype.slice.call(document.querySelectorAll('button.conf-chip'));
+  var gameCards = Array.prototype.slice.call(document.querySelectorAll('#deck-games [data-box]'));
+  var valueCards = Array.prototype.slice.call(document.querySelectorAll('#deck-values [data-box]'));
+  var tapeRows = Array.prototype.slice.call(document.querySelectorAll('#deck-tape tr.row'));
+  var tapeDetails = Array.prototype.slice.call(document.querySelectorAll('#deck-tape tr.row-detail'));
+  var propRows = Array.prototype.slice.call(document.querySelectorAll('#deck-props tr.row'));
+  var edgeRows = Array.prototype.slice.call(document.querySelectorAll('#deck-edge [data-conf]'));
+
+  function confOk(el) { return !conf || el.getAttribute('data-conf') === conf; }
+  function show(el, on) { el.style.display = on ? '' : 'none'; }
+  function nShown(els) {
+    var n = 0;
+    for (var i = 0; i < els.length; i++) { if (els[i].style.display !== 'none') n++; }
+    return n;
+  }
+
+  var counters = [];
+  function regCount(el, nFn) {
+    if (el) counters.push({ el: el, base: el.textContent, n: nFn });
+  }
+  regCount(document.getElementById('deck-games-count'), function () { return nShown(gameCards); });
+  regCount(document.getElementById('deck-values-count'), function () { return nShown(valueCards); });
+  regCount(document.getElementById('deck-tape-count'), function () { return nShown(tapeRows); });
+  regCount(document.getElementById('deck-props-count'), function () { return nShown(propRows); });
+  groups.forEach(function (g) {
+    regCount(g.querySelector('[id^="pg-count-"]'), function () { return nShown(g.querySelectorAll('tr.row')); });
+  });
+
+  function applyFilters() {
+    gameCards.forEach(function (el) { show(el, confOk(el)); });
+    valueCards.forEach(function (el) { show(el, confOk(el)); });
+    tapeRows.forEach(function (el) { show(el, confOk(el)); });
+    tapeDetails.forEach(function (el) { show(el, confOk(el)); });
+    propRows.forEach(function (el) { show(el, confOk(el)); });
+    edgeRows.forEach(function (el) { show(el, confOk(el)); });
+    groups.forEach(function (g) {
+      var mOk = (mk === null || g.getAttribute('data-mmkt') === mk);
+      g.classList.toggle('hidden', !mOk || nShown(g.querySelectorAll('tr.row')) === 0);
+    });
+    counters.forEach(function (c) {
+      var n = c.n();
+      c.el.textContent = conf ? (n + ' shown · ' + c.base) : c.base;
+    });
+    var gv = document.getElementById('deck-values-empty');
+    if (gv) gv.classList.toggle('hidden', nShown(valueCards) > 0);
+    var vm = document.getElementById('deck-values-more');
+    if (vm) vm.classList.toggle('hidden', !!conf);
+    var gg = document.getElementById('deck-games-empty');
+    if (gg) gg.classList.toggle('hidden', nShown(gameCards) > 0);
+    var gt = document.getElementById('deck-tape-empty');
+    if (gt) gt.classList.toggle('hidden', nShown(tapeRows) > 0);
+    confChips.forEach(function (c) {
+      c.classList.toggle('chip-on', (c.getAttribute('data-conf') || '') === conf);
+    });
+    var st = document.getElementById('conf-state');
+    if (st) {
+      st.textContent = conf ? (conf + ' · ' + nShown(gameCards) + ' games · '
+        + nShown(tapeRows) + ' best bets · ' + nShown(propRows) + ' props') : '';
+    }
+  }
+
+  var confBar = document.getElementById('conf-bar');
+  if (confBar && confChips.length) {
+    document.documentElement.style.scrollPaddingTop = '172px';
+    confBar.addEventListener('click', function (e) {
+      var t = e.target && e.target.closest ? e.target.closest('.conf-chip') : null;
+      if (!t) return;
+      conf = t.getAttribute('data-conf') || '';
+      applyFilters();
+    });
+  }
   document.querySelectorAll('.mmkt-chip').forEach(function (c) {
     c.addEventListener('click', function () {
       mk = c.getAttribute('data-mmkt') || null;
       document.querySelectorAll('.mmkt-chip').forEach(function (x) { x.classList.toggle('chip-on', x === c); });
-      groups.forEach(function (g) { g.classList.toggle('hidden', mk !== null && g.getAttribute('data-mmkt') !== mk); });
+      applyFilters();
     });
   });
 
@@ -691,25 +786,6 @@
       });
     }
   }
-
-  /* conference filter chips (CFB / CBB game board) */
-  (function () {
-    var bar = document.getElementById('conf-bar');
-    if (!bar) return;
-    var chips = Array.prototype.slice.call(bar.querySelectorAll('button.conf-chip'));
-    var cards = Array.prototype.slice.call(document.querySelectorAll('#deck-games [data-box][data-conf]'));
-    if (!chips.length || !cards.length) return;
-    function apply(conf) {
-      cards.forEach(function (c) {
-        c.style.display = (!conf || c.getAttribute('data-conf') === conf) ? '' : 'none';
-      });
-      chips.forEach(function (c) { c.classList.toggle('chip-on', c.getAttribute('data-conf') === conf); });
-    }
-    bar.addEventListener('click', function (e) {
-      var t = e.target && e.target.closest ? e.target.closest('[data-conf]') : null;
-      if (t) apply(t.getAttribute('data-conf') || '');
-    });
-  })();
 
   /* hash deep-link */
   if (location.hash) { var h = document.getElementById(location.hash.slice(1)); if (h) setTimeout(function () { h.scrollIntoView({ behavior: 'auto', block: 'start' }); }, 120); }

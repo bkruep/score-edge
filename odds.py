@@ -1527,10 +1527,11 @@ def fetch_sport_slate(tag: str, include_all: bool = False) -> dict:
         quotes = [q for q in quotes if conferences.get(q.game)]
     elif tag == "cbb":
         # Basketball keeps every game; conference is a label for the filter
-        # chips only (never a filter that drops mid-majors).
+        # chips only (never a filter that drops mid-majors). Schools the map
+        # can't classify land in OTH so a chip always reaches them.
         for q in quotes:
             if q.game and q.game not in conferences:
-                conferences[q.game] = _game_grouping_bb(q.game) or ""
+                conferences[q.game] = _game_grouping_bb(q.game) or "OTH"
 
     # Per-team rows collapse across the provider's label variants (full name,
     # mascot, "st"/abbr, ranked prefix) so each school is one row per game.
@@ -1615,6 +1616,17 @@ def fetch_sport_slate(tag: str, include_all: bool = False) -> dict:
         _consider(_q.event_id, _q.game)
     events = [{"event_id": eid, "label": label}
               for label, eid in sorted(label_to_id.items(), key=lambda kv: (kv[0] or "").casefold())]
+
+    # Every event needs a conference label, not just the ones the provider
+    # priced. The schedule seeds a card for games with no quotes yet, and a
+    # blank label makes the deck's conference filter hide that card the moment
+    # a chip is clicked — which reads as "the filter lost my games".
+    if cfg.get("college"):
+        _group = _game_grouping_bb if tag == "cbb" else _game_grouping
+        for _ev in events:
+            _lab = _ev.get("label") or ""
+            if _lab and _lab not in conferences:
+                conferences[_lab] = _group(_lab) or "OTH"
 
     slate = {
         "events": events,

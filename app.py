@@ -1,5 +1,5 @@
 ﻿from __future__ import annotations
-import hashlib, os, re, math
+import hashlib, os, re, math, time, threading
 import concurrent.futures as _cf
 from datetime import datetime
 from fastapi import FastAPI, Request
@@ -2951,6 +2951,8 @@ def _sport_matchups(slate: dict, props: list) -> list:
             "top_plays": top_plays,
             "best": best,
             "n_markets": len(covered),
+            "priced": bool(covered),
+            "no_line": not covered,
         })
     out.sort(key=lambda m: ((m["game"] or "").casefold()))
     return out
@@ -3127,6 +3129,8 @@ def _nfl_deck_ctx(request: Request) -> dict:
         "prop_groups_group": prop_groups_group,
         "prop_group_top": prop_group_top,
         "playable_games": sum(1 for m in matchups if m.get("best")),
+        "conferences": slate.get("conferences") or {},
+        "conf_labels": [],
         "analytics": analytics,
         "edge_nodes": _edge_nodes(slate, props, market_names, cfg["icon"]),
         "deck": {"edge_nodes": _edge_nodes(slate, props, market_names, cfg["icon"])},
@@ -3427,6 +3431,11 @@ def odds_redirect(request: Request):
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/bets", status_code=301)
 
+_LEARN_TTL = 300.0
+_LEARN_LAST = 0.0
+_LEARN_LOCK = threading.Lock()
+
+
 def _recent_logged_days() -> dict[str, str]:
     out: dict[str, str] = {}
     for r in track.joined():
@@ -3436,23 +3445,68 @@ def _recent_logged_days() -> dict[str, str]:
     return out
 
 
-def _recent_logged_days() -> dict[str, str]:
-    out: dict[str, str] = {}
+def _pending_hunt_days(max_days: int = 45) -> dict[str, list[str]]:
+    """Every past hunt day still carrying an unresolved prediction, per source.
+    /calibration used to resolve only the newest day per source, so anything
+    that settled while the app was cold stayed pending forever and the hunt
+    model never received the new labels."""
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    out: dict[str, list[str]] = {}
     for r in track.joined():
-        src, day = r.get('source',''), r.get('day','')
-        if src and day > out.get(src,''):
-            out[src] = day
+        src, day = r.get("source", ""), r.get("day", "")
+        if not src or not day or day >= today or r.get("status") != "pending":
+            continue
+        days = out.setdefault(src, [])
+        if day not in days:
+            days.append(day)
+    for days in out.values():
+        days.sort(reverse=True)
+        del days[max_days:]
     return out
+
+
+def _learn_tick(force: bool = False) -> dict:
+    """Settle every open hunt day, flush the pick ledger, then let both fits
+    refit when the settled data has moved. TTL-guarded so page hits can't
+    stampede the feed."""
+    global _LEARN_LAST
+    now = time.time()
+    with _LEARN_LOCK:
+        if not force and now - _LEARN_LAST < _LEARN_TTL:
+            return {"skipped": True}
+        _LEARN_LAST = now
+    settled = 0
+    try:
+        for src, days in _pending_hunt_days().items():
+            for d in days:
+                try:
+                    settled += int(track.sync(src, d) or 0)
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    try:
+        picks.sync_resolve_all()
+    except Exception:
+        pass
+    try:
+        model.retrain()
+    except Exception:
+        pass
+    return {"settled": settled}
+
 
 @app.get('/calibration', response_class=HTMLResponse)
 def calibration_page(request: Request, day: str = ''):
     ensure_data()
-    try:
-        recent = _recent_logged_days()
-        for src in ('goal_hunt','homerun_hunt'):
-            track.sync(src, day or recent.get(src,''))
-    except Exception:
-        pass
+    if day:
+        try:
+            for src in ('goal_hunt', 'homerun_hunt'):
+                track.sync(src, day)
+        except Exception:
+            pass
+    _learn_tick()
     try:
         proof = journal.proof(_get_season())
     except Exception:
@@ -3519,13 +3573,9 @@ def model_page(request: Request):
     """Learning model: trained from real settled outcomes, evaluated OOS,
     with a forward read on the latest slate. Stats-based estimate · NOT a market price."""
     ensure_data()
+    _learn_tick()
     try:
         st = model.load_state()
-        if st.get("n_train") is None or st.get("n_train") < 5:
-            try:
-                st = model._train()  # type: ignore[attr-defined]
-            except Exception:
-                pass
     except Exception:
         st = {}
     try:
@@ -3697,6 +3747,10 @@ def api_calibration_resolve(source: str = "", day: str = ""):
         n = track.resolve(source, day)
     except Exception:
         n = 0
+    try:
+        model.retrain(force=True)
+    except Exception:
+        pass
     return JSONResponse({"ok": True, "resolved": n, "source": source, "day": day})
 
 
@@ -3749,6 +3803,14 @@ def _prewarm_caches():
                     odds.fetch_sport_slate(_tag)
             except Exception:
                 pass
+        # Keep learning on the server: settle open hunt days and refit the
+        # models on a timer so the decks improve without anyone visiting.
+        try:
+            tick = _learn_tick()
+            if tick.get("settled"):
+                _log.warning("prewarm: settled %s hunt picks", tick["settled"])
+        except Exception as _exc:
+            _log.warning("prewarm: learn tick failed: %s", _exc)
         _ptime.sleep(600)
 
 
