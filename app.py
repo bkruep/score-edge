@@ -1032,8 +1032,10 @@ def _bounded(fn, timeout: float, *args, **kwargs):
 
 # Cross-league board: aggregate every live league's best-bets tape on one page.
 # Cached in-process for OVERVIEW_TTL so rapid reloads don't re-hit the feed per
-# league; the league slates already carry their own short-TTL caches.
-OVERVIEW_TTL = 120.0
+# league; the league slates already carry their own short-TTL caches. Kept above
+# the prewarm interval (600s) so the background refresher rebuilds it and a
+# visitor never pays the cold rebuild (which refetches props for every league).
+OVERVIEW_TTL = 900.0
 
 
 def _overview_board() -> dict:
@@ -3803,6 +3805,15 @@ def _prewarm_caches():
                     odds.fetch_sport_slate(_tag)
             except Exception:
                 pass
+        # Keep the cross-league homepage board warm. It is the only reader of
+        # the per-league prop feed, which is memory-only (not disk-cached) and
+        # expires every 900s -- so rebuilding it here also refetches props and
+        # stops the first homepage hit after an idle gap from paying that cost.
+        try:
+            if odds.API_KEY:
+                _overview_board()
+        except Exception:
+            pass
         # Keep learning on the server: settle open hunt days and refit the
         # models on a timer so the decks improve without anyone visiting.
         try:
