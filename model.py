@@ -458,16 +458,20 @@ def calibrated_hunt_p(source: str, prob: float) -> float:
     return max(min(p * 100.0, 99.9), 0.1)
 
 
-def latest_slate_predictions() -> dict[str, Any]:
+def latest_slate_predictions(cached_only: bool = False) -> dict[str, Any]:
     import datetime as dt
 
     slate, _ = None, None
     try:
-        from app import _full_slate_board
-
-        slate, _ = _full_slate_board(dt.date.today().isoformat(), explicit=False)
+        if cached_only:
+            day=dt.date.today().isoformat()
+            slate=odds._cached('bets_slate_'+day) or odds._cached('slate_'+day)
+        else:
+            from app import _full_slate_board
+            slate, _ = _full_slate_board(dt.date.today().isoformat(), explicit=False)
     except Exception:
         try:
+            if cached_only:raise RuntimeError('Cached report only')
             from odds import fetch_edge_slate
 
             slate = fetch_edge_slate(dt.date.today().isoformat())

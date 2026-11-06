@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Loading — Parlay & Pray{% endblock %}
+{% block content %}
+<section class="glass-card rounded-xl p-6 max-w-3xl" role="status" aria-live="polite">
+  <h1 class="font-display text-xl font-semibold text-white mb-3">Preparing this page</h1>
+  <p class="text-slate-300">{{ message }}</p>
+  <p class="text-sm text-slate-400 mt-3">You can use the other tabs while this loads. This page checks again every five seconds.</p>
+  <div class="flex gap-3 mt-4"><a href="/" class="chip">Dashboard</a><a href="/model" class="chip">Learning model</a></div>
+</section>
+<script>setTimeout(()=>location.reload(),5000);</script>
+{% endblock %}

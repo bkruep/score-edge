@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import pandas as pd
 
@@ -38,6 +39,7 @@ import backtest
 import staking
 
 app = FastAPI(title="Parlay & Pray")
+app.add_middleware(GZipMiddleware,minimum_size=1000,compresslevel=5)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
@@ -97,6 +99,7 @@ async def add_headers(request: Request, call_next):
     return response
 
 _data_loaded = False
+_data_load_lock = threading.Lock()
 
 def _get_season() -> int:
     # NFL season year = the calendar year the season begins. A fantasy/NFL
@@ -876,11 +879,13 @@ def ensure_data():
     global _data_loaded
     if _data_loaded:
         return
+    if not _data_load_lock.acquire(timeout=1):return
     import logging, time
     log = logging.getLogger(__name__)
     t0 = time.time()
     season = _get_season()
     try:
+        if _data_loaded:return
         data.load_player_stats(_get_season())
         data.load_schedule(season)
         journal.load_journal()
@@ -889,6 +894,8 @@ def ensure_data():
         log.warning(f"Parlay & Pray data loaded in {time.time()-t0:.1f}s (season {season})")
     except Exception as e:
         log.error(f"Parlay & Pray data load FAILED: {e}")
+    finally:
+        _data_load_lock.release()
 
 def _filter_fantasy(df: pd.DataFrame) -> pd.DataFrame:
     if "position" in df.columns:
@@ -1020,14 +1027,9 @@ def _ctx(request: Request, sport: str = "nfl", **extra):
 def _bounded(fn, timeout: float, *args, **kwargs):
     """Run fn with a wall-clock budget; return its result if it finishes within
     timeout, else a safe empty default (empty DataFrame for pandas callers)."""
-    try:
-        with _cf.ThreadPoolExecutor(max_workers=1) as ex:
-            fut = ex.submit(fn, *args, **kwargs)
-            return fut.result(timeout=timeout)
-    except _cf.TimeoutError:
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
+    from page_runtime import bounded
+    result=bounded(fn,timeout,*args,**kwargs)
+    return pd.DataFrame() if result is None else result
 
 
 # Cross-league board: aggregate every live league's best-bets tape on one page.
@@ -3574,14 +3576,14 @@ def staking_page(request: Request, bankroll: float = 100.0,
 def model_page(request: Request):
     """Learning model: trained from real settled outcomes, evaluated OOS,
     with a forward read on the latest slate. Stats-based estimate · NOT a market price."""
-    ensure_data()
-    _learn_tick()
+    # Read saved reports only. Settlement and training belong to the existing
+    # background learn tick, not to a visitor's page request.
     try:
-        st = model.load_state()
+        st = model._state()
     except Exception:
         st = {}
     try:
-        lp = model.latest_slate_predictions()
+        lp = model.latest_slate_predictions(cached_only=True)
     except Exception:
         lp = {"preds": [], "slate_day": ""}
     try:
@@ -3589,7 +3591,7 @@ def model_page(request: Request):
     except Exception:
         hunts = {}
     try:
-        hunt_state = model.load_hunt_state()
+        hunt_state = model._hunt_state_read()
     except Exception:
         hunt_state = {}
     try:
@@ -3825,7 +3827,22 @@ def _prewarm_caches():
         _ptime.sleep(600)
 
 
+if os.environ.get('SCOREEDGE_BACKGROUND_PAGES','1') != '0':
+    import page_runtime
+    page_runtime.install(app,templates,_ctx)
+
+
+@app.get('/api/runtime-status')
+def runtime_status():
+    cache=getattr(app.state,'page_cache',None)
+    return {'status':'ok','background_pages':cache is not None,
+            'revision':os.environ.get('RENDER_GIT_COMMIT','')[:12],
+            'pages':cache.stats() if cache else {}}
+
+
 if os.environ.get("SCOREEDGE_PREWARM", "1") != "0":
+    if getattr(app.state,'page_cache',None) is not None:
+        page_runtime.start_warmer(app)
     import threading as _pth
     _pth.Thread(target=_prewarm_caches, daemon=True, name="scoreedge-prewarm").start()
 
