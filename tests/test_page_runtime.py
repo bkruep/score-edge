@@ -91,6 +91,20 @@ class RuntimeTests(unittest.TestCase):
         gate.set()
         eventually(lambda: all(f.done() for f in page_runtime._bounded_calls.values()))
 
+    def test_distinct_cold_pages_can_queue_at_the_same_time(self):
+        gate = threading.Event()
+        self.addCleanup(gate.set)
+        cache = page_runtime.PageCache(self.temp.name)
+        def slow():
+            gate.wait(3)
+            return HTMLResponse('ready')
+        for path in ('/', '/dfs', '/touchdown', '/nba'):
+            response = cache.response(path, {}, slow, lambda message: HTMLResponse(message))
+            self.assertEqual(response.status_code, 200)
+        self.assertEqual(cache.stats()['pending_pages'], 4)
+        gate.set()
+        eventually(lambda: cache.stats()['pending_pages'] == 0)
+
     def test_failed_refresh_keeps_labeled_last_good_page_and_survives_restart(self):
         cache = page_runtime.PageCache(self.temp.name, ttl=.01)
         loading = lambda message: HTMLResponse(message, headers={'X-Page-Cache': 'warming'})

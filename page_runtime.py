@@ -96,11 +96,11 @@ class PageCache:
         except (OSError,ValueError):LOG.warning('Page cache persistence unavailable')
 
     def _trim(self,reserve=False):
-        memory=sum(len(e.get('value',{}).get('body',b'')) for e in self.entries.values())
+        memory=sum(len((e.get('value') or {}).get('body',b'')) for e in self.entries.values())
         for key,entry in sorted(list(self.entries.items()),key=lambda kv:kv[1]['used_at']):
             if len(self.entries)<=self.max_entries-int(reserve) and memory<=self.max_bytes:break
             if not entry['running']:
-                memory-=len(entry.get('value',{}).get('body',b''));self.entries.pop(key,None)
+                memory-=len((entry.get('value') or {}).get('body',b''));self.entries.pop(key,None)
 
     @staticmethod
     def _notice(body,message):
