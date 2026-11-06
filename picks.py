@@ -103,12 +103,12 @@ def ledger_summary() -> dict[str, dict]:
     return per
 
 
-def settled_picks(season: int | None = None) -> list[dict]:
+def settled_picks(season: int | None = None, cached_only: bool = False) -> list[dict]:
     rows = _read()
     out: list[dict] = []
     for r in rows:
         st = r.get("status", "pending")
-        if st not in ("won", "lost", "push"):
+        if not cached_only and st not in ("won", "lost", "push"):
             try:
                 sres = settle_pick(r)
                 st = sres.get("status", st)

@@ -3503,16 +3503,8 @@ def _learn_tick(force: bool = False) -> dict:
 
 @app.get('/calibration', response_class=HTMLResponse)
 def calibration_page(request: Request, day: str = ''):
-    ensure_data()
-    if day:
-        try:
-            for src in ('goal_hunt', 'homerun_hunt'):
-                track.sync(src, day)
-        except Exception:
-            pass
-    _learn_tick()
     try:
-        proof = journal.proof(_get_season())
+        proof = journal.proof(_get_season(), cached_only=True)
     except Exception:
         proof = None
     return templates.TemplateResponse(request, 'calibration.html', {
@@ -3527,9 +3519,8 @@ def backtest_page(request: Request):
     """Replay: if you had bet every settled suggestion at flat 1u, what happened?
     Units, ROI, and hit rate split by market / edge bucket / book, with a
     running bankroll curve. Real outcomes only."""
-    ensure_data()
     try:
-        rep = backtest.report()
+        rep = backtest.report(cached_only=True)
     except Exception:
         rep = {"overall": {}, "by_market": {}, "by_bucket": {}, "by_book": {},
                "curve": {"points": [], "polyline": "", "min": 0.0, "max": 0.0, "final": 0.0},
@@ -3545,18 +3536,17 @@ def staking_page(request: Request, bankroll: float = 100.0,
                  fraction: float = 0.25, cap: float = 0.05):
     """Position sizing: today's value spots sized by fractional Kelly, plus a
     replay of the settled record under the same sizing vs flat 1u. Not advice."""
-    ensure_data()
     day = __import__("datetime").date.today().isoformat()
     plays: list = []
     try:
-        slate, _ = _full_slate_board(day, explicit=False)
+        slate = odds._cached('bets_slate_'+day) or odds._cached('slate_'+day)
         if isinstance(slate, dict):
             quotes = list(_best_bets(slate, limit=60)) + list(slate.get("props") or [])
             plays = staking.plan(quotes, bankroll, fraction, cap, limit=20)
     except Exception:
         plays = []
     try:
-        sim = staking.simulate(backtest._settled(), fraction, cap, start=bankroll)
+        sim = staking.simulate(backtest._settled(cached_only=True), fraction, cap, start=bankroll)
     except Exception:
         sim = {"n": 0, "start": bankroll, "final": bankroll, "ret_pct": None,
                "flat_final": bankroll, "flat_units": 0.0, "ruined_at": None,

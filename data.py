@@ -202,11 +202,16 @@ def load_player_stats(season: int = 2025) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def load_schedule(season: int = 2025) -> pd.DataFrame:
+def load_schedule(season: int = 2025, cached_only: bool = False) -> pd.DataFrame:
     key = f"nfl_schedule_{season}"
     cached = _get_cached(key)
     if cached is not None:
         return cached
+    if cached_only:
+        # Saved reports may use the last known schedule, even after its refresh
+        # TTL. Missing scores remain pending; never fetch weeks during a report.
+        saved = _CACHE.get(key)
+        return saved[1] if saved is not None else pd.DataFrame()
     try:
         def fetch_week(week: int) -> list[dict]:
             url = f"{NFLDATA_BASE}/games"

@@ -132,12 +132,14 @@ def _fetch_week(season: int, week: int) -> dict | None:
     return out
 
 
-def _week_rows(season: int, week: int) -> dict:
+def _week_rows(season: int, week: int, cached_only: bool = False) -> dict:
     key = f"{season}:{week}"
     if key in _mem:
         return _mem[key]
     disk = _read_cache()
     ent = disk.get(key)
+    if cached_only:
+        return (ent or {}).get("rows") or {}
     if ent and time.time() - ent.get("ts", 0) < _TTL:
         _mem[key] = ent.get("rows") or {}
         return _mem[key]
@@ -156,13 +158,13 @@ def _week_rows(season: int, week: int) -> dict:
     return rows
 
 
-def _week_for(season: int, away_ab: str, home_ab: str, day: str) -> int | None:
+def _week_for(season: int, away_ab: str, home_ab: str, day: str, cached_only: bool = False) -> int | None:
     """The schedule week a matchup belongs to, using gameday proximity to pick
     the right one when a pair meets twice in a season."""
     if not away_ab or not home_ab:
         return None
     import data
-    sched = data.load_schedule(season)
+    sched = data.load_schedule(season, cached_only=cached_only)
     if sched is None or getattr(sched, "empty", True):
         return None
     try:
@@ -219,16 +221,16 @@ def _weeks_near(season: int, day: str) -> list[int]:
 
 
 def _resolve_value(player: str, token: str, teams: tuple[str, str],
-                   season: int, day: str, away_ab: str, home_ab: str):
+                   season: int, day: str, away_ab: str, home_ab: str, cached_only: bool = False):
     """(value, week) using the schedule-precise week when available, else the
     nearest week whose stats contain the player on one of the matchup teams."""
-    week = _week_for(season, away_ab, home_ab, day)
+    week = _week_for(season, away_ab, home_ab, day, cached_only=cached_only)
     if week:
-        v = _stat_value(player, token, teams, season, week)
+        v = _stat_value(player, token, teams, season, week, cached_only=cached_only)
         if v is not None:
             return v, week
     for wk in _weeks_near(season, day):
-        rows = _week_rows(season, wk).get(_norm(player))
+        rows = _week_rows(season, wk, cached_only=cached_only).get(_norm(player))
         if not rows:
             continue
         match = ([r for r in rows if (r.get("team") or "") in teams]
@@ -272,10 +274,10 @@ def _stat_token(rec: dict) -> str:
 
 
 def _stat_value(player: str, token: str, teams: tuple[str, str],
-                season: int, week: int) -> float | None:
+                season: int, week: int, cached_only: bool = False) -> float | None:
     if not player or not token:
         return None
-    rows = _week_rows(season, week).get(_norm(player))
+    rows = _week_rows(season, week, cached_only=cached_only).get(_norm(player))
     if not rows:
         return None
     if any(teams):
@@ -285,7 +287,7 @@ def _stat_value(player: str, token: str, teams: tuple[str, str],
     return _value_from_row(rows[0], token)
 
 
-def settle_prop(rec: dict) -> dict:
+def settle_prop(rec: dict, cached_only: bool = False) -> dict:
     """Resolve one prop record to won/lost/push, else pending with a reason.
 
     Needs the stat line, the Over/Under side, and the player. Records lacking a
@@ -321,7 +323,7 @@ def settle_prop(rec: dict) -> dict:
         return {"status": "pending", "note": "bad game label"}
     away_ab, home_ab = _abbr(parts[0]), _abbr(parts[1])
     val, week = _resolve_value(player, token, (away_ab, home_ab),
-                               season, day, away_ab, home_ab)
+                               season, day, away_ab, home_ab, cached_only=cached_only)
     if val is None:
         return {"status": "pending", "note": "no stat row"}
     if val > line:

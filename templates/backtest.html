@@ -9,6 +9,7 @@
 </div>
 {% endblock %}
 {% block content %}
+<p class="text-xs text-slate-400 mb-4">Using saved results and cached scores. Background updates add new outcomes; games without saved results remain pending.</p>
 <div class="glass-card rounded-xl p-6 mb-5 max-w-3xl text-sm text-slate-300 space-y-3">
   <p>Every value spot a board posts is journaled and, once the game finishes, settled against the real final score. This page replays that record as if you had bet each one for one flat unit, and reports what actually happened — no estimates, no look-ahead.</p>
   <p class="text-slate-400">The replay universe is the edge journal unioned with settled odds-bearing picks from the suggestion ledger (deduped, the same set the learning model trains on). Hunts have no market odds and DFS has no standard payout, so both get hit-rate only and stay out of the units math.</p>

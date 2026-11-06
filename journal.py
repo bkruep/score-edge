@@ -46,12 +46,12 @@ def _today_iso() -> str:
     return _dt.date.today().isoformat()
 
 
-def _load_schedule(season: int):
+def _load_schedule(season: int, cached_only: bool = False):
     import data
-    return data.load_schedule(season)
+    return data.load_schedule(season, cached_only=cached_only)
 
 
-def _game_result(rec: dict, season: int) -> dict | None:
+def _game_result(rec: dict, season: int, cached_only: bool = False) -> dict | None:
     """Settle one journal record against the real final score.
 
     Returns {status: won|lost|push}, None when the game hasn't been scored.
@@ -59,7 +59,7 @@ def _game_result(rec: dict, season: int) -> dict | None:
     mkt = str(rec.get("mkt") or "")
     if mkt.startswith("player_") or rec.get("player"):
         import settle
-        res = settle.settle_prop(rec)
+        res = settle.settle_prop(rec, cached_only=cached_only)
         st = res.get("status")
         return {"status": st} if st in ("won", "lost", "push") else None
     side_ab, over_side = _side_parts(rec)
@@ -74,7 +74,7 @@ def _game_result(rec: dict, season: int) -> dict | None:
         day_of = _dt.date(int(y), int(m), int(d))
     except (TypeError, ValueError):
         return None
-    sched = _load_schedule(season)
+    sched = _load_schedule(season, cached_only=cached_only)
     if sched is None or sched.empty:
         return None
 
@@ -239,20 +239,28 @@ def prime_from_cache() -> int:
     return n
 
 
-def settled_records(season: int | None = None) -> list[dict]:
+def settled_records(season: int | None = None, cached_only: bool = False) -> list[dict]:
     """Journal records joined to their real results (won/lost/push/pending)."""
     recs = load_journal()
     out = []
+    resolved = {}
     for r in recs:
-        res = _game_result(r, season or int(r.get("year") or 0) or _dt.date.today().year)
+        # Different books/prices often repeat one result. Resolve that result
+        # once per report without changing the logged observations or grades.
+        key = tuple(str(r.get(k)) for k in
+                    ('day','year','game','mkt','side','line','ou','player','home_ab','away_ab'))
+        if key not in resolved:
+            resolved[key] = _game_result(r, season or int(r.get("year") or 0) or _dt.date.today().year,
+                                         cached_only=cached_only)
+        res = resolved[key]
         out.append({**r, "status": (res or {}).get("status", "pending")})
     return out
 
 
-def proof(season: int | None = None) -> dict:
+def proof(season: int | None = None, cached_only: bool = False) -> dict:
     """The PROOF band payload: logged vs settled, record, flat-1u ROI, buckets."""
     from collections import defaultdict
-    recs = settled_records(season)
+    recs = settled_records(season, cached_only=cached_only)
     logged = len(recs)
     settled = [r for r in recs if r["status"] in ("won", "lost", "push")]
     w = sum(1 for r in settled if r["status"] == "won")
