@@ -1,5 +1,6 @@
 """Report pages must render saved outcomes without contacting providers."""
 import os
+import json
 from pathlib import Path
 import tempfile
 import time
@@ -85,6 +86,18 @@ class SavedReportTests(unittest.TestCase):
              patch.object(self.site.journal, '_game_result', return_value={'status': 'won'}) as grade:
             self.assertEqual(len(self.site.journal.settled_records(cached_only=True)), 400)
             grade.assert_called_once()
+
+    def test_weekly_file_is_parsed_once_and_reloaded_when_changed(self):
+        path = Path(self.temp.name) / 'weeks.json'
+        path.write_text(json.dumps({'2026:8': {'rows': {'player': [{'pass_yd': 300}]}}}), encoding='utf-8')
+        with patch.object(self.settle, '_CACHE', str(path)), \
+             patch.object(self.settle.json, 'load', wraps=json.load) as read:
+            for _ in range(500):
+                self.assertEqual(self.settle._read_cache()['2026:8']['rows']['player'][0]['pass_yd'], 300)
+            self.assertEqual(read.call_count, 1)
+            path.write_text(json.dumps({'2026:8': {'rows': {'player': [{'pass_yd': 45}]}}}), encoding='utf-8')
+            self.assertEqual(self.settle._read_cache()['2026:8']['rows']['player'][0]['pass_yd'], 45)
+            self.assertEqual(read.call_count, 2)
 
 
 if __name__ == '__main__':
