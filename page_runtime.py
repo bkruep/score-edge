@@ -195,6 +195,10 @@ PATHS={'/','/bets','/props','/touchdown','/dfs','/goal-hunt','/homerun-hunt','/r
        '/nfl','/nba','/cfb','/cbb','/mlb','/nhl','/mls','/calibration','/backtest','/staking',
        '/rankings','/trades','/draft-assistant','/waivers','/parlay','/edge-deck','/line-lab','/value-lab','/prop-radar'}
 
+# These reports now read saved data only and must remain available even when
+# both provider-render workers are occupied by unrelated slow requests.
+PATHS -= {'/calibration','/backtest','/staking'}
+
 
 def install(app,templates,context):
     root=Path(os.environ.get('SCOREEDGE_DATA_DIR') or Path(__file__).parent)/'.data_cache'/'page_responses'

@@ -43,16 +43,16 @@ def _bucket(edge: float) -> str:
     return "unknown"
 
 
-def _settled() -> list[dict]:
+def _settled(cached_only: bool = False) -> list[dict]:
     """Deduped set of settled bets that carry odds (the replay universe)."""
     recs = []
     try:
-        recs += [r for r in journal.settled_records()
+        recs += [r for r in journal.settled_records(cached_only=cached_only)
                  if r.get("status") in ("won", "lost", "push")]
     except Exception:
         pass
     try:
-        for pr in picks.settled_picks():
+        for pr in picks.settled_picks(cached_only=cached_only):
             j = picks.to_journal_like(pr)
             if j and j.get("status") in ("won", "lost", "push"):
                 recs.append(j)
@@ -230,8 +230,8 @@ def risk(rows: list[dict] | None = None) -> dict:
     }
 
 
-def report() -> dict:
-    rows = _settled()
+def report(cached_only: bool = False) -> dict:
+    rows = _settled(cached_only=cached_only)
     overall = _stats(rows)
 
     by_market = {k: _stats(v) for k, v in sorted(_by(rows, lambda r: r.get("mkt")).items())}

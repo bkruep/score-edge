@@ -9,6 +9,7 @@
 </div>
 {% endblock %}
 {% block content %}
+<p class="text-xs text-slate-400 mb-4">Using cached prices and saved results. Background updates refresh the data; displayed prices may be outdated.</p>
 <div class="glass-card rounded-xl p-6 mb-5 max-w-3xl text-sm text-slate-300 space-y-3">
   <p>Every board posts a <span class="text-white">best price</span> that beats the consensus line. That gap <em>is</em> the edge, so the consensus price is our probability estimate and the best price is what we can take. Kelly sizes a bet as edge&nbsp;/&nbsp;(decimal&minus;1); we scale it down (default quarter Kelly) and cap it, because one edge estimate is noisy and a slate's spots rise and fall together.</p>
   <p class="text-slate-400">Sizing does not create edge — it only decides how much of a real edge to risk. A bigger stake on a fake edge just loses faster.</p>

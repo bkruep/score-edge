@@ -22,6 +22,11 @@ when leaving the executor context, defeating its timeout.
   four minutes. Existing provider caches and background learning continue.
 - `/model` reads saved reports and cached slate predictions. Training and
   settlement continue through the existing background learning tick.
+- `/calibration`, `/backtest`, and `/staking` render directly from saved
+  outcomes, schedules, player stats, and prices. They do not wait for provider
+  rendering workers, initialize feeds, start learning, or auto-settle unsaved
+  picks. Missing scores remain pending. Cached-only reads do not insert empty
+  entries into the learning feed caches or prevent subsequent live refreshes.
 - Gzip reduces transfers of large HTML pages. Existing API routes, form POSTs,
   provider restrictions, and health checks keep their request behavior.
 
