@@ -30,6 +30,9 @@ _SLEEPER = "https://api.sleeper.app/v1"
 _TTL = 6 * 3600  # refetch a cached week at most every 6h while the season runs
 _lock = threading.Lock()
 _mem: dict[str, dict] = {}
+_disk_read_lock = threading.Lock()
+_disk_version = None
+_disk_rows = {}
 
 # Sleeper stat keys we keep (2026 uses *_yd; older seasons used *_yds — we read
 # whichever is present). ``sack`` variants cover the rare defensive prop.
@@ -85,10 +88,21 @@ def _abbr(team: str) -> str:
 
 
 def _read_cache() -> dict:
+    global _disk_version, _disk_rows
     try:
-        with open(_CACHE, "r", encoding="utf-8") as fh:
-            v = json.load(fh)
-        return v if isinstance(v, dict) else {}
+        # A report may grade thousands of props. Parse this shared weekly file
+        # once per file version, not once per player and candidate week.
+        with _disk_read_lock:
+            stat = os.stat(_CACHE)
+            version = (_CACHE, stat.st_mtime_ns, stat.st_size)
+            if version == _disk_version:
+                return dict(_disk_rows)
+            with open(_CACHE, "r", encoding="utf-8") as fh:
+                v = json.load(fh)
+            after = os.stat(_CACHE)
+            if isinstance(v, dict) and (after.st_mtime_ns, after.st_size) == (stat.st_mtime_ns, stat.st_size):
+                _disk_version, _disk_rows = version, v
+            return dict(v) if isinstance(v, dict) else {}
     except (OSError, ValueError):
         return {}
 
