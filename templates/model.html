@@ -9,6 +9,7 @@
 </div>
 {% endblock %}
 {% block content %}
+<p class="text-xs text-slate-400 mb-4">This page reads the latest saved reports. Settlement and training run in the background; opening a tab does not start a training job.</p>
 <div class="glass-card rounded-xl p-6 mb-5 max-w-3xl text-sm text-slate-300 space-y-3">
   <p>This is the final feature: a tiny, regularized logistic model that learns from the games we've already settled in the edge journal. It ingests nothing synthetic — every labeled example is a quote that we later resolved to a real win/loss.</p>
   <p class="text-slate-400">We compare the model's probability to the consensus-implied probability (fair market read from the slate) and report OOS Brier score on a held-out split. Below you'll see the current weights, evaluation, and a forward read on the latest cached slate (unsettled, so no look-ahead).</p>
